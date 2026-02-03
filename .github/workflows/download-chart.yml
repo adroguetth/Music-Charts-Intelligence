@@ -1,3 +1,4 @@
+# .github/workflows/download-chart.yml
 name: Download YouTube Chart
 
 on:
@@ -7,39 +8,74 @@ on:
 
 jobs:
   download:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10  # Límite de tiempo
-    
+    runs-on: ubuntu-24.04  # ¡IMPORTANTE! Usar 24.04 explícitamente
+    timeout-minutes: 10
+
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Setup Python
+
+    - name: Setup Python 3.12
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10"
-    
-    - name: Install dependencies
+        python-version: "3.12"
+
+    - name: Install Playwright dependencies for Ubuntu 24.04
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libasound2t64 \  # ¡NUEVO nombre en Ubuntu 24.04!
+          libatk-bridge2.0-0 \
+          libatk1.0-0 \
+          libatspi2.0-0 \
+          libcairo2 \
+          libcups2 \
+          libdbus-1-3 \
+          libdrm2 \
+          libexpat1 \
+          libgbm1 \
+          libglib2.0-0 \
+          libnspr4 \
+          libnss3 \
+          libpango-1.0-0 \
+          libx11-6 \
+          libxcb1 \
+          libxcomposite1 \
+          libxdamage1 \
+          libxext6 \
+          libxfixes3 \
+          libxkbcommon0 \
+          libxrandr2
+
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Install Playwright
+        pip install playwright==1.40.0 pandas==2.2.0
+
+    - name: Install Playwright browser only
       run: |
-        python -m playwright install --with-deps chromium
-    
+        python -m playwright install chromium  # ¡SIN --with-deps!
+
     - name: Run download script
       run: |
         python scripts/1_descargar.py
-    
-    - name: List downloaded files
+
+    - name: Check results
       run: |
-        echo "📁 Contenido de data/raw/:"
-        ls -la data/raw/ || echo "No existe data/raw/"
-    
-    - name: Upload CSV artifact
+        echo "📁 Contenido del proyecto:"
+        find . -name "*.csv" -o -name "*.png" | head -20
+        
+        if [ -d "data/raw" ]; then
+          echo "📊 Archivos en data/raw/:"
+          ls -la data/raw/
+        fi
+
+    - name: Upload artifacts
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: youtube-charts
-        path: data/raw/
+        name: youtube-charts-data
+        path: |
+          data/
+          *.csv
+          *.png
         retention-days: 7
