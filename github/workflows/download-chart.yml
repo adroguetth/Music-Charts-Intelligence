@@ -1,0 +1,34 @@
+# .github/workflows/download-chart.yml
+name: Download YouTube Chart
+
+on:
+  schedule:
+    - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
+  workflow_dispatch:  # Para ejecución manual
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        playwright install chromium
+    
+    - name: Run download script
+      run: |
+        python 1_descargar.py
+    
+    - name: Upload CSV as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: youtube-charts
+        path: youtube_top_songs_*.csv
