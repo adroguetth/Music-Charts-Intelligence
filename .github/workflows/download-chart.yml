@@ -4,31 +4,56 @@ name: Download YouTube Chart
 on:
   schedule:
     - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
-  workflow_dispatch:  # Para ejecución manual
+  workflow_dispatch:       # Para ejecución manual
 
 jobs:
   download:
     runs-on: ubuntu-24.04
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
     
-    - name: Install dependencies
+    - name: Install Python dependencies
       run: |
+        pip install --upgrade pip
         pip install -r requirements.txt
-        playwright install chromium
+    
+    - name: Install Playwright browsers
+      run: |
+        python -m playwright install chromium
+    
+    - name: Create data directory
+      run: mkdir -p data/raw
     
     - name: Run download script
+      id: download
       run: |
-        python 1_descargar.py
+        python scripts/1_descargar.py
+        echo "csv_file=$(ls youtube_top_songs_*.csv | head -1)" >> $GITHUB_OUTPUT
     
-    - name: Upload CSV as artifact
-      uses: actions/upload-artifact@v3
+    - name: Move CSV to data directory
+      run: |
+        mv youtube_top_songs_*.csv data/raw/ || true
+        echo "📁 Archivos en data/raw/:"
+        ls -la data/raw/
+    
+    - name: Upload CSV as artifact (v4)
+      uses: actions/upload-artifact@v4
       with:
-        name: youtube-charts
-        path: youtube_top_songs_*.csv
+        name: youtube-charts-csv
+        path: data/raw/
+        if-no-files-found: error
+        retention-days: 90
+    
+    - name: Commit and push to repository
+      if: github.event_name == 'schedule'
+      run: |
+        git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        git add data/raw/
+        git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Auto: Actualizar chart semanal $(date +'%Y-%m-%d')" && git push)
