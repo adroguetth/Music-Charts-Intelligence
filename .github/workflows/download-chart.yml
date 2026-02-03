@@ -8,7 +8,7 @@ on:
 
 jobs:
   download:
-    runs-on: ubuntu-24.04  # ¡IMPORTANTE! Usar 24.04 explícitamente
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -19,11 +19,11 @@ jobs:
       with:
         python-version: "3.12"
 
-    - name: Install Playwright dependencies for Ubuntu 24.04
+    - name: Install Playwright system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          libasound2t64 \  # ¡NUEVO nombre en Ubuntu 24.04!
+          libasound2t64 \
           libatk-bridge2.0-0 \
           libatk1.0-0 \
           libatspi2.0-0 \
@@ -51,23 +51,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install playwright==1.40.0 pandas==2.2.0
 
-    - name: Install Playwright browser only
+    - name: Install Playwright browser
       run: |
-        python -m playwright install chromium  # ¡SIN --with-deps!
+        python -m playwright install chromium
 
     - name: Run download script
       run: |
         python scripts/1_descargar.py
-
-    - name: Check results
-      run: |
-        echo "📁 Contenido del proyecto:"
-        find . -name "*.csv" -o -name "*.png" | head -20
-        
-        if [ -d "data/raw" ]; then
-          echo "📊 Archivos en data/raw/:"
-          ls -la data/raw/
-        fi
 
     - name: Upload artifacts
       if: success()
@@ -77,5 +67,4 @@ jobs:
         path: |
           data/
           *.csv
-          *.png
         retention-days: 7
