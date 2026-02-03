@@ -1,167 +1,179 @@
 #!/usr/bin/env python3
 """
-1_descargar.py - Descarga automática del CSV de YouTube Charts usando Playwright
+1_descargar.py - Descarga automática del CSV de YouTube Charts
+Versión mejorada para GitHub Actions
 """
 
 import asyncio
-from playwright.async_api import async_playwright
-import pandas as pd
-from datetime import datetime
 import os
 import sys
+from datetime import datetime
+from pathlib import Path
 
-async def download_youtube_chart():
-    """Descarga el CSV de YouTube Charts usando Playwright"""
-    
-    print("🎵 Iniciando descarga de YouTube Music Charts...")
-    print(f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # URL del chart
-    url = "https://charts.youtube.com/charts/TopSongs/global/weekly"
-    
-    # Configurar Playwright
-    async with async_playwright() as p:
-        print("🚀 Iniciando navegador...")
+# Configuración
+OUTPUT_DIR = Path("data/raw")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+async def download_chart():
+    """Descarga el chart usando Playwright"""
+    try:
+        from playwright.async_api import async_playwright
         
-        # Usar chromium (más ligero para GitHub Actions)
-        browser = await p.chromium.launch(
-            headless=True,  # Modo sin interfaz para GitHub
-            args=['--no-sandbox', '--disable-dev-shm-usage']
-        )
+        print("🚀 Iniciando Playwright...")
         
-        # Crear contexto con permisos de descarga
-        context = await browser.new_context(
-            accept_downloads=True,
-            viewport={'width': 1920, 'height': 1080}
-        )
-        
-        page = await context.new_page()
-        
-        try:
-            # Navegar a la página
-            print("🌐 Cargando página de charts...")
-            await page.goto(url, wait_until='networkidle', timeout=60000)
+        async with async_playwright() as p:
+            # Configurar navegador para GitHub Actions
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer'
+                ]
+            )
             
-            # Esperar a que cargue la tabla
-            print("⏳ Esperando que cargue la tabla de datos...")
-            await page.wait_for_selector('ytmc-chart-table', timeout=30000)
+            context = await browser.new_context(
+                accept_downloads=True,
+                viewport={'width': 1280, 'height': 800},
+                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+            )
             
-            # Buscar el botón de descarga - VAMOS A PROBAR DIFERENTES SELECTORES
-            print("🔍 Buscando botón de descarga...")
+            page = await context.new_page()
             
-            # Intentar varios selectores posibles
-            selectores = [
-                'iron-icon#icon',  # Por el ID que encontraste
-                'paper-icon-button',  # Por la clase del contenedor
-                '[aria-label*="download"]',  # Por atributo aria-label
-                '[title*="Download"]',  # Por título
-                'button[icon="file-download"]',  # Otro posible selector
-                'ytmc-download-button',  # Componente específico de YouTube Music Charts
-            ]
-            
-            boton_descarga = None
-            for selector in selectores:
-                try:
-                    boton_descarga = await page.query_selector(selector)
-                    if boton_descarga:
-                        print(f"✅ Botón encontrado con selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not boton_descarga:
-                # Fallback: buscar cualquier botón que contenga un ícono de descarga
-                print("⚠️  Botón específico no encontrado, buscando alternativas...")
-                
-                # Buscar por el path SVG específico del ícono de descarga
-                boton_descarga = await page.query_selector('svg path[d*="M17,18v1H6v-1H17z M16.5,11.4"]')
-                if boton_descarga:
-                    # Subir al elemento padre que probablemente sea el botón
-                    boton_descarga = await boton_descarga.query_selector('xpath=./ancestor::button | ./ancestor::paper-icon-button | ./ancestor::*[@role="button"]')
-            
-            if not boton_descarga:
-                # Último recurso: hacer screenshot para debugging
-                print("❌ No se pudo encontrar el botón de descarga")
-                await page.screenshot(path='debug_page.png')
-                print("📸 Captura de pantalla guardada como debug_page.png")
-                
-                # Mostrar estructura de la página para debugging
-                html = await page.content()
-                if 'download' in html.lower():
-                    print("ℹ️  La página contiene texto 'download', revisa debug_page.png")
-                
-                return None
-            
-            # Configurar la descarga
-            print("📥 Configurando descarga...")
-            
-            # Esperar el evento de descarga
-            async with page.expect_download() as download_info:
-                # Hacer clic en el botón
-                await boton_descarga.click()
-                print("🖱️  Clic en botón de descarga realizado")
-            
-            # Obtener el objeto de descarga
-            download = await download_info.value
-            
-            # Generar nombre de archivo con fecha
-            fecha = datetime.now().strftime("%Y%m%d")
-            filename = f"youtube_top_songs_{fecha}.csv"
-            
-            # Guardar el archivo
-            await download.save_as(filename)
-            print(f"✅ CSV descargado exitosamente: {filename}")
-            
-            # Verificar el contenido
             try:
-                df = pd.read_csv(filename)
-                print(f"📊 Registros descargados: {len(df)}")
-                print(f"📋 Columnas: {', '.join(df.columns)}")
+                # Navegar a la página
+                url = "https://charts.youtube.com/charts/TopSongs/global/weekly"
+                print(f"🌐 Navegando a: {url}")
                 
-                # Mostrar primeras filas
-                print("\n🔽 PRIMERAS 3 CANCIONES DEL CHART:")
-                for i, row in df.head(3).iterrows():
-                    print(f"  {row.get('Rank', i+1)}. {row.get('Track Name', 'N/A')} - {row.get('Artist Names', 'N/A')}")
+                await page.goto(url, wait_until='networkidle', timeout=60000)
                 
-            except Exception as e:
-                print(f"⚠️  Error leyendo CSV: {e}")
-                # El archivo podría no ser CSV o tener formato diferente
-            
-            # Cerrar navegador
-            await browser.close()
-            
-            return filename
-            
-        except Exception as e:
-            print(f"❌ Error durante la descarga: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # Intentar cerrar el navegador incluso si hay error
-            try:
+                # Esperar a que cargue el contenido
+                await page.wait_for_load_state('networkidle')
+                
+                # Estrategia 1: Buscar botones de descarga comunes
+                print("🔍 Buscando botón de descarga...")
+                
+                # Intentar diferentes selectores
+                selectores = [
+                    'button[aria-label*="Download"]',
+                    'button[title*="Download"]',
+                    'a[download]',
+                    'iron-icon#icon',
+                    'paper-icon-button',
+                    'ytmc-download-button',
+                    'svg path[d*="M17,18v1H6v-1H17z"]',  # Path específico que encontraste
+                ]
+                
+                boton = None
+                for selector in selectores:
+                    try:
+                        elementos = await page.query_selector_all(selector)
+                        if elementos:
+                            boton = elementos[0]
+                            print(f"✅ Botón encontrado: {selector}")
+                            break
+                    except:
+                        continue
+                
+                if not boton:
+                    # Estrategia 2: Buscar por texto
+                    print("⚠️  Botón no encontrado por selectores, buscando por texto...")
+                    try:
+                        boton = await page.query_selector('text/Download')
+                        if not boton:
+                            boton = await page.query_selector('text/Descargar')
+                    except:
+                        pass
+                
+                if not boton:
+                    # Guardar screenshot para debugging
+                    debug_path = OUTPUT_DIR / "debug_page.png"
+                    await page.screenshot(path=str(debug_path))
+                    print(f"❌ Botón no encontrado. Screenshot guardado: {debug_path}")
+                    return None
+                
+                # Preparar descarga
+                print("📥 Preparando descarga...")
+                
+                async with page.expect_download() as download_info:
+                    # Intentar hacer clic
+                    try:
+                        await boton.click()
+                    except:
+                        # Si falla el clic, usar JavaScript
+                        await page.evaluate('(element) => element.click()', boton)
+                
+                # Esperar descarga
+                download = await download_info.value
+                
+                # Nombre del archivo
+                fecha = datetime.now().strftime("%Y%m%d")
+                filename = OUTPUT_DIR / f"youtube_top_songs_{fecha}.csv"
+                
+                # Guardar archivo
+                await download.save_as(filename)
+                print(f"✅ Archivo guardado: {filename}")
+                
+                # Verificar que existe
+                if filename.exists():
+                    size_kb = filename.stat().st_size / 1024
+                    print(f"📦 Tamaño: {size_kb:.1f} KB")
+                    
+                    # Leer primeras líneas para verificar
+                    with open(filename, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()[:3]
+                        if lines:
+                            print("📋 Primeras líneas del CSV:")
+                            for line in lines:
+                                print(f"  {line.strip()}")
+                
+                return str(filename)
+                
+            finally:
                 await browser.close()
-            except:
-                pass
-            
-            return None
+                
+    except ImportError:
+        print("❌ Playwright no está instalado. Ejecuta: pip install playwright")
+        return None
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 def main():
-    """Función principal síncrona"""
+    """Función principal"""
+    print("=" * 60)
+    print("🎵 YOUTUBE MUSIC CHARTS DOWNLOADER")
+    print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
     
-    # Ejecutar la función asíncrona
-    filename = asyncio.run(download_youtube_chart())
+    # Verificar si estamos en GitHub Actions
+    if os.getenv('GITHUB_ACTIONS'):
+        print("⚡ Ejecutando en GitHub Actions")
     
-    if filename:
-        print(f"\n🎉 Descarga completada exitosamente!")
-        print(f"💾 Archivo guardado como: {filename}")
+    # Descargar el chart
+    csv_path = asyncio.run(download_chart())
+    
+    if csv_path and os.path.exists(csv_path):
+        print(f"\n🎉 ¡ÉXITO! Chart descargado correctamente")
+        print(f"📁 Ruta: {csv_path}")
         
-        # Verificar tamaño
-        if os.path.exists(filename):
-            size_kb = os.path.getsize(filename) / 1024
-            print(f"📦 Tamaño del archivo: {size_kb:.1f} KB")
+        # También crear un enlace simbólico al archivo más reciente
+        try:
+            latest_link = OUTPUT_DIR / "youtube_chart_latest.csv"
+            if latest_link.exists():
+                latest_link.unlink()
+            os.symlink(csv_path, latest_link)
+            print(f"🔗 Enlace creado: {latest_link}")
+        except:
+            pass
+            
+        return 0
     else:
-        print("\n❌ La descarga falló. Revisa los mensajes de error arriba.")
-        sys.exit(1)
+        print("\n❌ FALLÓ la descarga del chart")
+        return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
