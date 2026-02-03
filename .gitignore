@@ -1,0 +1,72 @@
+# ============================================
+# YouTube Music Charts Project .gitignore
+# ============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.env.local
+.env.*.local
+pip-wheel-metadata/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.jupyter/
+.ipynb_checkpoints/
+
+# Playwright
+playwright/.cache/
+test-results/
+playwright-report/
+playwright/.local-browsers/
+
+# CSV files (excepto los de data/raw/)
+*.csv
+!data/raw/*.csv
+
+# Archivos de debug y temporales
+debug_*.png
+*.log
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Output del script
+youtube_top_songs_*.csv  # No guardar en raíz, solo en data/raw/
+
+# IDE y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+.project
+.settings/
+
+# Sistema operativo
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Windows
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+
+# GitHub Actions artifacts (no versionar)
+actions-runner/
