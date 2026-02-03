@@ -1,39 +1,45 @@
-# .github/workflows/download-chart.yml
 name: Download YouTube Chart
 
 on:
   schedule:
     - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
-  workflow_dispatch:       # Para ejecución manual
+  workflow_dispatch:
 
 jobs:
   download:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Límite de tiempo
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: "3.10"
     
-    - name: Install Python dependencies
+    - name: Install dependencies
       run: |
-        pip install --upgrade pip
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Install Playwright browsers
+    - name: Install Playwright
       run: |
-        python -m playwright install chromium
+        python -m playwright install --with-deps chromium
     
     - name: Run download script
       run: |
         python scripts/1_descargar.py
     
-    - name: Upload CSV as artifact
+    - name: List downloaded files
+      run: |
+        echo "📁 Contenido de data/raw/:"
+        ls -la data/raw/ || echo "No existe data/raw/"
+    
+    - name: Upload CSV artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: youtube-charts
         path: data/raw/
-        if-no-files-found: error
+        retention-days: 7
