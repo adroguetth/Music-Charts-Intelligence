@@ -8,7 +8,7 @@ on:
 jobs:
   download:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 15  # Más tiempo para Playwright
 
     steps:
     - uses: actions/checkout@v4
@@ -18,19 +18,33 @@ jobs:
       with:
         python-version: "3.12"
 
-    - name: Install dependencies
+    - name: Install Python dependencies
       run: |
-        pip install -r requirements.txt
-        playwright install chromium
+        pip install playwright pandas
+
+    - name: Install Playwright browsers
+      run: |
+        python -m playwright install chromium
+        python -m playwright install-deps  # Instala dependencias del sistema
 
     - name: Create data directory
       run: mkdir -p data
 
-    - name: Run download script
+    - name: Run autoclick download script
       run: |
         python scripts/1_descargar.py
 
-    - name: Upload CSV artifacts
+    - name: List downloaded files
+      run: |
+        echo "📁 Contenido de data/:"
+        ls -la data/ || echo "No hay archivos"
+        
+        if [ -d "data" ]; then
+          echo "📊 Archivos CSV encontrados:"
+          find data -name "*.csv" -type f -exec echo "  - {}" \;
+        fi
+
+    - name: Upload artifacts
       if: success()
       uses: actions/upload-artifact@v4
       with:
