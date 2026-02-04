@@ -1,45 +1,47 @@
-name: Download YouTube Chart
+# .github/workflows/download-chart.yml
+name: YouTube Charts Data Extractor
 
 on:
   schedule:
     - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
-  workflow_dispatch:
+  workflow_dispatch:       # Ejecución manual
 
 jobs:
-  download:
+  extract:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    timeout-minutes: 5
+    
     steps:
     - uses: actions/checkout@v4
-
+    
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-
-    - name: Install Python dependencies
+    
+    - name: Install dependencies
       run: |
-        pip install requests pandas
-
-    - name: Run download script
+        pip install requests pandas beautifulsoup4 lxml
+    
+    - name: Run data extractor
       run: |
         python scripts/1_descargar.py
-
-    - name: Check downloaded files
+    
+    - name: Show extracted files
       run: |
-        echo "📁 Contenido de data/raw/:"
-        ls -la data/raw/ || echo "No existe data/raw/"
-        
+        echo "📁 Archivos extraídos:"
+        find . -name "*.csv" -o -name "*.txt" | head -10
+        echo ""
         if [ -d "data/raw" ]; then
-          echo "📊 Archivos CSV encontrados:"
-          find data/raw -name "*.csv" -type f | head -5
+          echo "📊 Contenido de data/raw/:"
+          ls -la data/raw/
         fi
-
-    - name: Upload CSV artifacts
-      if: success()
+    
+    - name: Upload extracted data
       uses: actions/upload-artifact@v4
       with:
         name: youtube-charts-data
-        path: data/raw/*.csv
+        path: |
+          data/raw/*.csv
+          data/raw/*.txt
         retention-days: 30
