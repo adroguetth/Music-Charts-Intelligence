@@ -103,7 +103,7 @@ jobs:
         rm -rf data/debug_* 2>/dev/null || true
         echo "✅ Limpieza completada"
     
-    # 9. Commit y push de archivos archivados (VERSIÓN CORREGIDA)
+    # 9. Commit y push de archivos archivados
     - name: 📤 Commit and push archived files
       run: |
         echo "🔄 Preparando commit de archivos archivados..."
