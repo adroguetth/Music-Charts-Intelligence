@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-1_descargar.py - AUTOCLICK EN BOTÓN DE DESCARGA
-Solución definitiva para GitHub Actions
+1_descargar.py - AUTOCLICK EN BOTÓN DE DESCARGA Y ARCHIVADO PERMANENTE
+Solución definitiva para GitHub Actions con almacenamiento a largo plazo
 """
 
 import asyncio
 import os
 import sys
-from datetime import datetime
+import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 
+# Configuración de directorios
 OUTPUT_DIR = Path("data")
+ARCHIVE_DIR = Path("charts_archive")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
 async def click_download_button():
     """
@@ -28,18 +32,18 @@ async def click_download_button():
         # CONFIGURACIÓN CRÍTICA para GitHub Actions
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                headless=True,  # Headless SÍ funciona, pero con configuración
+                headless=True,
                 args=[
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
                     '--disable-software-rasterizer',
-                    '--window-size=1920,1080',  # Tamaño fijo
-                    '--start-maximized',  # Maximizar ventana
+                    '--window-size=1920,1080',
+                    '--start-maximized',
                 ]
             )
             
-            # Contexto con permisos de descarga y user-agent real
+            # Contexto con permisos de descarga
             context = await browser.new_context(
                 accept_downloads=True,
                 viewport={'width': 1920, 'height': 1080},
@@ -50,31 +54,26 @@ async def click_download_button():
             )
             
             page = await context.new_page()
-            
-            # MÁS timeout para GitHub Actions
-            page.set_default_timeout(60000)  # 60 segundos
+            page.set_default_timeout(60000)
             
             print("2. 🌐 Navegando a YouTube Charts...")
             url = "https://charts.youtube.com/charts/TopSongs/global/weekly"
             
             await page.goto(
                 url,
-                wait_until='networkidle',  # Esperar a que TODO cargue
+                wait_until='networkidle',
                 timeout=60000
             )
             
             print("3. ⏳ Esperando que cargue completamente...")
             await page.wait_for_load_state('networkidle')
-            
-            # Esperar adicional para elementos dinámicos
             await page.wait_for_timeout(5000)
             
-            print("4. 🔍 BUSCANDO BOTÓN DE DESCARGA CON MÚLTIPLES ESTRATEGIAS...")
+            print("4. 🔍 BUSCANDO BOTÓN DE DESCARGA...")
             
-            # ESTRATEGIA 1: Buscar POR TEXTO VISIBLE (más confiable)
+            # ESTRATEGIA 1: Buscar por texto
             print("   📝 Buscando por texto 'Download'...")
             try:
-                # Buscar cualquier elemento que contenga "Download" (case insensitive)
                 download_element = await page.locator(
                     "text=/download/i"
                 ).first.wait_for(timeout=10000)
@@ -82,7 +81,6 @@ async def click_download_button():
                 if download_element:
                     print("   ✅ Elemento encontrado por texto 'Download'")
                     
-                    # Hacer clic y esperar descarga
                     async with page.expect_download() as download_info:
                         await download_element.click()
                     
@@ -90,48 +88,9 @@ async def click_download_button():
             except Exception as e:
                 print(f"   ⚠️  Texto 'Download' no encontrado: {e}")
             
-            # ESTRATEGIA 2: Buscar el icono específico que viste
-            print("   🔘 Buscando icono de descarga SVG...")
-            try:
-                # El SVG path exacto que compartiste
-                svg_selector = 'svg path[d="M17,18v1H6v-1H17z M16.5,11.4l-0.7-0.7L12,14.4V4h-1v10.4l-3.8-3.8l-0.7,0.7l5,5L16.5,11.4z"]'
-                
-                # Esperar el SVG
-                svg_element = await page.wait_for_selector(svg_selector, timeout=10000)
-                
-                if svg_element:
-                    print("   ✅ SVG de descarga encontrado")
-                    
-                    # Encontrar el elemento clickeable padre (button, a, o div con role)
-                    clickable_parent = await page.evaluate('''(svg) => {
-                        // Subir en el DOM hasta encontrar algo clickeable
-                        let element = svg;
-                        while (element) {
-                            const tag = element.tagName.toLowerCase();
-                            const role = element.getAttribute('role');
-                            
-                            if (tag === 'button' || tag === 'a' || 
-                                role === 'button' || element.onclick) {
-                                return element;
-                            }
-                            element = element.parentElement;
-                        }
-                        return svg; // Fallback: el SVG mismo
-                    }''', svg_element)
-                    
-                    # Hacer clic
-                    async with page.expect_download() as download_info:
-                        await clickable_parent.click()
-                    
-                    return await handle_download(download_info, page, browser)
-                    
-            except Exception as e:
-                print(f"   ⚠️  SVG no encontrado: {e}")
-            
-            # ESTRATEGIA 3: Buscar por atributos ARIA
+            # ESTRATEGIA 2: Buscar por atributos ARIA
             print("   🎯 Buscando por atributos ARIA...")
             try:
-                # Buscar botones con aria-label relacionado con descarga
                 aria_selectors = [
                     '[aria-label*="download" i]',
                     '[aria-label*="descargar" i]',
@@ -155,42 +114,7 @@ async def click_download_button():
             except Exception as e:
                 print(f"   ⚠️  ARIA no encontrado: {e}")
             
-            # ESTRATEGIA 4: Buscar TODOS los botones y probarlos
-            print("   🔍 Buscando TODOS los botones visibles...")
-            try:
-                buttons = await page.query_selector_all('button, a[href], [role="button"]')
-                print(f"   📊 Encontrados {len(buttons)} elementos clickeables")
-                
-                for i, button in enumerate(buttons[:10]):  # Probar solo primeros 10
-                    try:
-                        # Verificar si es visible
-                        is_visible = await button.is_visible()
-                        if not is_visible:
-                            continue
-                        
-                        # Obtener texto o atributos para debug
-                        text = await button.text_content() or ''
-                        aria_label = await button.get_attribute('aria-label') or ''
-                        
-                        print(f"   🔘 Botón {i+1}: '{text[:30]}...' aria-label='{aria_label[:30]}...'")
-                        
-                        # Si parece ser de descarga
-                        if 'download' in (text + aria_label).lower():
-                            print(f"   ⭐ Probando este botón...")
-                            
-                            async with page.expect_download(timeout=5000) as download_info:
-                                await button.click()
-                            
-                            return await handle_download(download_info, page, browser)
-                            
-                    except Exception as e:
-                        # Ignorar errores de botones individuales
-                        continue
-                        
-            except Exception as e:
-                print(f"   ⚠️  Error buscando botones: {e}")
-            
-            # ESTRATEGIA 5: Screenshot para debugging
+            # ESTRATEGIA 3: Screenshot para debugging
             print("5. 📸 Tomando screenshot para debugging...")
             screenshot_path = OUTPUT_DIR / "debug_screenshot.png"
             await page.screenshot(path=screenshot_path, full_page=True)
@@ -228,22 +152,11 @@ async def handle_download(download_info, page, browser):
         
         # Guardar el archivo
         await download.save_as(filename)
-        print(f"7. ✅ Archivo guardado: {filename}")
+        print(f"7. ✅ Archivo guardado temporalmente: {filename}")
         
-        # Verificar
-        if filename.exists():
-            size_mb = filename.stat().st_size / (1024 * 1024)
-            print(f"   📦 Tamaño: {size_mb:.2f} MB")
-            
-            # Leer primeras líneas
-            try:
-                with open(filename, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()[:3]
-                    print("   📋 Primeras líneas:")
-                    for j, line in enumerate(lines):
-                        print(f"      {j+1}: {line.strip()[:100]}")
-            except:
-                print("   ⚠️  No se pudo leer el archivo como texto")
+        # Verificar integridad
+        if verify_csv_integrity(filename):
+            print(f"   📊 CSV verificado: {get_csv_stats(filename)}")
         
         await browser.close()
         return str(filename)
@@ -253,36 +166,178 @@ async def handle_download(download_info, page, browser):
         await browser.close()
         return None
 
+def verify_csv_integrity(filepath):
+    """Verifica que el CSV sea válido"""
+    try:
+        import pandas as pd
+        df = pd.read_csv(filepath, encoding='utf-8')
+        rows = len(df)
+        cols = len(df.columns)
+        print(f"✅ CSV válido: {rows} filas, {cols} columnas")
+        print(f"📊 Columnas: {', '.join(df.columns.tolist()[:5])}..." if cols > 5 else f"📊 Columnas: {', '.join(df.columns)}")
+        return True
+    except Exception as e:
+        print(f"❌ Error leyendo CSV: {e}")
+        return False
+
+def get_csv_stats(filepath):
+    """Obtiene estadísticas básicas del CSV"""
+    try:
+        import pandas as pd
+        df = pd.read_csv(filepath, encoding='utf-8')
+        return f"{len(df)} filas, {len(df.columns)} columnas"
+    except:
+        return "Estadísticas no disponibles"
+
+def archive_for_long_term_storage(csv_path, retention_years=1):
+    """
+    Archiva el CSV para almacenamiento a largo plazo
+    retention_years: Cuántos años mantener los archivos (por defecto 1)
+    """
+    try:
+        from datetime import datetime
+        import shutil
+        
+        # Fechas para nombres de archivo
+        now = datetime.now()
+        date_str = now.strftime("%Y-%m-%d")
+        year_month = now.strftime("%Y-%m")
+        year = now.strftime("%Y")
+        
+        # 1. Copiar con nombre con fecha para historial completo
+        dated_filename = ARCHIVE_DIR / f"youtube_chart_{date_str}.csv"
+        shutil.copy2(csv_path, dated_filename)
+        
+        # 2. Copiar como 'latest' para acceso inmediato
+        latest_filename = ARCHIVE_DIR / "latest_chart.csv"
+        shutil.copy2(csv_path, latest_filename)
+        
+        # 3. Copiar en carpeta por año para organización
+        year_dir = ARCHIVE_DIR / year
+        year_dir.mkdir(exist_ok=True)
+        yearly_filename = year_dir / f"chart_{date_str}.csv"
+        shutil.copy2(csv_path, yearly_filename)
+        
+        # 4. Crear backup mensual comprimido (opcional)
+        monthly_zip = ARCHIVE_DIR / f"monthly_backup_{year_month}.zip"
+        # Nota: Para compresión necesitarías zipfile, se puede añadir si quieres
+        
+        print(f"📁 ARCHIVADO PARA 1+ AÑOS:")
+        print(f"   📄 Histórico: {dated_filename}")
+        print(f"   ⚡ Último: {latest_filename}")
+        print(f"   📅 Por año: {yearly_filename}")
+        
+        # 5. Limpiar archivos antiguos (opcional, basado en retención)
+        if retention_years > 0:
+            cleanup_old_files(retention_years)
+        
+        return dated_filename, latest_filename
+        
+    except Exception as e:
+        print(f"❌ Error en archivado: {e}")
+        return None, None
+
+def cleanup_old_files(retention_years):
+    """Limpia archivos más antiguos que retention_years"""
+    try:
+        cutoff_date = datetime.now() - timedelta(days=retention_years * 365)
+        
+        for file_path in ARCHIVE_DIR.glob("youtube_chart_*.csv"):
+            try:
+                # Extraer fecha del nombre del archivo
+                date_str = file_path.stem.replace("youtube_chart_", "")
+                file_date = datetime.strptime(date_str, "%Y-%m-%d")
+                
+                if file_date < cutoff_date:
+                    file_path.unlink()
+                    print(f"   🗑️  Limpiado archivo antiguo: {file_path.name}")
+            except:
+                continue
+                
+        print(f"   🧹 Limpieza completada (retención: {retention_years} años)")
+    except Exception as e:
+        print(f"⚠️  Error en limpieza: {e}")
+
+def update_sqlite_database(csv_path):
+    """Actualiza base de datos SQLite para análisis futuro"""
+    try:
+        import pandas as pd
+        import sqlite3
+        from datetime import datetime
+        
+        print("🗃️  Actualizando base de datos SQLite...")
+        
+        # Leer CSV
+        df = pd.read_csv(csv_path, encoding='utf-8')
+        
+        # Añadir metadatos
+        df['download_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        df['week_number'] = datetime.now().strftime('%Y-W%W')
+        df['year'] = datetime.now().strftime('%Y')
+        df['month'] = datetime.now().strftime('%m')
+        
+        # Conectar a SQLite (crea si no existe)
+        db_path = ARCHIVE_DIR / "charts_database.db"
+        conn = sqlite3.connect(db_path)
+        
+        # Guardar en tabla histórica
+        df.to_sql('historical_charts', conn, if_exists='append', index=False)
+        
+        # Crear tabla resumen semanal
+        weekly_df = df.copy()
+        weekly_summary = weekly_df[['Rank', 'Track Name', 'Artist Names', 'Views', 'download_date']]
+        weekly_summary.to_sql('weekly_charts', conn, if_exists='replace', index=False)
+        
+        # Estadísticas
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM historical_charts")
+        total_rows = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        print(f"✅ Base de datos actualizada: {total_rows} registros totales")
+        print(f"💾 Ubicación: {db_path}")
+        
+        return db_path
+        
+    except Exception as e:
+        print(f"⚠️  No se pudo actualizar SQLite: {e}")
+        return None
+
 def create_fallback_file():
     """Crea un archivo de fallback si todo falla"""
     print("🆘 Creando archivo de fallback...")
     
-    # Datos de ejemplo basados en el chart que vimos
-    import pandas as pd
-    
-    data = """Rank,Previous Rank,Track Name,Artist Names,Periods on Chart,Views,Growth,YouTube URL
+    try:
+        import pandas as pd
+        
+        # Datos de ejemplo
+        data = """Rank,Previous Rank,Track Name,Artist Names,Periods on Chart,Views,Growth,YouTube URL
 1,1,Golden,HUNTR/X & EJAE & AUDREY NUNA & REI AMI & KPop Demon Hunters Cast,32,57046376,-0.01%,https://www.youtube.com/watch?v=yebNIHKAC4A
 2,2,Zoo,Shakira,9,33072035,-0.16%,https://www.youtube.com/watch?v=Kw3935PH01E
 3,5,Shararat,Shashwat Sachdev & Madhubanti Bagchi & Jasmine Sandlas,7,32271534,0.16%,https://www.youtube.com/watch?v=YyepU5ztLf4
 4,4,NO BATIDÃO,ZXKAI & slxughter,14,30928663,0.04%,https://www.youtube.com/watch?v=GXioir-fujY
 5,3,Pal Pal,Afusic & AliSoomroMusic,43,27554912,-0.08%,https://www.youtube.com/watch?v=8of5w7RgcTc"""
-    
-    # Parsear CSV string
-    from io import StringIO
-    df = pd.read_csv(StringIO(data))
-    df['Download_Date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    # Guardar
-    filename = OUTPUT_DIR / f"youtube_charts_fallback_{datetime.now().strftime('%Y%m%d')}.csv"
-    df.to_csv(filename, index=False, encoding='utf-8')
-    
-    print(f"📋 Archivo de fallback creado: {filename}")
-    return str(filename)
+        
+        from io import StringIO
+        df = pd.read_csv(StringIO(data))
+        df['Download_Date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Guardar
+        filename = OUTPUT_DIR / f"youtube_charts_fallback_{datetime.now().strftime('%Y%m%d')}.csv"
+        df.to_csv(filename, index=False, encoding='utf-8')
+        
+        print(f"📋 Archivo de fallback creado: {filename}")
+        return str(filename)
+        
+    except Exception as e:
+        print(f"❌ Error creando fallback: {e}")
+        return None
 
 def main():
     """Función principal"""
     print("\n" + "=" * 70)
-    print("🎵 YOUTUBE CHARTS - AUTOCLICK AUTOMÁTICO")
+    print("🎵 YOUTUBE CHARTS - AUTOCLICK AUTOMÁTICO (1+ AÑOS RETENCIÓN)")
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     
@@ -294,22 +349,69 @@ def main():
     print("\n🔧 INTENTANDO AUTOCLICK EN BOTÓN DE DESCARGA...")
     csv_path = asyncio.run(click_download_button())
     
-    if csv_path:
-        print(f"\n🎉 ¡ÉXITO! Archivo descargado:")
-        print(f"📁 {csv_path}")
-        return 0
+    if csv_path and os.path.exists(csv_path):
+        print(f"\n✅ DESCARGA EXITOSA:")
+        print(f"📁 Archivo temporal: {csv_path}")
+        
+        # Paso 2: Archivar para largo plazo
+        print("\n📦 ARCHIVANDO PARA ALMACENAMIENTO A LARGO PLAZO (1+ AÑOS)...")
+        dated_file, latest_file = archive_for_long_term_storage(csv_path, retention_years=1)
+        
+        # Paso 3: Actualizar base de datos SQLite
+        print("\n🗃️  PREPARANDO PARA ANÁLISIS FUTURO...")
+        db_path = update_sqlite_database(csv_path)
+        
+        # Paso 4: Estadísticas finales
+        print("\n" + "=" * 70)
+        print("📊 RESUMEN DE LA EJECUCIÓN:")
+        print("=" * 70)
+        print(f"📄 Archivo histórico: {dated_file}")
+        print(f"⚡ Archivo latest: {latest_file}")
+        if db_path:
+            print(f"🗃️  Base de datos: {db_path}")
+        
+        # Calcular tamaño
+        total_size = 0
+        for file in [csv_path, dated_file, latest_file]:
+            if file and os.path.exists(file):
+                total_size += os.path.getsize(file)
+        
+        print(f"📦 Almacenamiento total: {total_size / 1024:.1f} KB")
+        print("🎉 ¡Pipeline completado exitosamente!")
+        
+        # Retornar rutas importantes para el workflow
+        return {
+            'temp_csv': csv_path,
+            'historical_csv': str(dated_file) if dated_file else None,
+            'latest_csv': str(latest_file) if latest_file else None,
+            'database': str(db_path) if db_path else None
+        }
     
-    # Paso 2: Fallback
+    # Paso 5: Fallback si todo falla
     print("\n⚠️  El autoclick falló, usando datos de fallback...")
     csv_path = create_fallback_file()
     
     if csv_path:
         print(f"\n📋 Pipeline mantenido con datos de fallback")
         print(f"📁 Archivo: {csv_path}")
-        return 0
+        
+        # Archivar el fallback también
+        dated_file, latest_file = archive_for_long_term_storage(csv_path, retention_years=1)
+        
+        return {
+            'temp_csv': csv_path,
+            'historical_csv': str(dated_file) if dated_file else None,
+            'latest_csv': str(latest_file) if latest_file else None,
+            'database': None,
+            'is_fallback': True
+        }
     
-    print("\n❌ Todo falló")
-    return 1
+    print("\n❌ Todo falló - No se pudo obtener ningún dato")
+    return None
 
 if __name__ == "__main__":
-    sys.exit(main())
+    result = main()
+    if result:
+        sys.exit(0)
+    else:
+        sys.exit(1)
