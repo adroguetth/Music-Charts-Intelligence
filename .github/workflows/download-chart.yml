@@ -1,70 +1,38 @@
-name: Download YouTube Charts
+name: Download YouTube Chart
 
 on:
-  # Ejecutar cada lunes a las 00:00 UTC (ajusta según tu zona horaria)
   schedule:
-    - cron: '0 0 * * 1'
-  
-  # Permitir ejecución manual desde Actions tab
+    - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
   workflow_dispatch:
-  
-  # También ejecutar en push a main (opcional)
-  push:
-    branches:
-      - main
 
 jobs:
-  download-charts:
+  download:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 10
+
     steps:
-      # Checkout del repositorio
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      # Configurar Python
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      
-      # Instalar dependencias necesarias
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests pandas playwright
-          
-          # Instalar navegadores de Playwright
-          python -m playwright install chromium
-          python -m playwright install-deps
-      
-      # Ejecutar script de descarga
-      - name: Download YouTube Charts
-        run: |
-          python youtube_charts_downloader.py
-      
-      # Commit y push automático de cambios
-      - name: Commit and push changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
-          # Agregar archivos descargados
-          git add data/
-          
-          # Solo hacer commit si hay cambios
-          git diff --quiet && git diff --staged --quiet || (
-            git commit -m "🎵 Update YouTube Charts - $(date +'%Y-%m-%d %H:%M:%S')"
-            git push origin main
-          )
-      
-      # Crear release con el CSV (opcional)
-      - name: Create Release
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          files: data/youtube_charts_*.csv
-          tag_name: charts-${{ github.run_number }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        pip install requests pandas
+
+    - name: Create data directory
+      run: mkdir -p data
+
+    - name: Run improved download script
+      run: |
+        python scripts/1_descargar.py
+
+    - name: Upload CSV artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: youtube-charts-data
+        path: data/*.csv
+        retention-days: 30
