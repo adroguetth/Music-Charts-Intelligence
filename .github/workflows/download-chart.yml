@@ -2,36 +2,31 @@ name: Download YouTube Chart
 
 on:
   schedule:
-    - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC (8:00 AM Chile)
+    - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
   workflow_dispatch:  # Ejecución manual
   push:
     branches:
       - main
     paths:
-      - 'scripts/1_descargar.py'  # Se ejecuta si cambia el script
+      - 'scripts/*.py'
 
 env:
-  RETENTION_YEARS: 1  # Configuración de retención
-  SQLITE_ENABLED: true  # Habilitar base de datos SQLite
+  RETENTION_DAYS: 30  # Días de retención
 
 jobs:
-  download-and-archive:
+  download-and-store:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Tiempo suficiente para Playwright
+    timeout-minutes: 30
     
-    # PERMISOS CRÍTICOS: Dar permisos de escritura al token
     permissions:
-      contents: write  # Necesario para hacer push
-      pages: write
-      id-token: write
+      contents: write
     
     steps:
-    # 1. Checkout del repositorio con todo el historial
+    # 1. Checkout del repositorio
     - name: 📚 Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Trae todo el historial para commits
-        # No es necesario especificar token aquí si usas el por defecto
+        fetch-depth: 0
     
     # 2. Configurar Python
     - name: 🐍 Setup Python
@@ -41,139 +36,77 @@ jobs:
         cache: 'pip'
     
     # 3. Instalar dependencias
-    - name: 📦 Install Python dependencies
+    - name: 📦 Install dependencies
       run: |
         pip install -r requirements.txt
-        echo "✅ Dependencias Python instaladas"
-    
-    # 4. Instalar Playwright y Chromium
-    - name: 🌐 Install Playwright browser
-      run: |
         python -m playwright install chromium
         python -m playwright install-deps
-        echo "✅ Playwright y Chromium instalados"
     
-    # 5. Crear directorios necesarios
-    - name: 📁 Create directories
+    # 4. Crear estructura de directorios
+    - name: 📁 Create directory structure
       run: |
-        mkdir -p data charts_archive
-        echo "Directorios creados:"
-        ls -la
-        echo "📁 Estructura inicial preparada"
+        mkdir -p data charts_archive/databases charts_archive/backups charts_archive/raw_data
     
-    # 6. Ejecutar script de descarga
+    # 5. Ejecutar script de descarga
     - name: 🚀 Run download script
       run: |
-        echo "🔧 Iniciando descarga automática..."
         python scripts/1_descargar.py
       env:
         GITHUB_ACTIONS: true
     
-    # 7. Verificar resultados
-    - name: ✅ Verify downloaded files
+    # 6. Verificar resultados
+    - name: ✅ Verify results
       run: |
-        echo "📊 Verificando archivos descargados..."
-        echo "📁 Contenido de data/:"
-        ls -la data/ 2>/dev/null || echo "data/ está vacío"
+        echo "📊 Verificando resultados..."
         
-        echo ""
         echo "📁 Contenido de charts_archive/:"
-        ls -la charts_archive/ 2>/dev/null || echo "charts_archive/ está vacío"
+        ls -la charts_archive/
         
-        echo ""
-        echo "📈 Archivos CSV encontrados:"
-        find . -name "*.csv" -type f | head -20 | while read file; do
-          size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
-          echo "  - $file (${size} bytes)"
-        done
+        echo -e "\n🗃️  Base de datos:"
+        ls -la charts_archive/databases/*.db 2>/dev/null || echo "No hay base de datos"
         
-        # Verificar archivo latest
-        if [ -f "charts_archive/latest_chart.csv" ]; then
-          echo "✅ latest_chart.csv encontrado y listo para análisis"
-          echo "📏 Líneas en latest_chart.csv: $(wc -l < charts_archive/latest_chart.csv)"
-        else
-          echo "⚠️  latest_chart.csv no encontrado"
-        fi
+        echo -e "\n💾 Backups:"
+        ls -la charts_archive/backups/ 2>/dev/null || echo "No hay backups"
+        
+        echo -e "\n📄 Reportes:"
+        ls -la charts_archive/*.txt 2>/dev/null || echo "No hay reportes"
     
-    # 8. Limpiar archivos temporales (opcional)
-    - name: 🧹 Clean temporary files
-      if: always()
+    # 7. Commit y push de cambios
+    - name: 📤 Commit and push changes
       run: |
-        echo "Limpiando archivos temporales..."
-        rm -rf data/debug_* 2>/dev/null || true
-        echo "✅ Limpieza completada"
-    
-    # 9. Commit y push de archivos archivados
-    - name: 📤 Commit and push archived files
-      run: |
-        echo "🔄 Preparando commit de archivos archivados..."
+        echo "🔄 Preparando commit..."
         
-        # Configurar git con el usuario de GitHub Actions
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Agregar solo los archivos de archivado
+        # Agregar solo archivos de archivado
         git add charts_archive/
         
-        # Verificar cambios
         if git diff --cached --quiet; then
-          echo "📭 No hay cambios en charts_archive para commit"
+          echo "📭 No hay cambios para commit"
         else
-          # Hacer commit
           DATE=$(date +'%Y-%m-%d')
-          git commit -m "📊 YouTube Chart Update ${DATE} [Automated]"
+          WEEK=$(date +'%Y-W%W')
+          git commit -m "📊 YouTube Chart Update ${DATE} (Week ${WEEK}) [Automated]"
           
-          # Hacer push usando el token automático
-          echo "⬆️ Subiendo cambios al repositorio..."
+          echo "⬆️ Subiendo cambios..."
           git push origin HEAD:main
-          echo "✅ Archivos archivados subidos al repositorio"
-          
-          # Resumen
-          echo ""
-          echo "📈 RESUMEN DEL COMMIT:"
-          git show --stat --name-only HEAD | tail -20
+          echo "✅ Cambios subidos al repositorio"
         fi
     
-    # 10. Crear backup mensual (primer lunes del mes)
-    - name: 🗓️ Create monthly backup
-      if: github.event.schedule == '0 12 * * 1'  # Solo en automático
-      run: |
-        # Verificar si es el primer lunes del mes
-        DAY=$(date +%d)
-        if [ "$DAY" -le 7 ]; then
-          echo "📅 Es el primer lunes del mes, creando backup mensual..."
-          
-          # Crear backup de todo el mes anterior
-          LAST_MONTH=$(date -d 'last month' +'%Y-%m')
-          BACKUP_FILE="charts_archive/backup_${LAST_MONTH}.tar.gz"
-          
-          # Comprimir todos los CSVs del mes anterior
-          find charts_archive -name "youtube_chart_${LAST_MONTH}-*.csv" -type f | tar -czf "$BACKUP_FILE" -T -
-          
-          if [ -f "$BACKUP_FILE" ]; then
-            echo "✅ Backup mensual creado: $BACKUP_FILE"
-            ls -lh "$BACKUP_FILE"
-          else
-            echo "⚠️ No se pudo crear backup mensual"
-          fi
-        else
-          echo "📅 No es el primer lunes del mes, omitiendo backup mensual"
-        fi
-    
-    # 11. Subir artifacts para inspección
-    - name: 📦 Upload artifacts for inspection
+    # 8. Subir artifacts para debugging
+    - name: 📦 Upload artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: chart-download-results
+        name: chart-data-${{ github.run_number }}
         path: |
           charts_archive/latest_chart.csv
-          data/*.csv
-          charts_archive/*.db
-        retention-days: 7  # Temporal para debugging
-        compression-level: 1
+          charts_archive/*.txt
+          charts_archive/databases/*.db
+        retention-days: 7
     
-    # 12. Reporte final
+    # 9. Reporte final
     - name: 📝 Final report
       if: always()
       run: |
@@ -182,13 +115,16 @@ jobs:
         echo "========================================"
         echo "📅 Fecha: $(date)"
         echo "🔄 Trigger: ${{ github.event_name }}"
-        echo "🏷️  Retención configurada: ${{ env.RETENTION_YEARS }} año(s)"
         echo ""
-        echo "📁 Archivos en charts_archive/:"
-        ls -1 charts_archive/ | head -10
-        echo ""
-        echo "📊 Total de archivos CSV históricos:"
-        find charts_archive -name "youtube_chart_*.csv" | wc -l
+        
+        if [ -f "charts_archive/databases/youtube_charts.db" ]; then
+          echo "✅ Base de datos actualizada exitosamente"
+          DB_SIZE=$(stat -f%z "charts_archive/databases/youtube_charts.db" 2>/dev/null || stat -c%s "charts_archive/databases/youtube_charts.db")
+          echo "📊 Tamaño de base de datos: $((DB_SIZE / 1024)) KB"
+        else
+          echo "⚠️  No se creó base de datos"
+        fi
+        
         echo ""
         echo "✅ Proceso completado"
         echo "========================================"
