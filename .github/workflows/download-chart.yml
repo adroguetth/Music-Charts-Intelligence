@@ -8,7 +8,7 @@ on:
 jobs:
   download:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
     - uses: actions/checkout@v4
@@ -20,12 +20,13 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install requests pandas
+        pip install -r requirements.txt
+        playwright install chromium
 
     - name: Create data directory
       run: mkdir -p data
 
-    - name: Run improved download script
+    - name: Run download script
       run: |
         python scripts/1_descargar.py
 
