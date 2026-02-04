@@ -1,279 +1,305 @@
 #!/usr/bin/env python3
 """
-1_descargar.py - Extrae datos DIRECTAMENTE de la tabla de YouTube Charts
-VERSIÓN FUNCIONAL - No busca botones, extrae datos de la página
+Simple YouTube Charts CSV Downloader
+Optimizado para GitHub Actions - Rápido y confiable
 """
 
 import requests
-from bs4 import BeautifulSoup
 import pandas as pd
-import os
-import sys
-from datetime import datetime
 from pathlib import Path
-import re
-import json
+from datetime import datetime
+import os
 
-OUTPUT_DIR = Path("data/raw")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-def limpiar_texto(texto):
-    """Limpia texto de espacios extra y caracteres especiales"""
-    if not texto:
-        return ""
-    texto = str(texto).strip()
-    texto = re.sub(r'\s+', ' ', texto)  # Reemplaza múltiples espacios
-    texto = texto.replace('\n', ' ').replace('\r', ' ')
-    return texto
-
-def extraer_datos_desde_html():
+def download_youtube_charts_csv():
     """
-    Extrae los datos DIRECTAMENTE del HTML de la página
-    Analizando la estructura real que viste en el CSV original
+    Descarga el CSV de YouTube Charts de forma simple
     """
+    print("🎵 Iniciando descarga de YouTube Charts...")
+    print("=" * 60)
     
-    print("🔍 Analizando estructura de YouTube Charts...")
+    # Configurar carpeta de salida
+    output_dir = Path(os.environ.get('DATA_OUTPUT', './data'))
+    output_dir.mkdir(exist_ok=True)
     
+    # Headers para no ser bloqueado
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://charts.youtube.com/'
     }
     
     try:
-        # 1. Descargar la página
-        print("🌐 Descargando página...")
+        print("📡 Conectando a YouTube Charts...")
+        
+        # URL de YouTube Charts
         url = "https://charts.youtube.com/charts/TopSongs/global/weekly"
+        
+        # Realizar request
         response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
         
-        if response.status_code != 200:
-            print(f"❌ Error HTTP: {response.status_code}")
+        print(f"✅ Conexión exitosa (Status: {response.status_code})")
+        print(f"📄 Tamaño de respuesta: {len(response.text)} bytes")
+        
+        # Intentar extraer datos JSON embebidos en HTML
+        charts_data = extract_charts_data(response.text)
+        
+        if charts_data:
+            # Guardar como CSV
+            output_file = save_as_csv(charts_data, output_dir)
+            print(f"✅ CSV guardado en: {output_file}")
+            return str(output_file)
+        else:
+            print("⚠️ No se pudieron extraer datos del HTML")
+            print("💡 Intentando método alternativo...")
             return None
-        
-        print("✅ Página descargada correctamente")
-        
-        # 2. Parsear con BeautifulSoup
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # 3. BUSCAR LA TABLA DE DATOS
-        print("📊 Buscando tabla de datos...")
-        
-        datos = []
-        
-        # MÉTODO 1: Buscar por estructura específica
-        # Basado en el CSV que compartiste, cada canción tiene una estructura similar
-        
-        # Buscar elementos que contengan datos de canciones
-        # Mirando el HTML que compartiste, hay elementos con clase específica
-        
-        # Intentar encontrar filas de la tabla
-        rows = soup.find_all('tr')
-        print(f"🔍 Encontradas {len(rows)} filas 'tr'")
-        
-        # Si no hay filas tr tradicionales, buscar otra estructura
-        if len(rows) < 10:
-            print("🔍 Buscando estructura alternativa...")
             
-            # Buscar contenedores de canciones
-            # Basado en la página real, los elementos tienen esta estructura
-            song_containers = soup.find_all('div', class_=lambda x: x and 'row' in str(x))
-            if not song_containers:
-                song_containers = soup.find_all('div', {'role': 'row'})
-            
-            print(f"📦 Encontrados {len(song_containers)} contenedores de canciones")
-            
-            for i, container in enumerate(song_containers[:101]):  # Máximo 100 canciones
-                try:
-                    # Extraer información basada en el patrón del CSV original
-                    # Rank, Track Name, Artist, Views, etc.
-                    
-                    # Buscar elementos dentro del contenedor
-                    rank_elem = container.find(['div', 'span'], class_=lambda x: x and 'rank' in str(x).lower())
-                    track_elem = container.find(['div', 'span', 'a'], class_=lambda x: x and ('title' in str(x).lower() or 'track' in str(x).lower()))
-                    artist_elem = container.find(['div', 'span'], class_=lambda x: x and ('artist' in str(x).lower() or 'name' in str(x).lower()))
-                    views_elem = container.find(['div', 'span'], class_=lambda x: x and ('view' in str(x).lower() or 'count' in str(x).lower()))
-                    
-                    # Si no encontramos por clase, buscar por texto
-                    if not rank_elem:
-                        rank_text = i + 1
-                    else:
-                        rank_text = limpiar_texto(rank_elem.get_text())
-                    
-                    if not track_elem:
-                        # Buscar cualquier texto que parezca un título
-                        track_text = "Desconocido"
-                    else:
-                        track_text = limpiar_texto(track_elem.get_text())
-                    
-                    if not artist_elem:
-                        artist_text = "Desconocido"
-                    else:
-                        artist_text = limpiar_texto(artist_elem.get_text())
-                    
-                    if not views_elem:
-                        views_text = "0"
-                    else:
-                        views_text = limpiar_texto(views_elem.get_text())
-                    
-                    # Crear entrada de datos
-                    datos.append({
-                        'Rank': rank_text,
-                        'Track Name': track_text,
-                        'Artist Names': artist_text,
-                        'Views': views_text,
-                        'Growth': '0%',  # Valor por defecto
-                        'URL': f'https://www.youtube.com/results?search_query={track_text.replace(" ", "+")}+{artist_text.replace(" ", "+")}'
-                    })
-                    
-                except Exception as e:
-                    print(f"⚠️  Error procesando canción {i+1}: {e}")
-                    continue
-        
-        # MÉTODO 2: Buscar datos en scripts JavaScript
-        print("🔍 Buscando datos en scripts JavaScript...")
-        scripts = soup.find_all('script')
-        
-        for script in scripts:
-            script_text = script.string
-            if script_text and ('chartData' in script_text or 'topSongs' in script_text):
-                print("✅ Encontrado script con datos del chart")
-                
-                # Buscar JSON en el script
-                json_matches = re.findall(r'({.*})', script_text, re.DOTALL)
-                for json_str in json_matches[:3]:  # Probar primeros 3 matches
-                    try:
-                        data = json.loads(json_str)
-                        # Procesar datos JSON si encontramos estructura válida
-                        if 'entries' in data or 'songs' in data or 'tracks' in data:
-                            print(f"🎵 Estructura JSON encontrada: {list(data.keys())}")
-                            # Aquí procesaríamos el JSON según su estructura
-                    except:
-                        continue
-        
-        # MÉTODO 3: Buscar texto específico en la página
-        print("🔍 Analizando texto de la página...")
-        page_text = soup.get_text()
-        
-        # Buscar patrones de canciones (ej: "1. Golden - HUNTR/X")
-        song_patterns = re.findall(r'(\d+)\.\s+([^0-9\n]+?)\s+-\s+([^\n]+)', page_text)
-        if song_patterns:
-            print(f"🎵 Encontrados {len(song_patterns)} patrones de canciones")
-            for rank, track, artist in song_patterns[:100]:
-                datos.append({
-                    'Rank': rank.strip(),
-                    'Track Name': track.strip(),
-                    'Artist Names': artist.strip(),
-                    'Views': '0',  # No disponible en este método
-                    'Growth': '0%',
-                    'URL': f'https://www.youtube.com/results?search_query={track.strip().replace(" ", "+")}+{artist.strip().replace(" ", "+")}'
-                })
-        
-        # Si no encontramos datos con métodos anteriores, crear datos de ejemplo
-        if not datos:
-            print("⚠️  No se pudieron extraer datos, creando ejemplo...")
-            for i in range(1, 11):
-                datos.append({
-                    'Rank': i,
-                    'Track Name': f'Canción de ejemplo {i}',
-                    'Artist Names': f'Artista {i}',
-                    'Views': f'{1000000 - (i-1)*100000}',
-                    'Growth': f'{5-(i-1)}%',
-                    'URL': f'https://www.youtube.com/watch?v=ejemplo{i}'
-                })
-        
-        # 4. Convertir a DataFrame
-        df = pd.DataFrame(datos)
-        
-        # Limpiar y ordenar DataFrame
-        df = df.drop_duplicates()
-        df['Rank'] = pd.to_numeric(df['Rank'], errors='coerce')
-        df = df.sort_values('Rank').reset_index(drop=True)
-        
-        print(f"✅ Extraídos {len(df)} registros")
-        return df
-        
+    except requests.exceptions.Timeout:
+        print("❌ Error: Timeout en la conexión (30 segundos)")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error en la solicitud: {e}")
+        return None
     except Exception as e:
-        print(f"❌ Error en extracción: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error inesperado: {e}")
         return None
 
-def guardar_datos(df):
-    """Guarda los datos extraídos como CSV"""
+def extract_charts_data(html_content):
+    """
+    Extrae datos de gráficos del contenido HTML
+    Busca JSON embebido en la página
+    """
+    import json
+    import re
     
-    fecha = datetime.now().strftime("%Y%m%d")
-    filename = OUTPUT_DIR / f"youtube_top_songs_{fecha}.csv"
+    try:
+        # Patrones comunes donde YouTube embebe datos JSON
+        patterns = [
+            r'var ytInitialData = ({.*?});',
+            r'"chartData":\s*({.*?})',
+            r'"items":\s*(\[.*?\])',
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, html_content, re.DOTALL)
+            for match in matches:
+                try:
+                    json_str = match.group(1)
+                    data = json.loads(json_str)
+                    
+                    # Intentar procesar datos
+                    songs = process_json_data(data)
+                    if songs and len(songs) > 0:
+                        return songs
+                except (json.JSONDecodeError, IndexError):
+                    continue
+        
+        # Si no encuentra JSON, intenta parsear tabla HTML
+        songs = extract_from_html_table(html_content)
+        if songs:
+            return songs
+        
+        return None
+        
+    except Exception as e:
+        print(f"⚠️ Error extrayendo datos: {e}")
+        return None
+
+def process_json_data(data, max_depth=10, current_depth=0):
+    """
+    Procesa recursivamente estructura JSON buscando canciones
+    """
+    songs = []
     
-    # Columnas en el orden del CSV original
-    columnas_ordenadas = ['Rank', 'Track Name', 'Artist Names', 'Views', 'Growth', 'URL']
+    if current_depth > max_depth:
+        return songs
     
-    # Seleccionar solo las columnas disponibles
-    columnas_disponibles = [col for col in columnas_ordenadas if col in df.columns]
-    df_final = df[columnas_disponibles]
+    if isinstance(data, dict):
+        # Buscar claves que contengan información de canciones
+        for key, value in data.items():
+            if isinstance(value, (dict, list)):
+                songs.extend(process_json_data(value, max_depth, current_depth + 1))
+            
+            # Detectar si este objeto es una canción
+            if any(k in data for k in ['title', 'videoId', 'artist']):
+                song = extract_song_from_dict(data)
+                if song:
+                    songs.append(song)
+                    break
     
-    # Guardar CSV
-    df_final.to_csv(filename, index=False, encoding='utf-8')
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, (dict, list)):
+                songs.extend(process_json_data(item, max_depth, current_depth + 1))
     
-    print(f"💾 CSV guardado: {filename}")
-    print(f"📊 Dimensiones: {df_final.shape[0]} filas × {df_final.shape[1]} columnas")
+    return songs
+
+def extract_song_from_dict(obj):
+    """
+    Extrae información de canción de un diccionario
+    """
+    try:
+        # Variaciones de nombres de campos
+        title = None
+        for key in ['title', 'name', 'videoTitle', 'trackName']:
+            if key in obj:
+                title = obj[key]
+                if isinstance(title, dict) and 'simpleText' in title:
+                    title = title['simpleText']
+                break
+        
+        artist = None
+        for key in ['artist', 'artistName', 'author', 'creator']:
+            if key in obj:
+                artist = obj[key]
+                if isinstance(artist, dict) and 'simpleText' in artist:
+                    artist = artist['simpleText']
+                break
+        
+        video_id = obj.get('videoId') or obj.get('id')
+        
+        if title and artist:
+            return {
+                'rank': obj.get('rank', ''),
+                'artist': str(artist),
+                'song': str(title),
+                'video_id': video_id,
+                'url': f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
+            }
+    except:
+        pass
     
-    # Mostrar primeras filas
-    if len(df_final) > 0:
-        print("\n🔽 MUESTRA DE DATOS EXTRAÍDOS:")
-        for i, row in df_final.head(5).iterrows():
-            print(f"  {row.get('Rank', 'N/A')}. {row.get('Track Name', 'N/A')[:30]}... - {row.get('Artist Names', 'N/A')[:20]}...")
+    return None
+
+def extract_from_html_table(html_content):
+    """
+    Intenta extraer datos de tabla HTML
+    """
+    try:
+        # Buscar tablas en el HTML
+        dfs = pd.read_html(html_content)
+        
+        if dfs and len(dfs) > 0:
+            # Usar la primera tabla encontrada
+            df = dfs[0]
+            
+            # Renombrar columnas estándar
+            if len(df.columns) >= 2:
+                return df.to_dict('records')
+    except:
+        pass
     
-    return str(filename)
+    return None
+
+def save_as_csv(data, output_dir):
+    """
+    Guarda datos como CSV
+    """
+    if not data:
+        return None
+    
+    try:
+        df = pd.DataFrame(data)
+        
+        # Limpiar y ordenar columnas
+        if 'rank' not in df.columns:
+            df.insert(0, 'rank', range(1, len(df) + 1))
+        
+        # Agregar fecha
+        df['date'] = datetime.now().strftime('%Y-%m-%d')
+        
+        # Reordenar columnas
+        cols_order = ['rank', 'artist', 'song', 'video_id', 'url', 'date']
+        existing_cols = [c for c in cols_order if c in df.columns]
+        other_cols = [c for c in df.columns if c not in existing_cols]
+        df = df[existing_cols + other_cols]
+        
+        # Guardar
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"youtube_charts_{timestamp}.csv"
+        filepath = output_dir / filename
+        
+        df.to_csv(filepath, index=False, encoding='utf-8')
+        
+        print(f"📊 Datos guardados:")
+        print(f"   - Filas: {len(df)}")
+        print(f"   - Columnas: {len(df.columns)}")
+        
+        return filepath
+        
+    except Exception as e:
+        print(f"❌ Error guardando CSV: {e}")
+        return None
+
+def create_sample_csv(output_dir):
+    """
+    Crea un CSV de ejemplo si todo falla
+    Útil para testing en GitHub Actions
+    """
+    sample_data = {
+        'rank': [1, 2, 3, 4, 5],
+        'artist': ['Artist 1', 'Artist 2', 'Artist 3', 'Artist 4', 'Artist 5'],
+        'song': ['Song A', 'Song B', 'Song C', 'Song D', 'Song E'],
+        'video_id': ['xxx1', 'xxx2', 'xxx3', 'xxx4', 'xxx5'],
+        'url': [
+            'https://www.youtube.com/watch?v=xxx1',
+            'https://www.youtube.com/watch?v=xxx2',
+            'https://www.youtube.com/watch?v=xxx3',
+            'https://www.youtube.com/watch?v=xxx4',
+            'https://www.youtube.com/watch?v=xxx5',
+        ],
+        'date': [datetime.now().strftime('%Y-%m-%d')] * 5
+    }
+    
+    df = pd.DataFrame(sample_data)
+    filepath = output_dir / "youtube_charts_sample.csv"
+    df.to_csv(filepath, index=False, encoding='utf-8')
+    
+    print(f"📋 CSV de ejemplo creado en: {filepath}")
+    return filepath
 
 def main():
-    print("=" * 70)
-    print("🎵 EXTRACTOR DE DATOS DE YOUTUBE CHARTS")
-    print("📅 " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    print("=" * 70)
+    """
+    Función principal
+    """
+    print("\n" + "=" * 60)
+    print("🎵 YouTube Charts Downloader")
+    print("   GitHub Actions Optimized")
+    print("=" * 60 + "\n")
     
-    print("\n📋 Este script EXTRAE DATOS directamente de la página web")
-    print("   No necesita botones de descarga ni APIs especiales")
+    # Detectar si está en GitHub Actions
+    in_github_actions = os.environ.get('GITHUB_ACTIONS') == 'true'
+    if in_github_actions:
+        print("🔧 Ejecutando en GitHub Actions")
+    else:
+        print("💻 Ejecutando localmente")
     
-    # Extraer datos
-    df = extraer_datos_desde_html()
+    # Intentar descargar
+    result = download_youtube_charts_csv()
     
-    if df is not None and len(df) > 0:
-        csv_path = guardar_datos(df)
-        
-        print(f"\n🎉 ¡ÉXITO! Datos extraídos y guardados")
-        print(f"📁 Archivo: {csv_path}")
-        
-        # Crear también un archivo de resumen
-        resumen_path = OUTPUT_DIR / f"resumen_{datetime.now().strftime('%Y%m%d')}.txt"
-        with open(resumen_path, 'w', encoding='utf-8') as f:
-            f.write(f"Resumen de extracción - {datetime.now()}\n")
-            f.write(f"Canciones extraídas: {len(df)}\n")
-            f.write(f"Artistas únicos: {df['Artist Names'].nunique()}\n")
-            f.write("\nTop 10 canciones:\n")
-            for i, row in df.head(10).iterrows():
-                f.write(f"{row['Rank']}. {row['Track Name']} - {row['Artist Names']}\n")
-        
-        print(f"📝 Resumen guardado: {resumen_path}")
+    if result:
+        print("\n" + "=" * 60)
+        print("✅ ¡ÉXITO!")
+        print("=" * 60)
+        print(f"📁 Archivo: {result}")
         return 0
     else:
-        print("\n❌ No se pudieron extraer datos")
+        print("\n" + "=" * 60)
+        print("⚠️ Descarga automática fallida")
+        print("=" * 60)
+        print("\n💡 Alternativas:")
+        print("1. Descarga manual: https://charts.youtube.com/charts/TopSongs/global/weekly")
+        print("2. Usa Google Sheets: =IMPORTDATA('...')")
+        print("3. Usa la API de YouTube (requiere API key)")
         
-        # Crear archivo de error
-        error_path = OUTPUT_DIR / f"error_{datetime.now().strftime('%Y%m%d')}.txt"
-        with open(error_path, 'w', encoding='utf-8') as f:
-            f.write(f"Error en extracción - {datetime.now()}\n")
-            f.write("No se pudieron extraer datos de la página.\n")
-            f.write("Posibles causas:\n")
-            f.write("1. La estructura de la página cambió\n")
-            f.write("2. Bloqueo por parte de YouTube\n")
-            f.write("3. Problemas de red\n")
+        # Crear CSV de ejemplo
+        output_dir = Path(os.environ.get('DATA_OUTPUT', './data'))
+        output_dir.mkdir(exist_ok=True)
+        # create_sample_csv(output_dir)
         
-        print(f"📝 Informe de error: {error_path}")
         return 1
 
 if __name__ == "__main__":
-    sys.exit(main())
+    exit_code = main()
+    exit(exit_code)
