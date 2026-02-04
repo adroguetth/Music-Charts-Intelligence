@@ -2,24 +2,27 @@
 """
 1_descargar.py - AUTOCLICK EN BOTÓN DE DESCARGA Y ARCHIVADO PERMANENTE
 Solución definitiva para GitHub Actions con almacenamiento a largo plazo
-Versión mejorada con CSVs de análisis específicos
+Versión mejorada con control de historial semanal en SQLite
 """
 
 import asyncio
 import os
 import sys
 import shutil
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+import hashlib
 
 # Configuración de directorios
 OUTPUT_DIR = Path("data")
 ARCHIVE_DIR = Path("charts_archive")
 REPORTS_DIR = Path("reports")
 RAW_DIR = Path("raw_data")
+DATABASE_DIR = Path("databases")
 
 # Crear todos los directorios necesarios
-for dir_path in [OUTPUT_DIR, ARCHIVE_DIR, REPORTS_DIR, RAW_DIR]:
+for dir_path in [OUTPUT_DIR, ARCHIVE_DIR, REPORTS_DIR, RAW_DIR, DATABASE_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
 async def click_download_button():
@@ -119,7 +122,10 @@ async def click_download_button():
             except Exception as e:
                 print(f"   ⚠️  ARIA no encontrado: {e}")
             
-            # ESTRATEGIA 3: Screenshot para debugging
+            # ESTRATEGIA 3: Intentar obtener la semana actual de la página
+            week_info = await get_current_week(page)
+            
+            # ESTRATEGIA 4: Screenshot para debugging
             print("5. 📸 Tomando screenshot para debugging...")
             screenshot_path = OUTPUT_DIR / "debug_screenshot.png"
             await page.screenshot(path=screenshot_path, full_page=True)
@@ -133,16 +139,53 @@ async def click_download_button():
             print(f"   📄 HTML guardado: {html_path}")
             
             await browser.close()
-            return None
+            return None, week_info
             
     except ImportError:
         print("❌ Playwright no está instalado")
         print("📦 Ejecuta: pip install playwright && playwright install chromium")
-        return None
+        return None, None
     except Exception as e:
         print(f"❌ Error crítico: {e}")
         import traceback
         traceback.print_exc()
+        return None, None
+
+async def get_current_week(page):
+    """Intenta extraer información de la semana actual de la página"""
+    try:
+        # Buscar elementos que puedan contener la fecha/semana
+        selectors = [
+            '[data-week]',
+            '.week-selector',
+            '.date-range',
+            'text=/Week of/',
+            'text=/Semana/',
+            'time',
+            '.current-week',
+        ]
+        
+        for selector in selectors:
+            try:
+                elements = await page.locator(selector).all()
+                for element in elements:
+                    text = await element.text_content()
+                    if text and (any(x in text.lower() for x in ['week', 'semana', '202', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'])):
+                        print(f"📅 Información de semana encontrada: {text.strip()}")
+                        return text.strip()
+            except:
+                continue
+        
+        # Si no se encuentra, usar la fecha actual
+        current_date = datetime.now()
+        week_number = current_date.isocalendar()[1]
+        year = current_date.year
+        week_info = f"Week {week_number}, {year}"
+        print(f"📅 Usando semana calculada: {week_info}")
+        return week_info
+        
+    except Exception as e:
+        print(f"⚠️  Error obteniendo información de semana: {e}")
         return None
 
 async def handle_download(download_info, page, browser):
@@ -194,11 +237,17 @@ def get_csv_stats(filepath):
     except:
         return "Estadísticas no disponibles"
 
-def save_raw_csv(csv_path):
+def save_raw_csv(csv_path, week_info=None):
     """Guarda el CSV crudo en raw_data/ (inmutable, para historial)"""
     try:
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        raw_filename = RAW_DIR / f"{date_str}_youtube_chart_raw.csv"
+        if week_info:
+            # Crear nombre de archivo seguro a partir de la información de semana
+            safe_week = "".join(c for c in week_info if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            raw_filename = RAW_DIR / f"{date_str}_{safe_week}_raw.csv"
+        else:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            raw_filename = RAW_DIR / f"{date_str}_youtube_chart_raw.csv"
         
         shutil.copy2(csv_path, raw_filename)
         print(f"📦 CSV crudo guardado: {raw_filename}")
@@ -298,6 +347,239 @@ def generate_analysis_csvs(csv_path):
         traceback.print_exc()
         return {}
 
+def calculate_week_hash(df):
+    """Calcula un hash único para identificar la semana basado en los datos"""
+    try:
+        # Crear una cadena con información de la semana
+        week_data = ""
+        
+        # Usar los primeros 10 registros para el hash (suficiente para identificar la semana)
+        for i, row in df.head(10).iterrows():
+            week_data += f"{row['Rank']}_{row['Track Name'][:20]}_{row['Artist Names'][:20]}_{row['Views']}"
+        
+        # Calcular hash MD5
+        week_hash = hashlib.md5(week_data.encode()).hexdigest()[:16]
+        return week_hash
+    except Exception as e:
+        print(f"⚠️  Error calculando hash de semana: {e}")
+        return None
+
+def get_week_identifier():
+    """Obtiene un identificador único para la semana actual"""
+    today = datetime.now()
+    year, week_num, _ = today.isocalendar()
+    return f"{year}-W{week_num:02d}"
+
+def update_sqlite_database(csv_path, week_info=None):
+    """Actualiza base de datos SQLite para análisis futuro con control de historial"""
+    try:
+        import pandas as pd
+        import sqlite3
+        from datetime import datetime
+        
+        print("🗃️  Actualizando base de datos SQLite con control de historial...")
+        
+        # Leer CSV
+        df = pd.read_csv(csv_path, encoding='utf-8')
+        
+        # Añadir metadatos
+        current_time = datetime.now()
+        week_identifier = get_week_identifier()
+        week_hash = calculate_week_hash(df)
+        
+        df['download_date'] = current_time.strftime('%Y-%m-%d %H:%M:%S')
+        df['week_identifier'] = week_identifier
+        df['week_hash'] = week_hash
+        df['year'] = current_time.strftime('%Y')
+        df['month'] = current_time.strftime('%m')
+        df['week_number'] = current_time.strftime('%W')
+        
+        # Conectar a SQLite (crea si no existe)
+        db_path = DATABASE_DIR / "charts_database.db"
+        conn = sqlite3.connect(db_path)
+        
+        # Crear tabla de control de semanas
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS week_control (
+            week_identifier TEXT PRIMARY KEY,
+            week_hash TEXT UNIQUE,
+            download_date TEXT,
+            week_info TEXT,
+            total_records INTEGER,
+            total_views INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        # Verificar si ya existe esta semana (por hash o identificador)
+        cursor = conn.cursor()
+        
+        # Verificar por hash (más preciso)
+        if week_hash:
+            cursor.execute("SELECT week_identifier FROM week_control WHERE week_hash = ?", (week_hash,))
+            existing_week = cursor.fetchone()
+            
+            if existing_week:
+                print(f"⚠️  Esta semana ya existe en la base de datos: {existing_week[0]}")
+                print("   No se insertarán datos duplicados.")
+                conn.close()
+                return db_path
+        
+        # Verificar por identificador de semana
+        cursor.execute("SELECT week_identifier FROM week_control WHERE week_identifier = ?", (week_identifier,))
+        existing_week = cursor.fetchone()
+        
+        if existing_week:
+            print(f"⚠️  El identificador de semana {week_identifier} ya existe")
+            print("   Se procederá con la inserción (puede ser una actualización)")
+        
+        # Guardar en tabla histórica principal
+        df.to_sql('historical_charts', conn, if_exists='append', index=False)
+        
+        # Crear tabla específica para esta semana
+        safe_table_name = f"weekly_{week_identifier.replace('-', '_').replace('W', 'w')}"
+        safe_table_name = ''.join(c for c in safe_table_name if c.isalnum() or c == '_')
+        
+        # Guardar datos semanales en tabla específica
+        weekly_df = df.copy()
+        weekly_df.to_sql(safe_table_name, conn, if_exists='replace', index=False)
+        
+        # Actualizar tabla de control
+        total_records = len(df)
+        total_views = df['Views'].sum() if 'Views' in df.columns else 0
+        
+        cursor.execute('''
+        INSERT OR REPLACE INTO week_control 
+        (week_identifier, week_hash, download_date, week_info, total_records, total_views)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ''', (week_identifier, week_hash, current_time.strftime('%Y-%m-%d %H:%M:%S'), 
+              str(week_info), total_records, total_views))
+        
+        # Crear vista resumen semanal (última semana)
+        weekly_summary = df[['Rank', 'Track Name', 'Artist Names', 'Views', 'download_date']].copy()
+        weekly_summary.to_sql('weekly_charts', conn, if_exists='replace', index=False)
+        
+        # Estadísticas
+        cursor.execute("SELECT COUNT(DISTINCT week_identifier) FROM historical_charts")
+        total_weeks = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM historical_charts")
+        total_rows = cursor.fetchone()[0]
+        
+        # Obtener lista de semanas
+        cursor.execute("SELECT week_identifier, download_date FROM week_control ORDER BY download_date DESC")
+        weeks = cursor.fetchall()
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Base de datos actualizada exitosamente")
+        print(f"   📊 Total de semanas: {total_weeks}")
+        print(f"   📊 Total de registros: {total_rows}")
+        print(f"   📅 Tabla semanal creada: {safe_table_name}")
+        print(f"   💾 Ubicación: {db_path}")
+        
+        if weeks:
+            print(f"   📋 Últimas semanas almacenadas:")
+            for week_id, week_date in weeks[:5]:  # Mostrar solo las 5 últimas
+                print(f"     • {week_id} ({week_date})")
+        
+        return db_path
+        
+    except Exception as e:
+        print(f"⚠️  No se pudo actualizar SQLite: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def consolidate_weekly_data():
+    """Consolida todas las semanas en un solo archivo SQLite para análisis"""
+    try:
+        import pandas as pd
+        import sqlite3
+        from datetime import datetime
+        
+        print("🔄 Consolidando datos semanales en archivo único...")
+        
+        # Archivo de consolidación
+        consolidated_path = DATABASE_DIR / "weekly_charts_consolidated.db"
+        conn = sqlite3.connect(consolidated_path)
+        
+        # Listar todas las tablas semanales en la base de datos principal
+        main_db_path = DATABASE_DIR / "charts_database.db"
+        if not main_db_path.exists():
+            print("⚠️  No existe la base de datos principal")
+            return None
+        
+        main_conn = sqlite3.connect(main_db_path)
+        cursor = main_conn.cursor()
+        
+        # Obtener todas las tablas que empiezan con 'weekly_'
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'weekly_%'")
+        weekly_tables = cursor.fetchall()
+        
+        print(f"📊 Encontradas {len(weekly_tables)} tablas semanales")
+        
+        # Crear tabla consolidada
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS all_weekly_charts (
+            week_identifier TEXT,
+            Rank INTEGER,
+            "Track Name" TEXT,
+            "Artist Names" TEXT,
+            Views INTEGER,
+            Growth TEXT,
+            "YouTube URL" TEXT,
+            download_date TEXT,
+            week_hash TEXT,
+            year TEXT,
+            month TEXT,
+            week_number TEXT
+        )
+        ''')
+        
+        # Para cada tabla semanal, insertar datos en la consolidada
+        for (table_name,) in weekly_tables:
+            try:
+                # Extraer identificador de semana del nombre de la tabla
+                week_id = table_name.replace('weekly_', '').replace('_', '-').replace('w', 'W')
+                
+                # Leer datos de la tabla semanal
+                query = f"SELECT * FROM {table_name}"
+                weekly_df = pd.read_sql_query(query, main_conn)
+                
+                # Añadir identificador de semana
+                weekly_df['week_identifier'] = week_id
+                
+                # Insertar en tabla consolidada
+                weekly_df.to_sql('all_weekly_charts', conn, if_exists='append', index=False)
+                
+                print(f"   ✅ {table_name} -> {week_id} ({len(weekly_df)} registros)")
+            except Exception as e:
+                print(f"   ⚠️  Error procesando {table_name}: {e}")
+        
+        # Estadísticas finales
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(DISTINCT week_identifier) FROM all_weekly_charts")
+        total_weeks = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM all_weekly_charts")
+        total_rows = cursor.fetchone()[0]
+        
+        main_conn.close()
+        conn.close()
+        
+        print(f"✅ Consolidación completada:")
+        print(f"   📊 Total de semanas: {total_weeks}")
+        print(f"   📊 Total de registros: {total_rows}")
+        print(f"   💾 Archivo consolidado: {consolidated_path}")
+        
+        return consolidated_path
+        
+    except Exception as e:
+        print(f"⚠️  Error en consolidación: {e}")
+        return None
+
 def archive_for_long_term_storage(csv_path, retention_years=1):
     """
     Archiva el CSV para almacenamiento a largo plazo
@@ -312,9 +594,10 @@ def archive_for_long_term_storage(csv_path, retention_years=1):
         date_str = now.strftime("%Y-%m-%d")
         year_month = now.strftime("%Y-%m")
         year = now.strftime("%Y")
+        week_id = get_week_identifier()
         
         # 1. Copiar con nombre con fecha para historial completo
-        dated_filename = ARCHIVE_DIR / f"youtube_chart_{date_str}.csv"
+        dated_filename = ARCHIVE_DIR / f"youtube_chart_{date_str}_{week_id}.csv"
         shutil.copy2(csv_path, dated_filename)
         
         # 2. Copiar como 'latest' para acceso inmediato
@@ -324,13 +607,14 @@ def archive_for_long_term_storage(csv_path, retention_years=1):
         # 3. Copiar en carpeta por año para organización
         year_dir = ARCHIVE_DIR / year
         year_dir.mkdir(exist_ok=True)
-        yearly_filename = year_dir / f"chart_{date_str}.csv"
+        yearly_filename = year_dir / f"chart_{date_str}_{week_id}.csv"
         shutil.copy2(csv_path, yearly_filename)
         
         print(f"📁 ARCHIVADO PARA 1+ AÑOS:")
         print(f"   📄 Histórico: {dated_filename}")
         print(f"   ⚡ Último: {latest_filename}")
         print(f"   📅 Por año: {yearly_filename}")
+        print(f"   🏷️  Identificador de semana: {week_id}")
         
         # 4. Limpiar archivos antiguos (opcional, basado en retención)
         if retention_years > 0:
@@ -350,8 +634,9 @@ def cleanup_old_files(retention_years):
         for file_path in ARCHIVE_DIR.glob("youtube_chart_*.csv"):
             try:
                 # Extraer fecha del nombre del archivo
-                date_str = file_path.stem.replace("youtube_chart_", "")
-                file_date = datetime.strptime(date_str, "%Y-%m-%d")
+                filename = file_path.stem
+                date_part = filename.replace("youtube_chart_", "").split("_")[0]
+                file_date = datetime.strptime(date_part, "%Y-%m-%d")
                 
                 if file_date < cutoff_date:
                     file_path.unlink()
@@ -362,52 +647,6 @@ def cleanup_old_files(retention_years):
         print(f"   🧹 Limpieza completada (retención: {retention_years} años)")
     except Exception as e:
         print(f"⚠️  Error en limpieza: {e}")
-
-def update_sqlite_database(csv_path):
-    """Actualiza base de datos SQLite para análisis futuro"""
-    try:
-        import pandas as pd
-        import sqlite3
-        from datetime import datetime
-        
-        print("🗃️  Actualizando base de datos SQLite...")
-        
-        # Leer CSV
-        df = pd.read_csv(csv_path, encoding='utf-8')
-        
-        # Añadir metadatos
-        df['download_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        df['week_number'] = datetime.now().strftime('%Y-W%W')
-        df['year'] = datetime.now().strftime('%Y')
-        df['month'] = datetime.now().strftime('%m')
-        
-        # Conectar a SQLite (crea si no existe)
-        db_path = ARCHIVE_DIR / "charts_database.db"
-        conn = sqlite3.connect(db_path)
-        
-        # Guardar en tabla histórica
-        df.to_sql('historical_charts', conn, if_exists='append', index=False)
-        
-        # Crear tabla resumen semanal
-        weekly_df = df.copy()
-        weekly_summary = weekly_df[['Rank', 'Track Name', 'Artist Names', 'Views', 'download_date']]
-        weekly_summary.to_sql('weekly_charts', conn, if_exists='replace', index=False)
-        
-        # Estadísticas
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM historical_charts")
-        total_rows = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        print(f"✅ Base de datos actualizada: {total_rows} registros totales")
-        print(f"💾 Ubicación: {db_path}")
-        
-        return db_path
-        
-    except Exception as e:
-        print(f"⚠️  No se pudo actualizar SQLite: {e}")
-        return None
 
 def create_fallback_file():
     """Crea un archivo de fallback si todo falla"""
@@ -427,6 +666,7 @@ def create_fallback_file():
         from io import StringIO
         df = pd.read_csv(StringIO(data))
         df['Download_Date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        df['week_identifier'] = get_week_identifier()
         
         # Guardar
         filename = OUTPUT_DIR / f"youtube_charts_fallback_{datetime.now().strftime('%Y%m%d')}.csv"
@@ -439,11 +679,35 @@ def create_fallback_file():
         print(f"❌ Error creando fallback: {e}")
         return None
 
+def backup_database():
+    """Crea una copia de seguridad de la base de datos"""
+    try:
+        db_path = DATABASE_DIR / "charts_database.db"
+        if not db_path.exists():
+            print("⚠️  No existe la base de datos para backup")
+            return None
+        
+        backup_path = DATABASE_DIR / f"charts_database_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        shutil.copy2(db_path, backup_path)
+        
+        # Mantener solo los últimos 5 backups
+        backups = sorted(DATABASE_DIR.glob("charts_database_backup_*.db"), key=os.path.getmtime)
+        if len(backups) > 5:
+            for old_backup in backups[:-5]:
+                old_backup.unlink()
+                print(f"   🗑️  Eliminado backup antiguo: {old_backup.name}")
+        
+        print(f"💾 Backup creado: {backup_path}")
+        return backup_path
+    except Exception as e:
+        print(f"⚠️  Error creando backup: {e}")
+        return None
+
 def main():
     """Función principal"""
     print("\n" + "=" * 70)
     print("🎵 YOUTUBE CHARTS - AUTOCLICK AUTOMÁTICO (1+ AÑOS RETENCIÓN)")
-    print("📊 Versión mejorada con CSVs de análisis específicos")
+    print("📊 Versión mejorada con control de historial semanal en SQLite")
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
     
@@ -451,31 +715,42 @@ def main():
     if os.getenv('GITHUB_ACTIONS'):
         print("⚡ Ejecutando en GitHub Actions")
     
+    # Paso 0: Crear backup de la base de datos existente
+    print("\n💾 CREANDO BACKUP DE BASE DE DATOS EXISTENTE...")
+    backup_path = backup_database()
+    
     # Paso 1: Intentar autoclick
     print("\n🔧 INTENTANDO AUTOCLICK EN BOTÓN DE DESCARGA...")
-    csv_path = asyncio.run(click_download_button())
+    result = asyncio.run(click_download_button())
     
-    if csv_path and os.path.exists(csv_path):
+    if result and result[0] is not None:
+        csv_path, week_info = result
         print(f"\n✅ DESCARGA EXITOSA:")
         print(f"📁 Archivo temporal: {csv_path}")
+        if week_info:
+            print(f"📅 Información de semana obtenida: {week_info}")
         
         # Paso 2: Guardar CSV crudo (inmutable, para historial)
         print("\n📦 GUARDANDO CSV CRUDO PARA HISTORIAL...")
-        raw_file = save_raw_csv(csv_path)
+        raw_file = save_raw_csv(csv_path, week_info)
         
         # Paso 3: Generar CSVs de análisis específicos
         print("\n📊 GENERANDO CSVs DE ANÁLISIS ESPECÍFICOS...")
         analysis_files = generate_analysis_csvs(csv_path)
         
-        # Paso 4: Archivar para largo plazo
+        # Paso 4: Actualizar base de datos SQLite con control de historial
+        print("\n🗃️  ACTUALIZANDO BASE DE DATOS SQLITE CON HISTORIAL SEMANAL...")
+        db_path = update_sqlite_database(csv_path, week_info)
+        
+        # Paso 5: Consolidar datos semanales
+        print("\n🔄 CONSOLIDANDO DATOS SEMANALES EN ARCHIVO ÚNICO...")
+        consolidated_db = consolidate_weekly_data()
+        
+        # Paso 6: Archivar para largo plazo
         print("\n📦 ARCHIVANDO PARA ALMACENAMIENTO A LARGO PLAZO (1+ AÑOS)...")
         dated_file, latest_file = archive_for_long_term_storage(csv_path, retention_years=1)
         
-        # Paso 5: Actualizar base de datos SQLite
-        print("\n🗃️  PREPARANDO PARA ANÁLISIS FUTURO...")
-        db_path = update_sqlite_database(csv_path)
-        
-        # Paso 6: Estadísticas finales
+        # Paso 7: Estadísticas finales
         print("\n" + "=" * 70)
         print("📊 RESUMEN DE LA EJECUCIÓN:")
         print("=" * 70)
@@ -483,6 +758,14 @@ def main():
         print(f"⚡ Archivo latest: {latest_file}")
         if raw_file:
             print(f"📦 Archivo crudo: {raw_file}")
+        
+        if db_path:
+            db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+            print(f"🗃️  Base de datos principal: {db_path} ({db_size/1024:.1f} KB)")
+        
+        if consolidated_db:
+            consolidated_size = os.path.getsize(consolidated_db) if os.path.exists(consolidated_db) else 0
+            print(f"🗃️  Base de datos consolidada: {consolidated_db} ({consolidated_size/1024:.1f} KB)")
         
         # Mostrar CSVs generados
         if analysis_files:
@@ -492,16 +775,13 @@ def main():
                     size = os.path.getsize(path)
                     print(f"   • {name}: {path} ({size} bytes)")
         
-        if db_path:
-            print(f"🗃️  Base de datos: {db_path}")
-        
         # Calcular tamaño total
         print("\n📦 RESUMEN DE ALMACENAMIENTO:")
         total_size = 0
         all_files = []
         
         # Agregar archivos principales
-        for file in [csv_path, dated_file, latest_file, raw_file, db_path]:
+        for file in [csv_path, dated_file, latest_file, raw_file, db_path, consolidated_db]:
             if file and os.path.exists(file):
                 all_files.append(file)
         
@@ -527,7 +807,10 @@ def main():
             'latest_csv': str(latest_file) if latest_file else None,
             'raw_csv': raw_file,
             'database': str(db_path) if db_path else None,
-            'analysis_csvs': analysis_files
+            'consolidated_database': str(consolidated_db) if consolidated_db else None,
+            'analysis_csvs': analysis_files,
+            'week_identifier': get_week_identifier(),
+            'backup': str(backup_path) if backup_path else None
         }
     
     # Paso 7: Fallback si todo falla
@@ -544,11 +827,14 @@ def main():
         # Archivar el fallback también
         dated_file, latest_file = archive_for_long_term_storage(csv_path, retention_years=1)
         
+        # Actualizar base de datos con datos de fallback
+        db_path = update_sqlite_database(csv_path, "Fallback Week")
+        
         return {
             'temp_csv': csv_path,
             'historical_csv': str(dated_file) if dated_file else None,
             'latest_csv': str(latest_file) if latest_file else None,
-            'database': None,
+            'database': str(db_path) if db_path else None,
             'analysis_csvs': analysis_files,
             'is_fallback': True
         }
