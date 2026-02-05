@@ -278,57 +278,153 @@ async def download_youtube_chart() -> Optional[Path]:
             await page.goto(url, wait_until='networkidle', timeout=60000)
             print("   ✅ Página cargada")
             
+            # Esperar a que la tabla cargue completamente
+            print("2. ⏳ Esperando carga completa de la tabla...")
             await page.wait_for_load_state('networkidle')
+            await page.wait_for_timeout(5000)
+            
+            # CRÍTICO: Hacer scroll en la tabla para asegurar que carguen todos los elementos
+            print("3. 📜 Haciendo scroll para cargar todos los elementos...")
+            try:
+                # Buscar el contenedor principal de la tabla
+                table_selectors = [
+                    'div[role="grid"]',
+                    '[data-view-type="list"]',
+                    'div.yt-lockup-content',
+                    'div[aria-label*="songs" i]',
+                ]
+                
+                table_loaded = False
+                for selector in table_selectors:
+                    try:
+                        table = await page.query_selector(selector)
+                        if table:
+                            # Hacer scroll múltiples veces para cargar contenido dinámico
+                            for i in range(15):
+                                await page.evaluate(f'''
+                                    () => {{
+                                        const table = document.querySelector('{selector}');
+                                        if (table) table.scrollTop = table.scrollHeight;
+                                    }}
+                                ''')
+                                await page.wait_for_timeout(500)
+                            
+                            table_loaded = True
+                            print(f"   ✅ Tabla scrolleada con selector: {selector}")
+                            break
+                    except:
+                        continue
+                
+                if not table_loaded:
+                    # Plan B: scroll general en la página
+                    print("   ℹ️ Usando scroll general en la página...")
+                    for i in range(20):
+                        await page.evaluate('window.scrollBy(0, 500)')
+                        await page.wait_for_timeout(300)
+                
+            except Exception as e:
+                print(f"   ⚠️ Error en scroll: {e}")
+            
+            # Esperar un poco más después del scroll
             await page.wait_for_timeout(3000)
             
-            print("2. 🔍 Buscando botón de descarga...")
+            print("4. 🔍 Buscando botón de descarga...")
             
-            # Estrategia 1: Por texto "Download"
+            # Estrategia 1: Por texto "Download" - con espera extendida
             try:
-                element = await page.locator("text=/download/i").first.wait_for(timeout=10000)
-                async with page.expect_download() as download_info:
-                    await element.click()
-                
-                download = await download_info.value
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = OUTPUT_DIR / f"youtube_chart_{timestamp}.csv"
-                await download.save_as(filename)
-                
-                await browser.close()
-                print(f"   ✅ Descargado: {filename}")
-                return filename
-            except:
-                pass
+                print("   📝 Buscando botón 'Download'...")
+                element = await page.locator("text=/download/i").first.wait_for(timeout=15000)
+                if element:
+                    is_visible = await element.is_visible()
+                    if is_visible:
+                        print("   ✅ Botón encontrado por texto")
+                        async with page.expect_download() as download_info:
+                            await element.click()
+                        
+                        download = await download_info.value
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = OUTPUT_DIR / f"youtube_chart_{timestamp}.csv"
+                        await download.save_as(filename)
+                        
+                        # Verificar que el archivo tenga contenido
+                        if filename.exists() and filename.stat().st_size > 1000:
+                            await browser.close()
+                            print(f"   ✅ Descargado correctamente: {filename}")
+                            print(f"   📊 Tamaño: {filename.stat().st_size} bytes")
+                            return filename
+                        else:
+                            print("   ⚠️ Archivo descargado pero parece vacío, intentando otra estrategia...")
+            except Exception as e:
+                print(f"   ⚠️ Texto 'Download' no encontrado: {e}")
             
-            # Estrategia 2: Por atributos ARIA
+            # Estrategia 2: Por atributos ARIA y visibilidad
+            print("   🎯 Buscando por atributos ARIA...")
             selectors = [
                 '[aria-label*="download" i]',
                 '[aria-label*="descargar" i]',
                 '[title*="download" i]',
+                '[title*="Download" i]',
                 'button:has-text("Download")',
+                'a[href*="download"]',
+                '[role="button"]:has-text("Download")',
             ]
             
             for selector in selectors:
                 try:
                     elements = await page.query_selector_all(selector)
-                    for element in elements:
-                        is_visible = await element.is_visible()
-                        if is_visible:
-                            async with page.expect_download() as download_info:
-                                await element.click()
-                            
-                            download = await download_info.value
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            filename = OUTPUT_DIR / f"youtube_chart_{timestamp}.csv"
-                            await download.save_as(filename)
-                            
-                            await browser.close()
-                            print(f"   ✅ Descargado: {filename}")
-                            return filename
-                except:
+                    print(f"   🔎 Selector '{selector}': {len(elements)} elemento(s) encontrado(s)")
+                    
+                    for idx, element in enumerate(elements):
+                        try:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                print(f"   ✅ Elemento visible encontrado (#{idx + 1})")
+                                
+                                # Hacer scroll hasta el elemento
+                                await element.scroll_into_view()
+                                await page.wait_for_timeout(1000)
+                                
+                                async with page.expect_download() as download_info:
+                                    await element.click()
+                                
+                                download = await download_info.value
+                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                filename = OUTPUT_DIR / f"youtube_chart_{timestamp}.csv"
+                                await download.save_as(filename)
+                                
+                                # Verificar tamaño
+                                if filename.exists() and filename.stat().st_size > 1000:
+                                    await browser.close()
+                                    print(f"   ✅ Descargado correctamente: {filename}")
+                                    print(f"   📊 Tamaño: {filename.stat().st_size} bytes")
+                                    return filename
+                                else:
+                                    print(f"   ⚠️ Archivo vacío, intentando siguiente...")
+                                    continue
+                        except Exception as e:
+                            print(f"   ⚠️ Error con elemento #{idx + 1}: {e}")
+                            continue
+                except Exception as e:
+                    print(f"   ⚠️ Error con selector '{selector}': {e}")
                     continue
             
-            print("   ⚠️  Botón de descarga no encontrado")
+            # Estrategia 3: Debugging - tomar screenshot
+            print("5. 📸 Tomando screenshot para debugging...")
+            try:
+                screenshot_path = OUTPUT_DIR / "debug_download_button.png"
+                await page.screenshot(path=screenshot_path, full_page=True)
+                print(f"   📷 Screenshot guardado: {screenshot_path}")
+                
+                # Guardar HTML también
+                html_path = OUTPUT_DIR / "debug_page.html"
+                html_content = await page.content()
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                print(f"   📄 HTML guardado para análisis: {html_path}")
+            except Exception as e:
+                print(f"   ⚠️ Error en screenshot: {e}")
+            
+            print("   ❌ Botón de descarga no encontrado después de todos los intentos")
             await browser.close()
             return None
             
@@ -336,7 +432,7 @@ async def download_youtube_chart() -> Optional[Path]:
         print("   ❌ Playwright no está instalado")
         return None
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"   ❌ Error crítico: {e}")
         import traceback
         traceback.print_exc()
         return None
