@@ -1,9 +1,9 @@
-name: Download YouTube Chart
+name: Download YouTube Chart (Weekly SQLite)
 
 on:
   schedule:
     - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
-  workflow_dispatch:  # Ejecución manual
+  workflow_dispatch:       # Ejecución manual
   push:
     branches:
       - main
@@ -11,7 +11,7 @@ on:
       - 'scripts/*.py'
 
 env:
-  RETENTION_DAYS: 30  # Días de retención
+  RETENTION_DAYS: 30
 
 jobs:
   download-and-store:
@@ -45,7 +45,7 @@ jobs:
     # 4. Crear estructura de directorios
     - name: 📁 Create directory structure
       run: |
-        mkdir -p data charts_archive/databases charts_archive/backups charts_archive/raw_data
+        mkdir -p data charts_archive/databases charts_archive/backups
     
     # 5. Ejecutar script de descarga
     - name: 🚀 Run download script
@@ -60,21 +60,24 @@ jobs:
         echo "📊 Verificando resultados..."
         
         echo "📁 Contenido de charts_archive/:"
-        ls -la charts_archive/
+        ls -lah charts_archive/
         
-        echo -e "\n🗃️  Base de datos:"
-        ls -la charts_archive/databases/*.db 2>/dev/null || echo "No hay base de datos"
+        echo -e "\n🗃️ Bases de datos semanales:"
+        ls -lah charts_archive/databases/*.db 2>/dev/null || echo "No hay bases de datos"
         
         echo -e "\n💾 Backups:"
-        ls -la charts_archive/backups/ 2>/dev/null || echo "No hay backups"
+        ls -lah charts_archive/backups/*.db 2>/dev/null || echo "No hay backups"
         
-        echo -e "\n📄 Reportes:"
-        ls -la charts_archive/*.txt 2>/dev/null || echo "No hay reportes"
+        echo -e "\n📊 CSV más reciente:"
+        ls -lah charts_archive/latest_chart.csv 2>/dev/null || echo "No hay CSV"
+        
+        echo -e "\n📈 Estadísticas de archivos:"
+        find charts_archive -type f -exec ls -lh {} \; | awk '{print $5, $9}'
     
     # 7. Commit y push de cambios
     - name: 📤 Commit and push changes
       run: |
-        echo "🔄 Preparando commit..."
+        echo "📝 Preparando commit..."
         
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -94,35 +97,55 @@ jobs:
           echo "✅ Cambios subidos al repositorio"
         fi
     
-    # 8. Subir artifacts para debugging
-    - name: 📦 Upload artifacts
-      if: always()
+    # 8. Subir artifacts para debugging (solo si hay error)
+    - name: 📦 Upload artifacts (on failure)
+      if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: chart-data-${{ github.run_number }}
+        name: chart-debug-${{ github.run_number }}
         path: |
-          charts_archive/latest_chart.csv
-          charts_archive/*.txt
-          charts_archive/databases/*.db
+          data/
+          charts_archive/
         retention-days: 7
     
     # 9. Reporte final
-    - name: 📝 Final report
+    - name: 📋 Final report
       if: always()
       run: |
         echo "========================================"
-        echo "📋 REPORTE FINAL DE EJECUCIÓN"
+        echo "🎵 REPORTE FINAL DE EJECUCIÓN"
         echo "========================================"
         echo "📅 Fecha: $(date)"
-        echo "🔄 Trigger: ${{ github.event_name }}"
+        echo "📌 Trigger: ${{ github.event_name }}"
+        echo "🔗 Commit: ${{ github.sha }}"
         echo ""
         
-        if [ -f "charts_archive/databases/youtube_charts.db" ]; then
-          echo "✅ Base de datos actualizada exitosamente"
-          DB_SIZE=$(stat -f%z "charts_archive/databases/youtube_charts.db" 2>/dev/null || stat -c%s "charts_archive/databases/youtube_charts.db")
-          echo "📊 Tamaño de base de datos: $((DB_SIZE / 1024)) KB"
+        WEEK_ID=$(python3 -c "from datetime import datetime; y,w,_ = datetime.now().isocalendar(); print(f'{y}-W{w:02d}')")
+        DB_FILE="charts_archive/databases/youtube_charts_${WEEK_ID}.db"
+        
+        if [ -f "$DB_FILE" ]; then
+          echo "✅ Base de datos de la semana actualizada: $DB_FILE"
+          SIZE=$(stat -f%z "$DB_FILE" 2>/dev/null || stat -c%s "$DB_FILE")
+          echo "📊 Tamaño: $((SIZE / 1024)) KB"
         else
-          echo "⚠️  No se creó base de datos"
+          echo "⚠️ Base de datos de la semana no encontrada"
+        fi
+        
+        if [ -f "charts_archive/latest_chart.csv" ]; then
+          echo "✅ CSV más reciente actualizado"
+          LATEST_SIZE=$(stat -f%z "charts_archive/latest_chart.csv" 2>/dev/null || stat -c%s "charts_archive/latest_chart.csv")
+          echo "📊 Tamaño: $((LATEST_SIZE / 1024)) KB"
+        fi
+        
+        TOTAL_DBS=$(find charts_archive/databases -name "youtube_charts_*.db" 2>/dev/null | wc -l)
+        if [ "$TOTAL_DBS" -gt 0 ]; then
+          echo ""
+          echo "📦 Total de bases de datos históricas: $TOTAL_DBS"
+        fi
+        
+        TOTAL_BACKUPS=$(find charts_archive/backups -name "backup_*.db" 2>/dev/null | wc -l)
+        if [ "$TOTAL_BACKUPS" -gt 0 ]; then
+          echo "💾 Total de backups disponibles: $TOTAL_BACKUPS"
         fi
         
         echo ""
