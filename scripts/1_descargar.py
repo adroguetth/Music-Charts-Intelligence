@@ -25,7 +25,8 @@ Usage:
 GitHub Actions:
     Set environment variable GITHUB_ACTIONS=true for CI/CD execution
 
-Author: YouTube Charts Automation
+Author: Alfonso Droguett
+Email: adroguett.consultor@gmail.com
 License: MIT
 """
 
