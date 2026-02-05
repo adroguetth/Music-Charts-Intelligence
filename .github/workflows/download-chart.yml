@@ -1,4 +1,4 @@
-name: Download YouTube Chart (Weekly SQLite)
+name: Download YouTube Chart
 
 on:
   schedule:
