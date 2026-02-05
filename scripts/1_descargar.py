@@ -25,8 +25,7 @@ Usage:
 GitHub Actions:
     Set environment variable GITHUB_ACTIONS=true for CI/CD execution
 
-Author: Alfonso Droguett
-Email: adroguett.consultor@gmail.com
+Author: YouTube Charts Automation
 License: MIT
 """
 
@@ -491,6 +490,15 @@ def update_sqlite_database(csv_path: Path, week_id: str):
         
         # Insert into main table or rename temp table
         if cursor.fetchone():
+            # Check if data for this date already exists
+            cursor.execute("SELECT COUNT(*) FROM chart_data WHERE download_date = ?", (df['download_date'].iloc[0],))
+            existing_count = cursor.fetchone()[0]
+            
+            if existing_count > 0:
+                # Delete existing data for this date before inserting new data
+                cursor.execute("DELETE FROM chart_data WHERE download_date = ?", (df['download_date'].iloc[0],))
+                print(f"   🔄 Replaced {existing_count} existing records for {df['download_date'].iloc[0]}")
+            
             cursor.execute(f"INSERT INTO chart_data SELECT * FROM {temp_table_name}")
             cursor.execute(f"DROP TABLE {temp_table_name}")
         else:
