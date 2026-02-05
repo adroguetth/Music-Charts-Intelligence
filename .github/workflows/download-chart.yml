@@ -2,8 +2,8 @@ name: Download YouTube Chart
 
 on:
   schedule:
-    - cron: '0 12 * * 1'  # Cada lunes a las 12:00 UTC
-  workflow_dispatch:       # Ejecución manual
+    - cron: '0 12 * * 1'  # Every Monday at 12:00 UTC
+  workflow_dispatch:       # Manual execution
   push:
     branches:
       - main
@@ -22,100 +22,100 @@ jobs:
       contents: write
     
     steps:
-    # 1. Checkout del repositorio
+    # 1. Checkout repository
     - name: 📚 Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
     
-    # 2. Configurar Python
+    # 2. Set up Python
     - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
         cache: 'pip'
     
-    # 3. Instalar dependencias
+    # 3. Install dependencies
     - name: 📦 Install dependencies
       run: |
         pip install -r requirements.txt
         python -m playwright install chromium
         python -m playwright install-deps
     
-    # 4. Crear estructura de directorios
+    # 4. Create directory structure
     - name: 📁 Create directory structure
       run: |
-        mkdir -p data charts_archive/databases charts_archive/backups
+        mkdir -p charts_archive/databases charts_archive/backups
     
-    # 5. Ejecutar script de descarga
+    # 5. Run download script
     - name: 🚀 Run download script
       run: |
         python scripts/1_descargar.py
       env:
         GITHUB_ACTIONS: true
+        RETENTION_DAYS: ${{ env.RETENTION_DAYS }}
     
-    # 6. Verificar resultados
+    # 6. Verify results
     - name: ✅ Verify results
       run: |
-        echo "📊 Verificando resultados..."
+        echo "📊 Verifying results..."
         
-        echo "📁 Contenido de charts_archive/:"
+        echo "📁 Content of charts_archive/:"
         ls -lah charts_archive/
         
-        echo -e "\n🗃️ Bases de datos semanales:"
-        ls -lah charts_archive/databases/*.db 2>/dev/null || echo "No hay bases de datos"
+        echo -e "\n🗃️ Weekly databases:"
+        ls -lah charts_archive/databases/*.db 2>/dev/null || echo "No databases found"
         
         echo -e "\n💾 Backups:"
-        ls -lah charts_archive/backups/*.db 2>/dev/null || echo "No hay backups"
+        ls -lah charts_archive/backups/*.db 2>/dev/null || echo "No backups found"
         
-        echo -e "\n📊 CSV más reciente:"
-        ls -lah charts_archive/latest_chart.csv 2>/dev/null || echo "No hay CSV"
+        echo -e "\n📊 Latest CSV:"
+        ls -lah charts_archive/latest_chart.csv 2>/dev/null || echo "No CSV file"
         
-        echo -e "\n📈 Estadísticas de archivos:"
+        echo -e "\n📈 File statistics:"
         find charts_archive -type f -exec ls -lh {} \; | awk '{print $5, $9}'
     
-    # 7. Commit y push de cambios
+    # 7. Commit and push changes
     - name: 📤 Commit and push changes
       run: |
-        echo "📝 Preparando commit..."
+        echo "📝 Preparing commit..."
         
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Agregar solo archivos de archivado
+        # Add only archive files
         git add charts_archive/
         
         if git diff --cached --quiet; then
-          echo "📭 No hay cambios para commit"
+          echo "📭 No changes to commit"
         else
           DATE=$(date +'%Y-%m-%d')
           WEEK=$(date +'%Y-W%W')
           git commit -m "📊 YouTube Chart Update ${DATE} (Week ${WEEK}) [Automated]"
           
-          echo "⬆️ Subiendo cambios..."
+          echo "⬆️ Pushing changes..."
           git push origin HEAD:main
-          echo "✅ Cambios subidos al repositorio"
+          echo "✅ Changes pushed to repository"
         fi
     
-    # 8. Subir artifacts para debugging (solo si hay error)
+    # 8. Upload artifacts for debugging (only on failure)
     - name: 📦 Upload artifacts (on failure)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: chart-debug-${{ github.run_number }}
         path: |
-          data/
           charts_archive/
         retention-days: 7
     
-    # 9. Reporte final
+    # 9. Final report
     - name: 📋 Final report
       if: always()
       run: |
         echo "========================================"
-        echo "🎵 REPORTE FINAL DE EJECUCIÓN"
+        echo "🎵 EXECUTION FINAL REPORT"
         echo "========================================"
-        echo "📅 Fecha: $(date)"
+        echo "📅 Date: $(date)"
         echo "📌 Trigger: ${{ github.event_name }}"
         echo "🔗 Commit: ${{ github.sha }}"
         echo ""
@@ -124,30 +124,30 @@ jobs:
         DB_FILE="charts_archive/databases/youtube_charts_${WEEK_ID}.db"
         
         if [ -f "$DB_FILE" ]; then
-          echo "✅ Base de datos de la semana actualizada: $DB_FILE"
+          echo "✅ Current week database updated: $DB_FILE"
           SIZE=$(stat -f%z "$DB_FILE" 2>/dev/null || stat -c%s "$DB_FILE")
-          echo "📊 Tamaño: $((SIZE / 1024)) KB"
+          echo "📊 Size: $((SIZE / 1024)) KB"
         else
-          echo "⚠️ Base de datos de la semana no encontrada"
+          echo "⚠️ Current week database not found"
         fi
         
         if [ -f "charts_archive/latest_chart.csv" ]; then
-          echo "✅ CSV más reciente actualizado"
+          echo "✅ Latest CSV updated"
           LATEST_SIZE=$(stat -f%z "charts_archive/latest_chart.csv" 2>/dev/null || stat -c%s "charts_archive/latest_chart.csv")
-          echo "📊 Tamaño: $((LATEST_SIZE / 1024)) KB"
+          echo "📊 Size: $((LATEST_SIZE / 1024)) KB"
         fi
         
         TOTAL_DBS=$(find charts_archive/databases -name "youtube_charts_*.db" 2>/dev/null | wc -l)
         if [ "$TOTAL_DBS" -gt 0 ]; then
           echo ""
-          echo "📦 Total de bases de datos históricas: $TOTAL_DBS"
+          echo "📦 Total historical databases: $TOTAL_DBS"
         fi
         
         TOTAL_BACKUPS=$(find charts_archive/backups -name "backup_*.db" 2>/dev/null | wc -l)
         if [ "$TOTAL_BACKUPS" -gt 0 ]; then
-          echo "💾 Total de backups disponibles: $TOTAL_BACKUPS"
+          echo "💾 Total backups available: $TOTAL_BACKUPS"
         fi
         
         echo ""
-        echo "✅ Proceso completado"
+        echo "✅ Process completed"
         echo "========================================"
