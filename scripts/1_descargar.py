@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-1_descargar.py - AUTOCLICK EN BOTÓN DE DESCARGA Y ALMACENAMIENTO EN SQLITE
-Versión optimizada para GitHub Actions con sistema de base de datos semanal
+1_descargar.py - DESCARGA Y ALMACENAMIENTO EN SQLITE SEMANAL
+Sistema robusto de bases de datos semanales con backups automáticos.
+Una BD por semana, sin duplicados, sin borrado de datos históricos.
 """
 
 import asyncio
@@ -14,148 +15,138 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 
-# Configuración de directorios
+# ============================================================================
+# CONFIGURACIÓN DE DIRECTORIOS
+# ============================================================================
+
 OUTPUT_DIR = Path("data")
 ARCHIVE_DIR = Path("charts_archive")
 DATABASE_DIR = ARCHIVE_DIR / "databases"
-RAW_DIR = ARCHIVE_DIR / "raw_data"
 BACKUP_DIR = ARCHIVE_DIR / "backups"
 
 # Crear todos los directorios necesarios
-for dir_path in [OUTPUT_DIR, ARCHIVE_DIR, DATABASE_DIR, RAW_DIR, BACKUP_DIR]:
+for dir_path in [OUTPUT_DIR, ARCHIVE_DIR, DATABASE_DIR, BACKUP_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
+
+# ============================================================================
+# FUNCIONES DE UTILIDAD PARA SEMANAS
+# ============================================================================
+
 def get_week_identifier(date: Optional[datetime] = None) -> str:
-    """Obtiene un identificador único para la semana (YYYY-WNN)"""
+    """Obtiene identificador único para la semana (YYYY-WNN)"""
     if date is None:
         date = datetime.now()
     year, week_num, _ = date.isocalendar()
     return f"{year}-W{week_num:02d}"
 
-def calculate_week_hash(csv_path: Path) -> str:
-    """Calcula un hash único para los datos de la semana"""
-    try:
-        import pandas as pd
-        df = pd.read_csv(csv_path, encoding='utf-8')
-        
-        # Crear string con datos clave para el hash
-        hash_data = ""
-        for _, row in df.head(20).iterrows():
-            hash_data += f"{row['Rank']}_{row.get('Track Name', '')[:30]}_{row.get('Artist Names', '')[:30]}"
-        
-        return hashlib.md5(hash_data.encode()).hexdigest()[:16]
-    except Exception as e:
-        print(f"⚠️  Error calculando hash: {e}")
-        return datetime.now().strftime("%Y%m%d")
 
-def create_backup() -> Optional[Path]:
-    """Crea backup de la base de datos existente"""
-    try:
-        db_file = DATABASE_DIR / "youtube_charts.db"
-        if not db_file.exists():
-            print("ℹ️  No existe base de datos previa para backup")
-            return None
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = BACKUP_DIR / f"backup_{timestamp}.db"
-        
-        shutil.copy2(db_file, backup_file)
-        
-        # Limitar a 5 backups
-        backups = sorted(BACKUP_DIR.glob("backup_*.db"))
-        if len(backups) > 5:
-            for old_backup in backups[:-5]:
-                old_backup.unlink()
-        
-        print(f"✅ Backup creado: {backup_file}")
-        return backup_file
-    except Exception as e:
-        print(f"⚠️  Error en backup: {e}")
-        return None
+def get_week_start_date(week_id: str) -> datetime:
+    """Convierte YYYY-WNN a fecha de inicio de semana"""
+    year, week = week_id.split('-W')
+    year = int(year)
+    week = int(week)
+    # Primera semana del año
+    jan_4 = datetime(year, 1, 4)
+    week_1_monday = jan_4 - timedelta(days=jan_4.weekday())
+    target_monday = week_1_monday + timedelta(weeks=week - 1)
+    return target_monday
 
-def init_database() -> sqlite3.Connection:
-    """Inicializa la base de datos SQLite"""
-    db_path = DATABASE_DIR / "youtube_charts.db"
-    conn = sqlite3.connect(db_path)
+
+# ============================================================================
+# FUNCIONES DE BASE DE DATOS SEMANAL
+# ============================================================================
+
+def get_weekly_db_path(week_id: str) -> Path:
+    """Obtiene la ruta del archivo SQLite para una semana específica"""
+    return DATABASE_DIR / f"youtube_charts_{week_id}.db"
+
+
+def init_weekly_database(week_id: str) -> sqlite3.Connection:
+    """Inicializa la base de datos para una semana específica"""
+    db_path = get_weekly_db_path(week_id)
     
-    # Tabla de control de semanas
+    # Si ya existe, retornar conexión
+    if db_path.exists():
+        conn = sqlite3.connect(db_path)
+        return conn
+    
+    # Crear nueva base de datos
+    conn = sqlite3.connect(db_path)
+    conn.execute('PRAGMA journal_mode=WAL')
+    
+    # Tabla de metadatos
     conn.execute('''
-    CREATE TABLE IF NOT EXISTS week_control (
-        week_id TEXT PRIMARY KEY,
-        week_hash TEXT UNIQUE,
-        download_date TEXT,
-        total_records INTEGER,
-        total_views INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
+        CREATE TABLE IF NOT EXISTS metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     ''')
     
     # Tabla principal de datos
     conn.execute('''
-    CREATE TABLE IF NOT EXISTS chart_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        week_id TEXT,
-        rank INTEGER,
-        previous_rank INTEGER,
-        track_name TEXT,
-        artist_names TEXT,
-        periods_on_chart INTEGER,
-        views INTEGER,
-        growth TEXT,
-        youtube_url TEXT,
-        download_date TEXT,
-        FOREIGN KEY (week_id) REFERENCES week_control (week_id)
-    )
+        CREATE TABLE IF NOT EXISTS chart_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rank INTEGER NOT NULL,
+            previous_rank INTEGER,
+            track_name TEXT NOT NULL,
+            artist_names TEXT,
+            periods_on_chart INTEGER,
+            views INTEGER,
+            growth TEXT,
+            youtube_url TEXT,
+            content_hash TEXT UNIQUE,
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(rank, track_name, artist_names)
+        )
     ''')
     
     # Índices para mejor rendimiento
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_week_id ON chart_data (week_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_rank ON chart_data (rank)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_artist ON chart_data (artist_names)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_rank ON chart_data(rank)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_artist ON chart_data(artist_names)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_track ON chart_data(track_name)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_hash ON chart_data(content_hash)')
+    
+    # Guardar metadatos
+    conn.execute('''
+        INSERT INTO metadata (key, value) VALUES (?, ?)
+    ''', ('week_id', week_id))
+    
+    conn.execute('''
+        INSERT INTO metadata (key, value) VALUES (?, ?)
+    ''', ('created_date', datetime.now().isoformat()))
     
     conn.commit()
+    print(f"✅ Base de datos semanal creada: {db_path}")
     return conn
 
-def insert_weekly_data(conn: sqlite3.Connection, csv_path: Path) -> Tuple[bool, str]:
-    """Inserta datos de una semana en la base de datos, evitando duplicados"""
-    try:
-        import pandas as pd
+
+def calculate_content_hash(row: Dict) -> str:
+    """Calcula hash para evitar duplicados exactos"""
+    content = f"{row.get('rank')}_{row.get('track_name')}_{row.get('artist_names')}"
+    return hashlib.md5(content.encode()).hexdigest()[:16]
+
+
+def insert_chart_data(conn: sqlite3.Connection, rows: list) -> Tuple[int, int]:
+    """
+    Inserta datos en la base de datos evitando duplicados.
+    Retorna (insertados, duplicados)
+    """
+    cursor = conn.cursor()
+    inserted = 0
+    duplicates = 0
+    
+    for row in rows:
+        content_hash = calculate_content_hash(row)
         
-        # Leer CSV
-        df = pd.read_csv(csv_path, encoding='utf-8')
-        
-        # Calcular identificadores
-        week_id = get_week_identifier()
-        week_hash = calculate_week_hash(csv_path)
-        
-        # Verificar si ya existe esta semana
-        cursor = conn.cursor()
-        cursor.execute("SELECT week_id FROM week_control WHERE week_hash = ?", (week_hash,))
-        existing = cursor.fetchone()
-        
-        if existing:
-            print(f"ℹ️  Esta semana ya existe en la base de datos: {existing[0]}")
-            return False, existing[0]
-        
-        # Preparar datos para inserción
-        total_records = len(df)
-        total_views = df['Views'].sum() if 'Views' in df.columns else 0
-        
-        # Insertar en tabla de control
-        cursor.execute('''
-        INSERT INTO week_control (week_id, week_hash, download_date, total_records, total_views)
-        VALUES (?, ?, ?, ?, ?)
-        ''', (week_id, week_hash, datetime.now().isoformat(), total_records, total_views))
-        
-        # Insertar datos de canciones
-        for _, row in df.iterrows():
+        try:
             cursor.execute('''
-            INSERT INTO chart_data 
-            (week_id, rank, previous_rank, track_name, artist_names, 
-             periods_on_chart, views, growth, youtube_url, download_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO chart_data 
+                (rank, previous_rank, track_name, artist_names, periods_on_chart, 
+                 views, growth, youtube_url, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                week_id,
                 row.get('Rank'),
                 row.get('Previous Rank'),
                 row.get('Track Name', ''),
@@ -164,95 +155,110 @@ def insert_weekly_data(conn: sqlite3.Connection, csv_path: Path) -> Tuple[bool, 
                 row.get('Views', 0),
                 row.get('Growth', ''),
                 row.get('YouTube URL', ''),
-                datetime.now().isoformat()
+                content_hash
             ))
-        
-        conn.commit()
-        print(f"✅ Datos insertados para semana: {week_id} ({total_records} registros)")
-        return True, week_id
-        
-    except Exception as e:
-        print(f"❌ Error insertando datos: {e}")
-        import traceback
-        traceback.print_exc()
-        conn.rollback()
-        return False, ""
+            inserted += 1
+        except sqlite3.IntegrityError:
+            duplicates += 1
+            continue
+    
+    conn.commit()
+    return inserted, duplicates
 
-def get_week_statistics(conn: sqlite3.Connection, week_id: str) -> Dict[str, Any]:
-    """Obtiene estadísticas de una semana específica"""
+
+def create_backup_before_update(week_id: str) -> Optional[Path]:
+    """Crea backup automático de la base de datos antes de actualizar"""
+    db_path = get_weekly_db_path(week_id)
+    
+    if not db_path.exists():
+        return None
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = BACKUP_DIR / f"backup_{week_id}_{timestamp}.db"
+    
+    try:
+        # Copiar base de datos
+        shutil.copy2(db_path, backup_path)
+        
+        # Limpiar backups antiguos: mantener solo 3 por semana
+        backups = sorted(BACKUP_DIR.glob(f"backup_{week_id}_*.db"))
+        if len(backups) > 3:
+            for old_backup in backups[:-3]:
+                old_backup.unlink()
+                print(f"   🗑️  Backup antiguo eliminado: {old_backup.name}")
+        
+        print(f"💾 Backup creado: {backup_path.name}")
+        return backup_path
+    except Exception as e:
+        print(f"⚠️  Error en backup: {e}")
+        return None
+
+
+def get_database_stats(conn: sqlite3.Connection) -> Dict[str, Any]:
+    """Obtiene estadísticas de la base de datos"""
     cursor = conn.cursor()
     
-    # Obtener información básica
-    cursor.execute('''
-    SELECT week_id, download_date, total_records, total_views 
-    FROM week_control WHERE week_id = ?
-    ''', (week_id,))
-    week_info = cursor.fetchone()
+    cursor.execute('SELECT COUNT(*) FROM chart_data')
+    total_rows = cursor.fetchone()[0]
     
-    if not week_info:
-        return {}
+    cursor.execute('SELECT SUM(views) FROM chart_data WHERE views IS NOT NULL')
+    total_views = cursor.fetchone()[0] or 0
     
-    # Top 10 de la semana
-    cursor.execute('''
-    SELECT rank, track_name, artist_names, views, growth
-    FROM chart_data 
-    WHERE week_id = ? 
-    ORDER BY rank 
-    LIMIT 10
-    ''', (week_id,))
-    top10 = cursor.fetchall()
+    cursor.execute('SELECT MIN(rank), MAX(rank) FROM chart_data')
+    min_rank, max_rank = cursor.fetchone()
     
-    # Artistas más populares
     cursor.execute('''
-    SELECT artist_names, COUNT(*) as song_count, SUM(views) as total_views
-    FROM chart_data 
-    WHERE week_id = ? 
-    GROUP BY artist_names 
-    ORDER BY total_views DESC 
-    LIMIT 10
-    ''', (week_id,))
+        SELECT artist_names, COUNT(*) as count 
+        FROM chart_data 
+        GROUP BY artist_names 
+        ORDER BY count DESC LIMIT 5
+    ''')
     top_artists = cursor.fetchall()
     
     return {
-        'week_id': week_info[0],
-        'download_date': week_info[1],
-        'total_records': week_info[2],
-        'total_views': week_info[3],
-        'top10': top10,
+        'total_rows': total_rows,
+        'total_views': total_views,
+        'rank_range': (min_rank, max_rank),
         'top_artists': top_artists
     }
 
-def archive_csv_file(csv_path: Path, week_id: str) -> Path:
-    """Archiva el CSV con nombre semanal"""
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    archived_name = ARCHIVE_DIR / f"youtube_chart_{date_str}_{week_id}.csv"
+
+def archive_latest_csv(csv_path: Path, week_id: str) -> Path:
+    """
+    Guarda el CSV más reciente (se actualiza cada semana).
+    Solo se mantiene un CSV, el más reciente.
+    """
+    latest_csv = ARCHIVE_DIR / "latest_chart.csv"
     
-    shutil.copy2(csv_path, archived_name)
-    
-    # También mantener un archivo "latest"
-    latest_path = ARCHIVE_DIR / "latest_chart.csv"
-    shutil.copy2(csv_path, latest_path)
-    
-    print(f"📁 CSV archivado: {archived_name}")
-    return archived_name
+    try:
+        shutil.copy2(csv_path, latest_csv)
+        print(f"✅ CSV actualizado: {latest_csv}")
+        return latest_csv
+    except Exception as e:
+        print(f"⚠️  Error archivando CSV: {e}")
+        return None
+
+
+# ============================================================================
+# DESCARGA CON PLAYWRIGHT
+# ============================================================================
 
 async def download_youtube_chart() -> Optional[Path]:
-    """Descarga el chart de YouTube usando Playwright"""
-    print("🎵 YouTube Charts - Descarga Automática")
-    print("=" * 60)
+    """Descarga el gráfico de YouTube usando Playwright"""
+    print("\n📥 Iniciando descarga de YouTube Charts...")
     
     try:
         from playwright.async_api import async_playwright
         
-        print("1. 🚀 Iniciando Playwright...")
-        
         async with async_playwright() as p:
+            # Configuración para GitHub Actions
             browser = await p.chromium.launch(
                 headless=True,
                 args=[
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
+                    '--disable-software-rasterizer',
                     '--window-size=1920,1080',
                 ]
             )
@@ -260,32 +266,46 @@ async def download_youtube_chart() -> Optional[Path]:
             context = await browser.new_context(
                 accept_downloads=True,
                 viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             )
             
             page = await context.new_page()
             page.set_default_timeout(60000)
             
-            print("2. 🌐 Navegando a YouTube Charts...")
-            await page.goto(
-                "https://charts.youtube.com/charts/TopSongs/global/weekly",
-                wait_until='networkidle',
-                timeout=60000
-            )
+            print("1. 🌐 Navegando a YouTube Charts...")
+            url = "https://charts.youtube.com/charts/TopSongs/global/weekly"
             
-            print("3. ⏳ Esperando carga completa...")
+            await page.goto(url, wait_until='networkidle', timeout=60000)
+            print("   ✅ Página cargada")
+            
+            await page.wait_for_load_state('networkidle')
             await page.wait_for_timeout(3000)
             
-            print("4. 🔍 Buscando botón de descarga...")
+            print("2. 🔍 Buscando botón de descarga...")
             
-            # Intentar diferentes selectores
+            # Estrategia 1: Por texto "Download"
+            try:
+                element = await page.locator("text=/download/i").first.wait_for(timeout=10000)
+                async with page.expect_download() as download_info:
+                    await element.click()
+                
+                download = await download_info.value
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = OUTPUT_DIR / f"youtube_chart_{timestamp}.csv"
+                await download.save_as(filename)
+                
+                await browser.close()
+                print(f"   ✅ Descargado: {filename}")
+                return filename
+            except:
+                pass
+            
+            # Estrategia 2: Por atributos ARIA
             selectors = [
-                'button[aria-label*="download" i]',
+                '[aria-label*="download" i]',
+                '[aria-label*="descargar" i]',
                 '[title*="download" i]',
-                'text=/download/i',
-                'text=/descargar/i',
                 'button:has-text("Download")',
-                'button:has-text("Descargar")',
             ]
             
             for selector in selectors:
@@ -294,76 +314,46 @@ async def download_youtube_chart() -> Optional[Path]:
                     for element in elements:
                         is_visible = await element.is_visible()
                         if is_visible:
-                            print(f"   ✅ Encontrado con selector: {selector}")
-                            
                             async with page.expect_download() as download_info:
                                 await element.click()
                             
                             download = await download_info.value
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             filename = OUTPUT_DIR / f"youtube_chart_{timestamp}.csv"
-                            
                             await download.save_as(filename)
-                            await browser.close()
                             
-                            if filename.exists() and filename.stat().st_size > 0:
-                                print(f"✅ Descarga exitosa: {filename}")
-                                return filename
-                except Exception as e:
+                            await browser.close()
+                            print(f"   ✅ Descargado: {filename}")
+                            return filename
+                except:
                     continue
             
-            # Si no encuentra el botón, intentar método alternativo
-            print("5. ⚠️ Buscando enlace directo...")
-            try:
-                # Buscar enlaces que puedan ser de descarga
-                links = await page.query_selector_all('a[href*=".csv"], a[href*="download"]')
-                for link in links:
-                    href = await link.get_attribute('href')
-                    if href and ('.csv' in href.lower() or 'download' in href.lower()):
-                        print(f"   🔗 Enlace encontrado: {href[:50]}...")
-                        
-                        # Navegar directamente al enlace
-                        async with page.expect_download() as download_info:
-                            await page.goto(href)
-                        
-                        download = await download_info.value
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        filename = OUTPUT_DIR / f"youtube_chart_{timestamp}.csv"
-                        
-                        await download.save_as(filename)
-                        await browser.close()
-                        
-                        if filename.exists() and filename.stat().st_size > 0:
-                            print(f"✅ Descarga via enlace: {filename}")
-                            return filename
-            except Exception as e:
-                print(f"   ⚠️ Error con enlace: {e}")
-            
+            print("   ⚠️  Botón de descarga no encontrado")
             await browser.close()
             return None
             
     except ImportError:
-        print("❌ Playwright no está instalado")
+        print("   ❌ Playwright no está instalado")
         return None
     except Exception as e:
-        print(f"❌ Error en descarga: {e}")
+        print(f"   ❌ Error: {e}")
         import traceback
         traceback.print_exc()
         return None
 
-def create_fallback_data() -> Path:
-    """Crea datos de fallback si la descarga falla"""
+
+def create_fallback_csv() -> Path:
+    """Crea CSV de fallback si la descarga falla"""
     print("🆘 Creando datos de fallback...")
     
     try:
         import pandas as pd
         
-        # Datos de ejemplo basados en estructura real
         data = {
             'Rank': list(range(1, 101)),
             'Previous Rank': list(range(1, 101)),
-            'Track Name': [f"Canción {i}" for i in range(1, 101)],
-            'Artist Names': [f"Artista {i}" for i in range(1, 101)],
+            'Track Name': [f"Track {i}" for i in range(1, 101)],
+            'Artist Names': [f"Artist {i}" for i in range(1, 101)],
             'Periods on Chart': [10] * 100,
             'Views': [1000000 - i*10000 for i in range(100)],
             'Growth': ['+0.0%'] * 100,
@@ -374,136 +364,175 @@ def create_fallback_data() -> Path:
         filename = OUTPUT_DIR / f"fallback_{datetime.now().strftime('%Y%m%d')}.csv"
         df.to_csv(filename, index=False, encoding='utf-8')
         
-        print(f"📋 Datos de fallback creados: {filename}")
+        print(f"   ✅ Fallback creado: {filename}")
         return filename
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        return None
+
+
+# ============================================================================
+# PROCESAMIENTO DE CSV
+# ============================================================================
+
+def process_csv_to_database(csv_path: Path, week_id: str) -> Tuple[bool, Dict[str, Any]]:
+    """
+    Procesa CSV a base de datos semanal.
+    Retorna (éxito, estadísticas)
+    """
+    try:
+        import pandas as pd
+        
+        # Leer CSV
+        df = pd.read_csv(csv_path, encoding='utf-8')
+        print(f"   📊 CSV cargado: {len(df)} registros")
+        
+        # Crear backup si la BD ya existe
+        if get_weekly_db_path(week_id).exists():
+            print(f"3. 💾 Creando backup automático para {week_id}...")
+            create_backup_before_update(week_id)
+        
+        # Inicializar base de datos
+        print(f"4. 🗃️  Inicializando base de datos para {week_id}...")
+        conn = init_weekly_database(week_id)
+        
+        # Convertir DataFrame a lista de diccionarios
+        rows = df.to_dict('records')
+        
+        # Insertar datos
+        print(f"5. 📝 Insertando datos (evitando duplicados)...")
+        inserted, duplicates = insert_chart_data(conn, rows)
+        
+        # Obtener estadísticas
+        stats = get_database_stats(conn)
+        stats['inserted'] = inserted
+        stats['duplicates'] = duplicates
+        stats['week_id'] = week_id
+        stats['db_path'] = str(get_weekly_db_path(week_id))
+        
+        conn.close()
+        
+        print(f"   ✅ Datos procesados: {inserted} insertados, {duplicates} duplicados")
+        return True, stats
         
     except Exception as e:
-        print(f"❌ Error creando fallback: {e}")
-        # Crear archivo CSV básico
-        import csv
-        filename = OUTPUT_DIR / f"emergency_{datetime.now().strftime('%Y%m%d')}.csv"
-        with open(filename, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Rank', 'Track Name', 'Artist Names', 'Views'])
-            for i in range(1, 11):
-                writer.writerow([i, f"Emergency Song {i}", "Emergency Artist", 100000])
-        
-        return filename
+        print(f"   ❌ Error procesando CSV: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, {}
 
-def generate_weekly_report(conn: sqlite3.Connection, week_id: str):
-    """Genera un reporte semanal en formato texto"""
-    report_path = ARCHIVE_DIR / f"report_{week_id}.txt"
-    
-    stats = get_week_statistics(conn, week_id)
-    
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write("=" * 60 + "\n")
-        f.write(f"📊 REPORTE SEMANAL - {week_id}\n")
-        f.write("=" * 60 + "\n\n")
-        
-        f.write(f"📅 Fecha de descarga: {stats.get('download_date', 'N/A')}\n")
-        f.write(f"📈 Total de canciones: {stats.get('total_records', 0)}\n")
-        f.write(f"👁️  Total de vistas: {stats.get('total_views', 0):,}\n\n")
-        
-        f.write("🏆 TOP 10 SEMANAL:\n")
-        f.write("-" * 40 + "\n")
-        for song in stats.get('top10', []):
-            f.write(f"{song[0]}. {song[1]} - {song[2]}\n")
-            f.write(f"   👁️ {song[3]:,} | 📈 {song[4]}\n")
-        
-        f.write("\n🎤 ARTISTAS MÁS POPULARES:\n")
-        f.write("-" * 40 + "\n")
-        for artist in stats.get('top_artists', []):
-            f.write(f"• {artist[0]}: {artist[1]} canciones, {artist[2]:,} vistas\n")
-    
-    print(f"📄 Reporte generado: {report_path}")
 
-def cleanup_old_files(days_to_keep: int = 30):
-    """Limpia archivos temporales antiguos"""
+def cleanup_old_csvs(days_to_keep: int = 7):
+    """Limpia archivos CSV temporales antiguos"""
     try:
         cutoff = datetime.now() - timedelta(days=days_to_keep)
         
-        # Limpiar archivos temporales en data/
-        for file in OUTPUT_DIR.glob("*.csv"):
+        for file in OUTPUT_DIR.glob("youtube_chart_*.csv"):
             if file.stat().st_mtime < cutoff.timestamp():
                 file.unlink()
-                print(f"🗑️  Eliminado: {file.name}")
-        
-        # Mantener backups organizados
-        print("🧹 Limpieza completada")
+                print(f"   🗑️  Temporal eliminado: {file.name}")
     except Exception as e:
-        print(f"⚠️  Error en limpieza: {e}")
+        print(f"   ⚠️  Error en limpieza: {e}")
+
+
+# ============================================================================
+# REPORTES Y VISUALIZACIÓN
+# ============================================================================
+
+def generate_summary_report(stats: Dict[str, Any]):
+    """Genera un resumen de la ejecución"""
+    print("\n" + "=" * 70)
+    print("📊 RESUMEN DE LA EJECUCIÓN")
+    print("=" * 70)
+    print(f"📅 Semana: {stats.get('week_id', 'N/A')}")
+    print(f"🗃️  Base de datos: {stats.get('db_path', 'N/A')}")
+    print(f"📈 Registros insertados: {stats.get('inserted', 0)}")
+    print(f"🔄 Duplicados evitados: {stats.get('duplicates', 0)}")
+    print(f"📊 Total en BD: {stats.get('total_rows', 0)}")
+    print(f"👁️  Total de vistas: {stats.get('total_views', 0):,}")
+    
+    if stats.get('top_artists'):
+        print(f"\n🎤 Top 5 artistas:")
+        for artist, count in stats['top_artists'][:5]:
+            print(f"   • {artist}: {count} canción(es)")
+    
+    print("=" * 70)
+
+
+def list_available_databases():
+    """Lista todas las bases de datos disponibles"""
+    dbs = sorted(DATABASE_DIR.glob("youtube_charts_*.db"))
+    
+    if not dbs:
+        print("   No hay bases de datos disponibles aún")
+        return
+    
+    print(f"\n📦 Bases de datos disponibles ({len(dbs)}):")
+    for db in dbs:
+        size = db.stat().st_size / 1024
+        week_id = db.stem.replace("youtube_charts_", "")
+        print(f"   • {week_id}: {size:.1f} KB")
+
+
+# ============================================================================
+# FUNCIÓN PRINCIPAL
+# ============================================================================
 
 def main():
-    """Función principal"""
-    print("\n" + "=" * 60)
-    print("🎵 YOUTUBE CHARTS - EXTRACTOR AUTOMÁTICO")
+    """Función principal del script"""
+    print("\n" + "=" * 70)
+    print("🎵 YOUTUBE CHARTS - EXTRACTOR AUTOMÁTICO (SQLITE SEMANAL)")
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 60)
+    print("=" * 70)
+    
+    # Obtener identificador de semana
+    week_id = get_week_identifier()
+    print(f"\n📆 Semana actual: {week_id}")
     
     if os.getenv('GITHUB_ACTIONS'):
         print("⚡ Ejecutando en GitHub Actions")
     
-    # Paso 1: Crear backup de base de datos existente
-    print("\n1. 💾 CREANDO BACKUP DE BASE DE DATOS...")
-    backup_file = create_backup()
+    # Paso 1: Descargar CSV
+    print("\n1. 📥 DESCARGANDO YOUTUBE CHARTS...")
+    csv_path = asyncio.run(download_youtube_chart())
     
-    # Paso 2: Inicializar base de datos
-    print("\n2. 🗃️  INICIALIZANDO BASE DE DATOS...")
-    conn = init_database()
+    if not csv_path or not csv_path.exists():
+        print("   ⚠️  Descarga automática falló")
+        csv_path = create_fallback_csv()
     
-    # Paso 3: Descargar datos
-    print("\n3. 📥 DESCARGANDO DATOS DE YOUTUBE CHARTS...")
-    csv_file = asyncio.run(download_youtube_chart())
+    if not csv_path or not csv_path.exists():
+        print("❌ No se pudo obtener datos")
+        return 1
     
-    if not csv_file or not csv_file.exists():
-        print("⚠️  La descarga automática falló, usando datos de fallback...")
-        csv_file = create_fallback_data()
+    # Paso 2: Procesar a base de datos
+    print("\n2. ⚙️  PROCESANDO DATOS...")
+    success, stats = process_csv_to_database(csv_path, week_id)
     
-    # Paso 4: Procesar y almacenar datos
-    print("\n4. 🗃️  ALMACENANDO EN BASE DE DATOS...")
-    success, week_id = insert_weekly_data(conn, csv_file)
+    if not success:
+        print("❌ Error procesando datos")
+        return 1
     
-    if success:
-        # Paso 5: Archivar CSV
-        print("\n5. 📁 ARCHIVANDO CSV...")
-        archived_file = archive_csv_file(csv_file, week_id)
-        
-        # Paso 6: Generar reporte
-        print("\n6. 📊 GENERANDO REPORTE SEMANAL...")
-        generate_weekly_report(conn, week_id)
-        
-        # Paso 7: Mostrar estadísticas
-        print("\n7. 📈 ESTADÍSTICAS FINALES:")
-        stats = get_week_statistics(conn, week_id)
-        
-        print(f"   • Semana: {week_id}")
-        print(f"   • Canciones procesadas: {stats.get('total_records', 0)}")
-        print(f"   • Vistas totales: {stats.get('total_views', 0):,}")
-        print(f"   • Archivo CSV: {archived_file.name}")
-        
-        # Mostrar top 3
-        print("\n   🏆 TOP 3 DE LA SEMANA:")
-        for i, song in enumerate(stats.get('top10', [])[:3], 1):
-            print(f"     {i}. {song[1]} - {song[2]}")
-        
-        print("\n✅ PROCESO COMPLETADO EXITOSAMENTE")
-        
-    else:
-        print("⚠️  Los datos no fueron insertados (posible duplicado)")
+    # Paso 3: Archivar CSV más reciente
+    print("\n6. 📁 ARCHIVANDO CSV MÁS RECIENTE...")
+    archive_latest_csv(csv_path, week_id)
     
-    # Paso 8: Limpieza
-    print("\n8. 🧹 LIMPIANDO ARCHIVOS TEMPORALES...")
-    cleanup_old_files(7)  # Mantener solo 7 días
+    # Paso 4: Limpiar archivos temporales
+    print("\n7. 🧹 LIMPIANDO ARCHIVOS TEMPORALES...")
+    cleanup_old_csvs(7)
     
-    # Cerrar conexión
-    conn.close()
+    # Paso 5: Mostrar reporte
+    print("\n8. 📊 GENERANDO REPORTE...")
+    generate_summary_report(stats)
     
-    print("\n" + "=" * 60)
-    print("🎉 PIPELINE FINALIZADO")
-    print("=" * 60)
+    # Paso 6: Listar bases de datos disponibles
+    print("\n9. 📦 ESTADO DEL ARCHIVO:")
+    list_available_databases()
+    
+    print("\n✅ PROCESO COMPLETADO EXITOSAMENTE")
+    print("=" * 70)
     
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
