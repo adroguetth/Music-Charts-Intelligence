@@ -1,4 +1,4 @@
-# 🎵 YouTube Charts Scraper - Script 1: Automated Download
+# 🎵 YouTube Charts Scraper: Automated Download
 ## 📋 General Description
 
 This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_descargar.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
