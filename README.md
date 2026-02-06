@@ -1,13 +1,14 @@
 # 🎵 YouTube Charts Scraper: Automated Download
-## 📋 General Description
-
-This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_descargar.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
 
 ## 📥 Quick Downloads
 | Document                  | Format                                                       |
 | ------------------------- | ------------------------------------------------------------ |
-| **📄 English Documentation** | [PDF](https://github.com/yourusername/youtube-charts-scraper/raw/main/docs/README_EN.pdf) |
-| **📄 Spanish Documentation** | [PDF](https://drive.google.com/file/d/12RGAmiKzVgVhIRNfDY5stk_Ut-PZuOT2/view?usp=sharing) |
+| **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1ma2nfd4FPaqC7cchyn2uoLFIc-PPaE8H/view?usp=sharing) |
+| **🇪🇸 Spanish Documentation** | [PDF](https://drive.google.com/file/d/12RGAmiKzVgVhIRNfDY5stk_Ut-PZuOT2/view?usp=sharing) |
+
+## 📋 General Description
+
+This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_descargar.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
 
 ### Key Features
 
@@ -432,7 +433,3 @@ python -m playwright install-deps
 2. Propose improvements with use cases
 3. Maintain compatibility with existing structure
 4. Document changes in README
-
-------
-
-**Note**: This README specifically corresponds to the `1_descargar.py` script. For documentation of other scripts, consult their respective READMEs.
