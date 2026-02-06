@@ -1,4 +1,7 @@
 # 🎵 YouTube Charts Scraper: Automated Download
+![Texto alternativo](https://img.shields.io/badge/License-MIT-green)
+![Texto alternativo](https://img.shields.io/badge/Web-Scraping-orange)
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#)
 
 ## 📥 Quick Downloads
 | Document                  | Format                                                       |
