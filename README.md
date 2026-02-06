@@ -19,7 +19,11 @@ This project consists of an automated system for weekly downloading and storing 
 - **CI/CD Optimization**: Specifically configured for GitHub Actions
 
 ## 📊 Process Flow Diagram
-![Diagrama](https://drive.google.com/uc?id=1ZZeifoTgmbPdpEBcQot-spyROXOv0SJf)
+<center>
+<img src="https://drive.google.com/uc?id=1ZZeifoTgmbPdpEBcQot-spyROXOv0SJf" 
+     width="40%" 
+     alt="Diagrama reducido al 40%">
+</center>
 
 ## 🔍 Detailed Analysis of `1_descargar.py`
 
