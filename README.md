@@ -1,5 +1,5 @@
 # 🎵 YouTube Charts Scraper: Automated Download
-descarga automatizada
+YouTube Charts Scraper: Descarga Automatizada <Br><Br>
 ![Texto alternativo](https://img.shields.io/badge/License-MIT-green)
 ![Texto alternativo](https://img.shields.io/badge/Web-Scraping-orange)
 [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#)
