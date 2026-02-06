@@ -217,9 +217,7 @@ with:
 3. **📦 Dependency Installation**
 
    - Playwright and Chromium browser
-
    - Pandas, NumPy for processing
-
    - System dependencies
 
 4. **📁 Directory Structure Creation**
