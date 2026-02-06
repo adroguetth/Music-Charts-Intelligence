@@ -3,6 +3,12 @@
 
 This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_descargar.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
 
+## 📥 Quick Downloads
+| Document                  | Format                                                       |
+| ------------------------- | ------------------------------------------------------------ |
+| **English Documentation** | [PDF](https://github.com/yourusername/youtube-charts-scraper/raw/main/docs/README_EN.pdf) |
+| **Spanish Documentation** | [PDF](https://drive.google.com/file/d/12RGAmiKzVgVhIRNfDY5stk_Ut-PZuOT2/view?usp=sharing) |
+
 ### Key Features
 
 - **Complete Download**: Obtains full lists of 100 songs
