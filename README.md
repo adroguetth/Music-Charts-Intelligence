@@ -1,14 +1,14 @@
-# YouTube Music Charts Downloader
+## 📋 General Description
 
-Descarga automática semanal del Top 100 de YouTube Music.
+This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_descargar.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
 
-## 🚀 Uso
+### ✨ Key Features
 
-El workflow se ejecuta automáticamente cada lunes a las 12:00 UTC.
+- **Complete Download**: Obtains full lists of 100 songs
+- **Automation**: Weekly scheduling via GitHub Actions
+- **Historical Storage**: SQLite database with weekly versioning
+- **Backup System**: Automatic backups before updates
+- **Robustness**: Multiple detection strategies and fallback mode
+- **CI/CD Optimization**: Specifically configured for GitHub Actions
 
-### Ejecución manual:
-1. Ve a "Actions" en tu repositorio
-2. Selecciona "Download YouTube Chart"
-3. Haz clic en "Run workflow"
-
-## 📁 Estructura
+## 📊 Process Flow Diagram
