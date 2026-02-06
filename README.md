@@ -7,8 +7,8 @@
 [![Playwright](https://custom-icon-badges.demolab.com/badge/Playwright-2EAD33?logo=playwright&logoColor=fff)](#)
 [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#)
 
-## 📥 Quick Downloads
-| Document                  | Format                                                       |
+## 📥 Quick Downloads/Descarga Rápida
+| Document/Documento                  | Format/Formato                                                       |
 | ------------------------- | ------------------------------------------------------------ |
 | **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1ma2nfd4FPaqC7cchyn2uoLFIc-PPaE8H/view?usp=sharing) |
 | **🇪🇸 Spanish Documentation** | [PDF](https://drive.google.com/file/d/12RGAmiKzVgVhIRNfDY5stk_Ut-PZuOT2/view?usp=sharing) |
