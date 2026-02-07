@@ -19,13 +19,10 @@ Requirements:
 - pandas
 - sqlite3 (included in Python standard library)
 
-Usage:
-    python 1_descargar.py
-
 GitHub Actions:
     Set environment variable GITHUB_ACTIONS=true for CI/CD execution
 
-Author: YouTube Charts Automation
+Author: Alfonso Droguett
 License: MIT
 """
 
