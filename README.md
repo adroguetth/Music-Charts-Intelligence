@@ -11,8 +11,8 @@ YouTube Charts Scraper: Descarga Automatizada <Br><Br>
 ## 📥 Quick Downloads/Descarga Rápida
 | Document/Documento                  | Format/Formato                                                       |
 | ------------------------- | ------------------------------------------------------------ |
-| **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1ma2nfd4FPaqC7cchyn2uoLFIc-PPaE8H/view?usp=sharing) |
-| **🇪🇸 Spanish Documentation** | [PDF](https://drive.google.com/file/d/12RGAmiKzVgVhIRNfDY5stk_Ut-PZuOT2/view?usp=sharing) |
+| **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1SdLvJnxcKxmQYmLlwoYttHr2Izud4iE5/view?usp=sharing) |
+| **🇪🇸 Spanish Documentation** | [PDF](https://drive.google.com/file/d/11ANLX6PbK_eIzvHLPqL1rm9NY9rOshhD/view?usp=sharing) |
 
 ## 📋 General Description
 
