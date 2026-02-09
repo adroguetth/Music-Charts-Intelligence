@@ -18,11 +18,9 @@ Requirements:
 - pandas
 - sqlite3 (included in Python standard library)
 
-Usage:
-    python 5-prototype.py
 
-Author: [Your Name]
-License: [Your License]
+Author: Alfonso Droguett
+License: MIT
 """
 
 import asyncio
