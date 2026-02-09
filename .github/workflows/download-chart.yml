@@ -53,12 +53,12 @@ jobs:
     # Step 4: Create required directory structure
     - name: 📁 Create directory structure
       run: |
-        mkdir -p data charts_archive/databases charts_archive/backups
+        mkdir -p data charts_archive/1_download-chart/databases charts_archive/1_download-chart/backup
     
     # Step 5: Execute download script
     - name: 🚀 Run download script
       run: |
-        python scripts/1_descargar.py
+        python scripts/1_download.py
       env:
         GITHUB_ACTIONS: true
     
@@ -67,20 +67,20 @@ jobs:
       run: |
         echo "📊 Verifying execution results..."
         
-        echo "📂 Contents of charts_archive/:"
-        ls -lah charts_archive/
+        echo "📂 Contents of charts_archive/1_download-chart/:"
+        ls -lah charts_archive/1_download-chart/
         
         echo -e "\n🗃️ Weekly databases:"
-        ls -lah charts_archive/databases/*.db 2>/dev/null || echo "No databases found"
+        ls -lah charts_archive/1_download-chart/databases/*.db 2>/dev/null || echo "No databases found"
         
         echo -e "\n💾 Backups:"
-        ls -lah charts_archive/backups/*.db 2>/dev/null || echo "No backups found"
+        ls -lah charts_archive/1_download-chart/backup/*.db 2>/dev/null || echo "No backups found"
         
         echo -e "\n📊 Latest CSV:"
-        ls -lah charts_archive/latest_chart.csv 2>/dev/null || echo "No CSV found"
+        ls -lah charts_archive/1_download-chart/latest_chart.csv 2>/dev/null || echo "No CSV found"
         
         echo -e "\n📈 File statistics:"
-        find charts_archive -type f -exec ls -lh {} \; | awk '{print $5, $9}'
+        find charts_archive/1_download-chart -type f -exec ls -lh {} \; | awk '{print $5, $9}'
     
     # Step 7: Commit and push changes to repository
     - name: 📤 Commit and push changes
@@ -132,7 +132,7 @@ jobs:
         
         # Calculate current week identifier
         WEEK_ID=$(python3 -c "from datetime import datetime; y,w,_ = datetime.now().isocalendar(); print(f'{y}-W{w:02d}')")
-        DB_FILE="charts_archive/databases/youtube_charts_${WEEK_ID}.db"
+        DB_FILE="charts_archive/1_download-chart/databases/youtube_charts_${WEEK_ID}.db"
         
         # Check if weekly database was created/updated
         if [ -f "$DB_FILE" ]; then
@@ -144,21 +144,21 @@ jobs:
         fi
         
         # Check if latest CSV was created
-        if [ -f "charts_archive/latest_chart.csv" ]; then
+        if [ -f "charts_archive/1_download-chart/latest_chart.csv" ]; then
           echo "✅ Latest CSV updated"
-          LATEST_SIZE=$(stat -c%s "charts_archive/latest_chart.csv")
+          LATEST_SIZE=$(stat -c%s "charts_archive/1_download-chart/latest_chart.csv")
           echo "📊 Size: $((LATEST_SIZE / 1024)) KB"
         fi
         
         # Count total historical databases
-        TOTAL_DBS=$(find charts_archive/databases -name "youtube_charts_*.db" 2>/dev/null | wc -l)
+        TOTAL_DBS=$(find charts_archive/1_download-chart/databases -name "youtube_charts_*.db" 2>/dev/null | wc -l)
         if [ "$TOTAL_DBS" -gt 0 ]; then
           echo ""
           echo "📦 Total historical databases: $TOTAL_DBS"
         fi
         
         # Count available backups
-        TOTAL_BACKUPS=$(find charts_archive/backups -name "backup_*.db" 2>/dev/null | wc -l)
+        TOTAL_BACKUPS=$(find charts_archive/1_download-chart/backup -name "backup_*.db" 2>/dev/null | wc -l)
         if [ "$TOTAL_BACKUPS" -gt 0 ]; then
           echo "💾 Total available backups: $TOTAL_BACKUPS"
         fi
