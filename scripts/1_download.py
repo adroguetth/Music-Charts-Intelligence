@@ -11,7 +11,6 @@ Features:
 - Automatic backup system before database updates
 - Handles Playwright browser automation with anti-detection measures
 - Fallback system for when scraping is not available
-- Optimized for GitHub Actions execution
 
 Requirements:
 - Python 3.7+
@@ -19,11 +18,11 @@ Requirements:
 - pandas
 - sqlite3 (included in Python standard library)
 
-GitHub Actions:
-    Set environment variable GITHUB_ACTIONS=true for CI/CD execution
+Usage:
+    python 5-prototype.py
 
-Author: Alfonso Droguett
-License: MIT
+Author: [Your Name]
+License: [Your License]
 """
 
 import asyncio
@@ -40,9 +39,6 @@ ARCHIVE_DIR = Path("charts_archive/1_download-chart")
 DATABASE_DIR = ARCHIVE_DIR / "databases"
 BACKUP_DIR = ARCHIVE_DIR / "backup"
 
-# Detect if running in GitHub Actions
-IS_GITHUB_ACTIONS = os.getenv('GITHUB_ACTIONS') == 'true'
-
 # Create directory structure if it doesn't exist
 for dir_path in [OUTPUT_DIR, ARCHIVE_DIR, DATABASE_DIR, BACKUP_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
@@ -55,9 +51,6 @@ def install_playwright():
     Performs a comprehensive check of:
     1. Playwright Python package installation
     2. Playwright browser binaries (Chromium)
-    
-    Note: In GitHub Actions, Playwright should be pre-installed via workflow steps.
-    This function serves as a verification and fallback mechanism.
     
     Returns:
         bool: True if Playwright is ready to use, False otherwise
@@ -88,12 +81,6 @@ def install_playwright():
                 return False
     except ImportError:
         print("   ❌ Playwright is not installed")
-        
-        # In GitHub Actions, this should not happen as dependencies are pre-installed
-        if IS_GITHUB_ACTIONS:
-            print("   🚨 Critical: Playwright missing in GitHub Actions environment")
-            return False
-        
         print("   📦 Installing Playwright...")
         
         # Install both playwright and pandas
@@ -146,11 +133,6 @@ async def download_youtube_charts():
     - Realistic viewport and locale settings
     - Multiple fallback selectors for download button
     
-    GitHub Actions Optimization:
-    - Extended timeouts for CI/CD environment
-    - Enhanced error reporting for workflow logs
-    - Artifact-ready output structure
-    
     Returns:
         Path: Path to downloaded CSV file if successful, None otherwise
     """
@@ -164,7 +146,6 @@ async def download_youtube_charts():
         
         async with async_playwright() as p:
             # Launch browser with anti-detection arguments
-            # Optimized for GitHub Actions runners
             browser = await p.chromium.launch(
                 headless=True,
                 args=[
@@ -232,231 +213,328 @@ async def download_youtube_charts():
                 await page.evaluate('window.scrollBy(0, 800)')
                 await page.wait_for_timeout(2000)
             
-            # Wait for content to be fully rendered
-            await page.wait_for_timeout(5000)
+            print("5. 🔍 SEARCHING FOR DOWNLOAD BUTTON...")
             
-            print("5. 🔍 Searching for download button...")
-            
-            # Multiple selector strategies for download button
-            selectors = [
-                'button[aria-label*="Download"]',
-                'button[title*="Download"]',
-                'a[download]',
-                'button:has-text("Download")',
-                '[data-tooltip*="Download"]',
-                'ytmc-button-renderer button',
-                'yt-icon-button[aria-label*="Download"]'
-            ]
-            
-            download_button = None
-            used_selector = None
-            
-            for selector in selectors:
-                try:
-                    element = await page.query_selector(selector)
-                    if element:
-                        is_visible = await element.is_visible()
-                        if is_visible:
-                            download_button = element
-                            used_selector = selector
-                            print(f"   ✅ Button found with selector: {selector}")
-                            break
-                except:
-                    continue
-            
-            if not download_button:
-                print("   ❌ Download button not found with any selector")
+            # Try primary selector: ID-based
+            print("   🎯 Trying ID 'download-button'...")
+            try:
+                await page.wait_for_selector('#download-button', timeout=15000)
                 
-                # Debug: save page screenshot
-                screenshot_path = OUTPUT_DIR / "debug_screenshot.png"
-                await page.screenshot(path=str(screenshot_path), full_page=True)
-                print(f"   📸 Debug screenshot saved: {screenshot_path}")
+                download_button = await page.query_selector('#download-button')
                 
-                # Debug: save page HTML
-                html_path = OUTPUT_DIR / "debug_page.html"
-                content = await page.content()
-                with open(html_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                print(f"   📄 Page HTML saved: {html_path}")
+                if download_button:
+                    print("   ✅ Button found by ID!")
+                    
+                    is_visible = await download_button.is_visible()
+                    print(f"   👁️  Button visible: {is_visible}")
+                    
+                    if not is_visible:
+                        print("   🔍 Scrolling to button...")
+                        await download_button.scroll_into_view_if_needed()
+                        await page.wait_for_timeout(3000)
+                    
+                    print("   ⬇️  Starting download...")
+                    
+                    # Wait for download to start
+                    async with page.expect_download(timeout=45000) as download_info:
+                        await download_button.click()
+                    
+                    download = await download_info.value
+                    
+                    # Save file with timestamp
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = ARCHIVE_DIR / f"latest_chart.csv"
+                    
+                    await download.save_as(filename)
+                    
+                    await browser.close()
+                    
+                    # Verify download success
+                    if filename.exists():
+                        file_size = filename.stat().st_size
+                        print(f"   💾 File downloaded: {file_size} bytes")
+                        
+                        # Count lines to verify completeness
+                        with open(filename, 'r', encoding='utf-8') as f:
+                            lines = f.readlines()
+                            print(f"   📊 Lines in CSV: {len(lines)}")
+                        
+                        if len(lines) >= 100:
+                            print(f"   🎉 COMPLETE CSV DOWNLOADED! ({len(lines)-1} songs)")
+                            return filename
+                        else:
+                            print(f"   ⚠️  CSV may be incomplete: only {len(lines)-1} songs")
+                            return filename
+                    
+            except Exception as e:
+                print(f"   ❌ Error with ID 'download-button': {e}")
+            
+            # Try secondary selector: title attribute
+            print("   🎯 Trying selector 'paper-icon-button[title=\"download\"]'...")
+            try:
+                download_button = await page.wait_for_selector('paper-icon-button[title="download"]', timeout=10000)
                 
-                await browser.close()
-                return None
+                if download_button:
+                    print("   ✅ Button found by title!")
+                    
+                    await download_button.scroll_into_view_if_needed()
+                    await page.wait_for_timeout(2000)
+                    
+                    async with page.expect_download(timeout=30000) as download_info:
+                        await download_button.click()
+                    
+                    download = await download_info.value
+                    
+                    filename = ARCHIVE_DIR / f"latest_chart.csv"
+                    await download.save_as(filename)
+                    
+                    await browser.close()
+                    
+                    if filename.exists():
+                        print(f"   💾 File downloaded successfully!")
+                        return filename
+                    
+            except Exception as e:
+                print(f"   ❌ Error with title selector: {e}")
             
-            print("6. 📥 Starting download...")
+            # Try tertiary selector: generic download icon
+            print("   🎯 Trying generic selector 'button[aria-label*=\"download\" i]'...")
+            try:
+                download_button = await page.wait_for_selector('button[aria-label*="download" i]', timeout=10000)
+                
+                if download_button:
+                    print("   ✅ Button found by aria-label!")
+                    
+                    await download_button.scroll_into_view_if_needed()
+                    await page.wait_for_timeout(2000)
+                    
+                    async with page.expect_download(timeout=30000) as download_info:
+                        await download_button.click()
+                    
+                    download = await download_info.value
+                    
+                    filename = ARCHIVE_DIR / f"latest_chart.csv"
+                    await download.save_as(filename)
+                    
+                    await browser.close()
+                    
+                    if filename.exists():
+                        print(f"   💾 File downloaded successfully!")
+                        return filename
+                    
+            except Exception as e:
+                print(f"   ❌ Error with aria-label selector: {e}")
             
-            # Set up download handler
-            async with page.expect_download(timeout=60000) as download_info:
-                await download_button.click()
-                await page.wait_for_timeout(3000)
-            
-            download = await download_info.value
-            
-            # Save file with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"youtube_chart_{timestamp}.csv"
-            download_path = OUTPUT_DIR / filename
-            
-            await download.save_as(download_path)
-            
-            # Also save as latest_chart.csv for easy access
-            latest_path = ARCHIVE_DIR / "latest_chart.csv"
-            shutil.copy(download_path, latest_path)
-            
-            print(f"   ✅ Download completed!")
-            print(f"      📁 Timestamped: {download_path}")
-            print(f"      📁 Latest: {latest_path}")
+            # Final fallback: search all buttons
+            print("   🎯 Searching all buttons on page...")
+            try:
+                all_buttons = await page.query_selector_all('button, paper-icon-button, iron-icon')
+                print(f"   🔍 Found {len(all_buttons)} potential buttons")
+                
+                for idx, button in enumerate(all_buttons):
+                    try:
+                        # Get button attributes
+                        tag_name = await button.evaluate('el => el.tagName')
+                        outer_html = await button.evaluate('el => el.outerHTML')
+                        
+                        # Check if button contains download-related text/attributes
+                        if any(keyword in outer_html.lower() for keyword in ['download', 'descarga', 'export', 'csv']):
+                            print(f"   🎯 Attempting button {idx+1}: {tag_name}")
+                            
+                            is_visible = await button.is_visible()
+                            if not is_visible:
+                                await button.scroll_into_view_if_needed()
+                                await page.wait_for_timeout(1000)
+                            
+                            async with page.expect_download(timeout=15000) as download_info:
+                                await button.click()
+                                await page.wait_for_timeout(2000)
+                            
+                            download = await download_info.value
+                            
+                            filename = ARCHIVE_DIR / f"latest_chart.csv"
+                            await download.save_as(filename)
+                            
+                            await browser.close()
+                            
+                            if filename.exists():
+                                print(f"   💾 File downloaded successfully!")
+                                return filename
+                            
+                    except:
+                        continue
+                        
+            except Exception as e:
+                print(f"   ❌ Error in fallback search: {e}")
             
             await browser.close()
+            print("   ❌ Could not find download button")
+            return None
             
-            # Verify file content
-            if latest_path.exists():
-                size_kb = latest_path.stat().st_size / 1024
-                print(f"      📊 Size: {size_kb:.1f} KB")
-                
-                with open(latest_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    lines = f.readlines()
-                    num_lines = len(lines)
-                    print(f"      📝 Lines: {num_lines} (including header)")
-                    if num_lines > 0:
-                        print(f"      ✅ CSV appears valid")
-                
-                return latest_path
-            else:
-                print("      ❌ File not found after download")
-                return None
-                
     except Exception as e:
-        print(f"❌ Error during download: {e}")
+        print(f"⚠️  Error in download process: {e}")
         import traceback
         traceback.print_exc()
         return None
 
 
-def cleanup_old_backups(days: int = 7):
+def create_backup_before_update(week_id: str):
     """
-    Clean up backup files older than specified days.
+    Create backup of existing database before updating.
     
     Args:
-        days: Maximum age of backups to keep (default: 7 days)
+        week_id: ISO week identifier for the database to backup
     """
-    print(f"🧹 Cleaning backups older than {days} days...")
+    db_path = DATABASE_DIR / f"youtube_charts_{week_id}.db"
+    
+    if not db_path.exists():
+        return
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = BACKUP_DIR / f"backup_{week_id}_{timestamp}.db"
+    
+    try:
+        shutil.copy2(db_path, backup_filename)
+        print(f"   ✅ Backup created: {backup_filename.name}")
+    except Exception as e:
+        print(f"   ⚠️  Error creating backup: {e}")
+
+
+def cleanup_old_backups(days: int = 7):
+    """
+    Remove backup files older than specified days.
+    
+    Args:
+        days: Number of days to retain backups (default: 7)
+    """
+    print(f"   🧹 Cleaning backups older than {days} days...")
     
     cutoff_date = datetime.now() - timedelta(days=days)
-    deleted = 0
+    deleted_count = 0
     
-    for backup_file in BACKUP_DIR.glob("backup_*.db"):
-        try:
-            file_time = datetime.fromtimestamp(backup_file.stat().st_mtime)
-            if file_time < cutoff_date:
-                backup_file.unlink()
-                deleted += 1
-                print(f"   🗑️  Deleted: {backup_file.name}")
-        except Exception as e:
-            print(f"   ⚠️  Error deleting {backup_file.name}: {e}")
+    for backup in BACKUP_DIR.glob("backup_*.db"):
+        if backup.stat().st_mtime < cutoff_date.timestamp():
+            try:
+                backup.unlink()
+                deleted_count += 1
+            except Exception as e:
+                print(f"   ⚠️  Error deleting {backup.name}: {e}")
     
-    if deleted == 0:
-        print("   ✅ No old backups to delete")
+    if deleted_count > 0:
+        print(f"   ✅ Deleted {deleted_count} old backup(s)")
     else:
-        print(f"   ✅ Deleted {deleted} old backup(s)")
+        print(f"   ℹ️  No old backups to delete")
 
 
 def cleanup_old_databases(weeks: int = 52):
     """
-    Clean up weekly database files older than specified weeks.
+    Remove database files older than specified weeks.
+    
+    Keeps at least one year (52 weeks) of data by default.
     
     Args:
-        weeks: Maximum number of weeks to keep (default: 52 = 1 year)
+        weeks: Number of weeks to retain databases (default: 52)
     """
-    print(f"🧹 Cleaning databases older than {weeks} weeks...")
+    print(f"   🧹 Cleaning databases older than {weeks} weeks...")
     
-    all_dbs = sorted(DATABASE_DIR.glob("youtube_charts_*.db"))
+    current_week = get_week_identifier()
+    current_date = datetime.now()
+    cutoff_date = current_date - timedelta(weeks=weeks)
     
-    if len(all_dbs) <= weeks:
-        print(f"   ✅ Only {len(all_dbs)} databases, no cleanup needed")
-        return
+    deleted_count = 0
     
-    # Keep only the most recent 'weeks' databases
-    to_delete = all_dbs[:-weeks]
-    deleted = 0
-    
-    for db_file in to_delete:
+    for db in DATABASE_DIR.glob("youtube_charts_*.db"):
         try:
-            db_file.unlink()
-            deleted += 1
-            print(f"   🗑️  Deleted: {db_file.name}")
+            # Extract week identifier from filename
+            week_id = db.stem.replace("youtube_charts_", "")
+            year, week = map(int, week_id.split("-W"))
+            
+            # Calculate date for this week
+            db_date = datetime.strptime(f"{year}-W{week:02d}-1", "%Y-W%W-%w")
+            
+            if db_date < cutoff_date:
+                db.unlink()
+                deleted_count += 1
+                print(f"      ✅ Deleted: {db.name}")
         except Exception as e:
-            print(f"   ⚠️  Error deleting {db_file.name}: {e}")
+            print(f"   ⚠️  Error processing {db.name}: {e}")
     
-    if deleted == 0:
-        print("   ✅ No old databases to delete")
+    if deleted_count > 0:
+        print(f"   ✅ Deleted {deleted_count} old database(s)")
     else:
-        print(f"   ✅ Deleted {deleted} old database(s)")
+        print(f"   ℹ️  No old databases to delete")
 
 
 def update_sqlite_database(csv_path: Path, week_id: str):
     """
-    Update SQLite database with CSV data.
+    Update SQLite database with new chart data.
+    
+    This function:
+    1. Reads CSV data into pandas DataFrame
+    2. Adds metadata columns (download date, time, week ID)
+    3. Creates backup if database exists
+    4. Inserts data using temporary table pattern
+    5. Creates indexes for query optimization
     
     Args:
         csv_path: Path to CSV file with chart data
-        week_id: Week identifier (e.g., '2025-W05')
+        week_id: ISO week identifier for this data
         
     Returns:
-        Path: Path to database file if successful, None otherwise
+        Path: Path to updated database file, None if error
     """
-    print(f"📊 Updating SQLite database for {week_id}...")
+    print("   📊 Processing chart data...")
     
     try:
-        import pandas as pd
         import sqlite3
+        import pandas as pd
         
-        # Read CSV file
-        print("   📖 Reading CSV file...")
-        df = pd.read_csv(csv_path, encoding='utf-8', on_bad_lines='skip')
+        # Read CSV with error handling for encoding issues
+        try:
+            df = pd.read_csv(csv_path, encoding='utf-8')
+        except UnicodeDecodeError:
+            df = pd.read_csv(csv_path, encoding='latin-1')
         
-        print(f"   ✅ Loaded {len(df)} records")
-        print(f"   📋 Columns: {', '.join(df.columns.tolist())}")
+        print(f"   📈 Songs loaded: {len(df)}")
+        
+        # Display sample data
+        if len(df) > 0:
+            print(f"   📋 Columns: {', '.join(df.columns.tolist())}")
+            print(f"   🎵 Sample songs:")
+            for i in range(min(5, len(df))):
+                row = df.iloc[i]
+                track = str(row.get('Track Name', row.get('Track Name', 'N/A')))[:30]
+                artist = str(row.get('Artist Names', row.get('Artist Names', 'N/A')))[:30]
+                print(f"      {i+1}. {track}... - {artist}...")
         
         # Add metadata columns
-        df['download_date'] = datetime.now().strftime('%Y-%m-%d')
+        current_time = datetime.now()
+        df['download_date'] = current_time.strftime('%Y-%m-%d')
+        df['download_time'] = current_time.strftime('%H:%M:%S')
         df['week_id'] = week_id
+        df['timestamp'] = current_time.strftime('%Y%m%d_%H%M%S')
         
-        # Database path
+        # Database path for this week
         db_path = DATABASE_DIR / f"youtube_charts_{week_id}.db"
         
-        # Create backup if database exists
+        # Create backup before updating existing database
         if db_path.exists():
-            backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = BACKUP_DIR / f"backup_{week_id}_{backup_timestamp}.db"
-            shutil.copy(db_path, backup_path)
-            print(f"   💾 Backup created: {backup_path.name}")
+            print(f"   💾 Creating backup before update...")
+            create_backup_before_update(week_id)
         
-        # Connect to database
+        # Connect to SQLite database
         conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
         
-        # Create temporary table with new data
-        temp_table_name = f"temp_chart_data_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Use temporary table pattern to avoid data loss
+        temp_table_name = f"temp_{current_time.strftime('%Y%m%d_%H%M%S')}"
         df.to_sql(temp_table_name, conn, if_exists='replace', index=False)
         
-        # Check if main table exists
-        cursor.execute("""
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name='chart_data'
-        """)
-        table_exists = cursor.fetchone() is not None
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='chart_data'")
         
-        if table_exists:
-            # Delete existing records for this week
-            cursor.execute("DELETE FROM chart_data WHERE week_id = ?", (week_id,))
-            deleted_count = cursor.rowcount
-            print(f"   🗑️  Deleted {deleted_count} old records for {week_id}")
-            
-            # Insert new records
+        # Insert into main table or rename temp table
+        if cursor.fetchone():
             cursor.execute(f"INSERT INTO chart_data SELECT * FROM {temp_table_name}")
-            print(f"   ✅ Inserted {len(df)} new records")
-            
-            # Drop temporary table
             cursor.execute(f"DROP TABLE {temp_table_name}")
         else:
             cursor.execute(f"ALTER TABLE {temp_table_name} RENAME TO chart_data")
@@ -506,9 +584,6 @@ def create_fallback_file():
     Used when scraping fails or is unavailable. Generates 100 dummy records
     with realistic structure matching YouTube Charts CSV format.
     
-    Note: This is a safety mechanism. In production GitHub Actions,
-    consider triggering alerts if fallback is used frequently.
-    
     Returns:
         Path: Path to created fallback CSV file, None if error
     """
@@ -553,8 +628,6 @@ def list_available_databases():
     - Date range covered
     - File size
     - Total records across all databases
-    
-    Useful for GitHub Actions workflow logs and monitoring.
     """
     dbs = sorted(DATABASE_DIR.glob("youtube_charts_*.db"))
     
@@ -605,10 +678,6 @@ def main():
     4. Cleanup old files
     5. Display summary statistics
     
-    Environment Detection:
-    - Automatically detects GitHub Actions environment
-    - Adjusts logging and behavior accordingly
-    
     Returns:
         int: Exit code (0 for success, 1 for error)
     """
@@ -626,14 +695,7 @@ def main():
     
     week_id = get_week_identifier()
     print(f"\n📆 Current week: {week_id}")
-    
-    # Environment detection for logging
-    if IS_GITHUB_ACTIONS:
-        print(f"💻 Running in GitHub Actions")
-        print(f"   Workflow: {os.getenv('GITHUB_WORKFLOW', 'N/A')}")
-        print(f"   Runner: {os.getenv('RUNNER_NAME', 'N/A')}")
-    else:
-        print(f"💻 Running locally")
+    print(f"💻 Running locally")
     
     print("\n1. 📥 DOWNLOADING YOUTUBE CHARTS (Complete CSV)...")
     print("   ⏱️  This may take 1-2 minutes...")
