@@ -534,8 +534,23 @@ def update_sqlite_database(csv_path: Path, week_id: str):
         
         # Insert into main table or rename temp table
         if cursor.fetchone():
-            cursor.execute(f"INSERT INTO chart_data SELECT * FROM {temp_table_name}")
-            cursor.execute(f"DROP TABLE {temp_table_name}")
+            # Delete existing data for this week before inserting new data
+            cursor.execute("DELETE FROM chart_data WHERE week_id = ?", (week_id,))
+            deleted_rows = cursor.rowcount
+            if deleted_rows > 0:
+                print(f"   🗑️  Deleted {deleted_rows} old records for {week_id}")
+            
+            # Try to insert - if it fails due to schema mismatch, recreate table
+            try:
+                cursor.execute(f"INSERT INTO chart_data SELECT * FROM {temp_table_name}")
+                cursor.execute(f"DROP TABLE {temp_table_name}")
+            except sqlite3.OperationalError as e:
+                if "columns" in str(e).lower():
+                    print(f"   ⚠️  Schema mismatch detected, recreating table...")
+                    cursor.execute("DROP TABLE IF EXISTS chart_data")
+                    cursor.execute(f"ALTER TABLE {temp_table_name} RENAME TO chart_data")
+                else:
+                    raise
         else:
             cursor.execute(f"ALTER TABLE {temp_table_name} RENAME TO chart_data")
         
