@@ -16,7 +16,7 @@ YouTube Charts Scraper: Descarga Automatizada <Br><Br>
 
 ## 📋 General Description
 
-This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_descargar.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
+This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_download.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
 
 ### Key Features
 
@@ -34,7 +34,7 @@ This project consists of an automated system for weekly downloading and storing 
      alt="Diagrama reducido al 40%">
 </center>
 
-## 🔍 Detailed Analysis of `1_descargar.py`
+## 🔍 Detailed Analysis of `1_download.py`
 
 ### Code Structure
 
@@ -43,17 +43,18 @@ This project consists of an automated system for weekly downloading and storing 
 ```python
 # Main directories
 OUTPUT_DIR = Path("data")
-ARCHIVE_DIR = Path("charts_archive")
+ARCHIVE_DIR = Path("charts_archive/1_download-chart")
 DATABASE_DIR = ARCHIVE_DIR / "databases"
-BACKUP_DIR = ARCHIVE_DIR / "backups"
+BACKUP_DIR = ARCHIVE_DIR / "backup"
 ```
 
 The script organizes data in a hierarchical structure:
 
 - `data/`: Temporary and debugging data
-- `charts_archive/`: Main archive
+- `charts_archive/1_download-chart/`: Main archive for downloaded data
   - `databases/`: SQLite databases by week
-  - `backups/`: Temporary backup copies
+  - `backup/`: Temporary backup copies
+  - `latest_chart.csv`: Most recent chart data
 
 #### **2. Environment Detection**
 
@@ -176,7 +177,7 @@ Includes:
 - File sizes
 - Total accumulated records
 
-## ⚙️ GitHub Actions Workflow Analysis (`download-chart.yml`)
+## ⚙️ GitHub Actions Workflow Analysis (`1_download-chart.yml`)
 
 ### **Workflow Structure**
 
@@ -221,27 +222,36 @@ with:
    - System dependencies
 
 4. **📁 Directory Structure Creation**
-   - Required directories for files
+
+```yaml
+run: |
+  mkdir -p data charts_archive/1_download-chart/databases charts_archive/1_download-chart/backup
+```
 
 5. **🚀 Main Script Execution**
 
 ```yaml
+run: |
+  python scripts/1_download.py
 env:
   GITHUB_ACTIONS: true  # Environment variable for detection
 ```
 
 6. **✅ Results Verification**
-   - Listing of generated files
+   - Listing of generated files in `charts_archive/1_download-chart/`
    - Size statistics
    - Existence validation
+
 7. **📤 Automatic Commit and Push**
    - Automatic user configuration
    - Only commits changes to `charts_archive/`
    - Message with date and week
    - Automatic push to main
+
 8. **📦 Artifact Upload (only on failure)**
    - Data and files for debugging
    - Retention: 7 days
+
 9. **📋 Final Report**
    - Detailed statistics
    - Trigger information
@@ -302,7 +312,7 @@ python -m playwright install-deps
 4. **Run Initial Test**
 
 ```bash
-python scripts/1_descargar.py
+python scripts/1_download.py
 ```
 
 ### **Development Configuration**
@@ -317,7 +327,7 @@ export GITHUB_ACTIONS=true
 export PWDEBUG=1
 ```
 
-1. **Execution with Visualization**
+2. **Execution with Visualization**
 
 ```python
 # Modify in script:
@@ -328,14 +338,17 @@ headless=False  # Instead of True
 
 ```text
 charts_archive/
-├── latest_chart.csv              # Most recent CSV (always updated)
-├── databases/
-│   ├── youtube_charts_2025-W01.db
-│   ├── youtube_charts_2025-W02.db
-│   └── ... (one per week)
-└── backups/
-    ├── backup_2025-W01_20250106_120500.db
-    └── ... (temporary backups)
+├── 1_download-chart/
+│   ├── latest_chart.csv              # Most recent CSV (always updated)
+│   ├── databases/
+│   │   ├── youtube_charts_2025-W01.db
+│   │   ├── youtube_charts_2025-W02.db
+│   │   └── ... (one per week)
+│   └── backup/
+│       ├── backup_2025-W01_20250106_120500.db
+│       └── ... (temporary backups)
+└── 2_enriched_chart/
+    └── (future enriched data)
 ```
 
 ### **Naming Convention**
@@ -349,7 +362,7 @@ charts_archive/
 ### **Adjustable Parameters in Script**
 
 ```python
-# In 1_descargar.py
+# In 1_download.py
 RETENTION_DAYS = 7      # Days to keep backups
 RETENTION_WEEKS = 52    # Weeks to keep databases
 TIMEOUT = 120000        # Timeout in milliseconds (2 minutes)
@@ -358,14 +371,12 @@ TIMEOUT = 120000        # Timeout in milliseconds (2 minutes)
 ### **Workflow Configuration**
 
 ```yaml
-# In download-chart.yml
+# In 1_download-chart.yml
 env:
   RETENTION_DAYS: 30    # Days for artifacts
 
 timeout-minutes: 30     # Total job timeout
 ```
-
-
 
 ## 🐛 Troubleshooting
 
@@ -383,10 +394,12 @@ python -m playwright install-deps
    - Check runner network connection
    - Increase timeout in YML
    - Review Playwright logs
+
 3. **Error: Download button not found**
    - YouTube may have changed interface
    - Check screenshot in artifacts
    - Update selectors in code
+
 4. **Error: Corrupt database**
    - Use automatic backups
    - Verify write permissions
