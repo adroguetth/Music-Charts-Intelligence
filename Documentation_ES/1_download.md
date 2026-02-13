@@ -496,4 +496,4 @@ python -m playwright install-deps
 
 ---
 
-**Nota**: Este README corresponde específicamente al script `1_download.py`. Para documentación de otros scripts, consultar sus READMEs respectivos.
+**Nota**: Este Documentacion corresponde específicamente al script `1_download.py`. Para documentación de otros scripts, consultar sus READMEs respectivos.
