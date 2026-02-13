@@ -40,13 +40,15 @@ Este script es parte de un pipeline multi-etapa:
 
 ### **Flujo General de Datos**
 
-<img src="/mnt/omv/Sync/Documentos/-Datos-TD/Proyectos/1-Youtube music/2-Web Scraper/Diagrama/Flujo General de Datos.png" style="zoom:10%;" />
+<img src="https://drive.google.com/uc?export=view&id=1iwi96GAMQXgi42aesPn755vN_VRJYx8D"
+  width="700"
+     alt="Flujo General de Datos">
 
 ## 📊 Diagrama de Flujo del Proceso
 
-<img src="/mnt/omv/Sync/Documentos/-Datos-TD/Proyectos/1-Youtube music/2-Web Scraper/Diagrama/Diagrama Español.png" style="zoom:10%;" />
-
-<div style="page-break-after: always;"></div>
+<img src="https://drive.google.com/uc?export=view&id=1fA6bXnQeZ0vKXHobH65cKFmm251QRJnu" 
+     width="400" 
+     alt="Diagrama de Flujo del Proceso">
 
 ## 🔍 Análisis Detallado de `1_download.py`
 
