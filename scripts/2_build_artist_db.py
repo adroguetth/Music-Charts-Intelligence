@@ -3,37 +3,48 @@
 
 """
 Artist Country + Genre Detection System
-DETECCIÓN DE ESCRITURA MEJORADA Y BÚSQUEDA INTELIGENTE
-International music database with multi-language support
-
+Versión para GitHub Actions
+Lee la última base de datos de charts desde charts_archive/1_download-chart/databases/
+y actualiza charts_archive/2_artist_countries_genres/artist_countries_genres.db
 """
 
+import os
+import sys
 import sqlite3
 import pandas as pd
 import requests
 import re
 import unicodedata
-from typing import Optional, Tuple, Dict, Set, List
 import time
 import logging
 from datetime import datetime
-import os
+from pathlib import Path
 from difflib import SequenceMatcher
 from collections import defaultdict
+from typing import Optional, Tuple, Dict, Set, List
 
 # ============================================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN - RUTAS RELATIVAS AL REPOSITORIO
 # ============================================================================
 
-DB_PATH = "/home/alfonso/Python/2-youtube/2-enriquecer/pais/artist_countries_genres.db"
-CSV_PATH = "/home/alfonso/Python/2-youtube/2-enriquecer/pais/latest_chart.csv"
+# Directorio raíz del proyecto (dos niveles arriba de este script)
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 
-# --- NUEVAS CONSTANTES PARA GITHUB ---
-GITHUB_API_URL = "https://api.github.com/repos/adroguetth/Music-Charts-Intelligence/contents/charts_archive/1_download-chart/databases"
-LOCAL_DB_FOLDER = "/home/alfonso/Python/2-youtube/2-enriquecer/pais/chart_databases/"
-# --------------------------------------
+# Rutas de bases de datos
+CHARTS_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
+ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_artist_countries_genres" / "artist_countries_genres.db"
 
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+# Asegurar que existen los directorios
+ARTIST_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+# ============================================================================
+# CONFIGURACIÓN DE LOGGING (para GitHub Actions)
+# ============================================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -10427,97 +10438,42 @@ def export_csv(csv_artists: Set[str]):
         logger.error(f"❌ Export error: {e}")
 
 # ============================================================================
-# NUEVAS FUNCIONES PARA LEER DESDE GITHUB
+# FUNCIÓN PARA OBTENER LA ÚLTIMA BASE DE DATOS DE CHARTS 
 # ============================================================================
-
-def get_latest_chart_database() -> Optional[str]:
+def get_latest_chart_database() -> Optional[Path]:
     """
-    Usa la API de GitHub para listar archivos, encuentra la base de datos
-    más reciente (formato youtube_charts_YYYY-Www.db) y la descarga.
-    Retorna la ruta local a la base de datos.
+    Busca en el directorio charts_archive/1_download-chart/databases/
+    el archivo más reciente con formato youtube_charts_YYYY-Www.db
     """
-    import os
-    import re
-    from datetime import datetime
-    import requests
-
-    os.makedirs(LOCAL_DB_FOLDER, exist_ok=True)
-
-    try:
-        # 1. Obtener lista de archivos usando GitHub API
-        headers = {'Accept': 'application/vnd.github.v3+json'}
-        response = requests.get(GITHUB_API_URL, headers=headers, timeout=15)
-
-        if response.status_code != 200:
-            logger.error(f"❌ Error accediendo a GitHub API: {response.status_code}")
-            return None
-
-        files = response.json()
-
-        # 2. Filtrar archivos .db con el patrón correcto
-        pattern = r'youtube_charts_(\d{4})-W(\d{2})\.db'
-        db_files = []
-
-        for file in files:
-            if file['type'] == 'file' and file['name'].endswith('.db'):
-                match = re.search(pattern, file['name'])
-                if match:
-                    year = int(match.group(1))
-                    week = int(match.group(2))
-                    db_files.append({
-                        'name': file['name'],
-                        'download_url': file['download_url'],
-                        'year': year,
-                        'week': week
-                    })
-
-        if not db_files:
-            logger.error("❌ No se encontraron bases de datos en el repositorio")
-            return None
-
-        # 3. Ordenar por año y semana (más reciente primero)
-        db_files.sort(key=lambda x: (x['year'], x['week']), reverse=True)
-        latest = db_files[0]
-
-        local_path = os.path.join(LOCAL_DB_FOLDER, latest['name'])
-
-        # 4. Verificar si ya existe localmente
-        if os.path.exists(local_path):
-            logger.info(f"📁 Usando base de datos local: {latest['name']}")
-            return local_path
-
-        # 5. Descargar el archivo
-        logger.info(f"⬇️ Descargando {latest['name']}...")
-        db_response = requests.get(latest['download_url'], timeout=30)
-
-        if db_response.status_code == 200:
-            with open(local_path, 'wb') as f:
-                f.write(db_response.content)
-            logger.info(f"✅ Descargado: {latest['name']}")
-            return local_path
-        else:
-            logger.error(f"❌ Error descargando {latest['name']}: {db_response.status_code}")
-            return None
-
-    except Exception as e:
-        logger.error(f"❌ Error en get_latest_chart_database: {e}")
+    if not CHARTS_DB_DIR.exists():
+        logger.error(f"❌ Directorio no encontrado: {CHARTS_DB_DIR}")
         return None
 
-def get_artists_from_database(db_path: str) -> Set[str]:
-    """
-    Lee la tabla 'chart_data' de la base de datos SQLite y extrae los artistas.
-    Maneja correctamente nombres de columna con espacios (ej. 'Artist Names').
-    """
-    if not db_path or not os.path.exists(db_path):
-        logger.error(f"❌ Base de datos no encontrada: {db_path}")
+    db_files = list(CHARTS_DB_DIR.glob("youtube_charts_*.db"))
+    if not db_files:
+        logger.error("❌ No se encontraron bases de datos de charts")
+        return None
+
+    # Ordenar por fecha de modificación (más reciente primero)
+    latest = max(db_files, key=lambda f: f.stat().st_mtime)
+    logger.info(f"📁 Usando base de datos: {latest.name}")
+    return latest
+
+# ============================================================================
+# FUNCIÓN PARA OBTENER ARTISTAS DESDE LA BASE DE DATOS DE CHARTS
+# ============================================================================
+def get_artists_from_chart_db(db_path: Path) -> Set[str]:
+    """Extrae artistas únicos de la tabla chart_data (columna 'Artist Names')"""
+    if not db_path.exists():
+        logger.error(f"❌ Archivo no encontrado: {db_path}")
         return set()
 
     artists = set()
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
 
-        # Verificar qué columnas existen
+        # Verificar columnas
         cursor.execute("PRAGMA table_info(chart_data)")
         columns = [col[1] for col in cursor.fetchall()]
 
@@ -10533,11 +10489,8 @@ def get_artists_from_database(db_path: str) -> Set[str]:
             conn.close()
             return set()
 
-        # Escapar el nombre de la columna si tiene espacios
-        # Usamos comillas dobles para nombres con espacios (estándar SQL)
+        # Escapar nombre si tiene espacios
         safe_column = f'"{artist_column}"' if ' ' in artist_column else artist_column
-
-        # Leer todos los valores
         query = f"SELECT {safe_column} FROM chart_data WHERE {safe_column} IS NOT NULL"
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -10547,9 +10500,8 @@ def get_artists_from_database(db_path: str) -> Set[str]:
                 artists.update(split_artists(str(row[0])))
 
         conn.close()
-        logger.info(f"📊 {len(artists)} artistas únicos en la base de datos")
+        logger.info(f"📊 {len(artists)} artistas únicos en la base de datos de charts")
         return artists
-
     except Exception as e:
         logger.error(f"❌ Error leyendo base de datos: {e}")
         if 'conn' in locals():
@@ -10559,34 +10511,31 @@ def get_artists_from_database(db_path: str) -> Set[str]:
 # ============================================================================
 # FUNCIÓN PRINCIPAL
 # ============================================================================
-
-def process_github_data():
-    """
-    Versión que lee desde la base de datos más reciente del repositorio GitHub.
-    """
+def main():
     logger.info("="*80)
     logger.info("🎵 Artist Country + Genre Detection System - MODO GITHUB")
-    logger.info("   DB: artist_countries_genres.db | Table: artist | Columns: name, country, macro_genre")
-    logger.info("   🌍 Leyendo desde la base de datos más reciente del repositorio GitHub")
+    logger.info(f"📁 DB de charts: {CHARTS_DB_DIR}")
+    logger.info(f"💾 DB de artistas: {ARTIST_DB_PATH}")
     logger.info("="*80)
 
-    # 1. Asegurar base de datos local
+    # 1. Asegurar que existe la base de datos de artistas
     create_database()
 
-    # 2. Obtener la base de datos más reciente
-    chart_db_path = get_latest_chart_database()
-    if not chart_db_path:
-        logger.error("❌ No se pudo obtener la base de datos. Abortando.")
-        return
+    # 2. Obtener la última base de datos de charts
+    chart_db = get_latest_chart_database()
+    if not chart_db:
+        logger.error("❌ No se pudo obtener la base de datos de charts. Abortando.")
+        sys.exit(1)
 
     # 3. Extraer artistas
-    chart_artists = get_artists_from_database(chart_db_path)
+    chart_artists = get_artists_from_chart_db(chart_db)
     if not chart_artists:
         logger.error("❌ No se encontraron artistas en la base de datos.")
-        return
+        sys.exit(1)
 
     logger.info(f"🎯 {len(chart_artists)} artistas únicos a procesar\n")
 
+    # Contadores
     in_db = 0
     new_found = 0
     not_found = 0
@@ -10599,12 +10548,11 @@ def process_github_data():
             logger.info(f"  ✅ {artist} → {db_country} | {db_genre}")
             in_db += 1
             genre_found += 1
-
         else:
             if exists:
-                logger.info(f"  🔍 {artist} (in DB - País: {db_country or '?'} | Género: {db_genre or '?'}, buscando info faltante...)")
+                logger.info(f"  🔍 {artist} (en DB - País: {db_country or '?'} | Género: {db_genre or '?'}, buscando info faltante...)")
             else:
-                logger.info(f"  🔍 {artist} (new, searching...)")
+                logger.info(f"  🔍 {artist} (nuevo, buscando...)")
 
             country, country_source = search_country(artist)
 
@@ -10633,13 +10581,15 @@ def process_github_data():
             if not country and not genre:
                 not_found += 1
 
+        # Reporte parcial cada 10 artistas
         if i % 10 == 0:
             logger.info(f"\n  📊 {i}/{len(chart_artists)} | "
                         f"✅ Completos: {in_db} | 🔍 Nuevos país: {new_found} | 🎵 Nuevos género: {genre_found} | ❌ Sin info: {not_found}\n")
 
+    # Resumen final
     logger.info("\n" + "="*80)
     logger.info(f"📈 SUMMARY")
-    logger.info(f"   Total artistas: {len(chart_artists)}")
+    logger.info(f"   Total artistas procesados: {len(chart_artists)}")
     if len(chart_artists) > 0:
         logger.info(f"   ✅ Completos (país+género): {in_db} ({in_db/len(chart_artists)*100:.1f}%)")
         logger.info(f"   🔍 Nuevos país encontrados: {new_found} ({new_found/len(chart_artists)*100:.1f}%)")
@@ -10648,12 +10598,7 @@ def process_github_data():
     logger.info(f"   🗃️  Total en DB: {count_artists_in_database()}")
     logger.info("="*80)
 
-    # 4. Exportar CSV con los resultados (opcional)
-    export_csv(chart_artists)
-
-# ============================================================================
-# LLAMADA FINAL
-# ============================================================================
+    # Nota: No se exporta CSV porque no es necesario en GitHub
 
 if __name__ == "__main__":
-    process_github_data()  
+    main()
