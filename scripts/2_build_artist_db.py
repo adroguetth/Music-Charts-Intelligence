@@ -27,39 +27,30 @@ from typing import Optional, Tuple, Dict, Set, List
 # CONFIGURACIÓN - RUTAS RELATIVAS AL REPOSITORIO
 # ============================================================================
 
-# Directorio raíz del proyecto (dos niveles arriba de este script)
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
-
-# Rutas de bases de datos
 CHARTS_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
 ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_artist_countries_genres" / "artist_countries_genres.db"
 
-# Asegurar que existen los directorios
 ARTIST_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # ============================================================================
-# CONFIGURACIÓN DE LOGGING (para GitHub Actions)
+# CONFIGURACIÓN DE LOGGING
 # ============================================================================
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# CACHÉ EN MEMORIA (para evitar consultas repetidas en la misma ejecución)
+# CACHÉ EN MEMORIA Y SESIONES HTTP
 # ============================================================================
 _CACHE = {
-    'musicbrainz_country': {},   # artista -> (país, fuente)
-    'wikidata_country': {},      # artista -> país
-    'wikipedia_country': {},     # (artista, lang) -> país
-    'musicbrainz_genre': {},     # artista -> lista candidatos
-    'wikidata_genre': {},        # artista -> lista candidatos
-    'wikipedia_genre': {},       # (artista, lang) -> lista candidatos
+    'musicbrainz_country': {},
+    'wikidata_country': {},
+    'wikipedia_country': {},
+    'musicbrainz_genre': {},
+    'wikidata_genre': {},
+    'wikipedia_genre': {},
 }
 
-# Sesiones HTTP reutilizables
 _SESSION_WIKIPEDIA = requests.Session()
 _SESSION_WIKIDATA = requests.Session()
 _SESSION_MUSICBRAINZ = requests.Session()
@@ -10382,79 +10373,17 @@ def count_artists_in_database() -> int:
         return total
     except:
         return 0
-
 # ============================================================================
-# FUNCIONES DE UTILIDAD
-# ============================================================================
-
-def split_artists(text: str) -> List[str]:
-    if pd.isna(text) or not text:
-        return []
-    text = str(text).strip()
-    for sep in [' & ', ', ', ' and ', ' y ', ' feat. ', ' feat ',
-                ' ft. ', ' ft ', ' x ', ' vs ', ' with ', ' featuring ']:
-        text = text.replace(sep, '|')
-    artists = []
-    for part in text.split('|'):
-        part = re.sub(r'\([^)]*\)', '', part).strip()
-        part = ' '.join(part.split())
-        if part and len(part) > 1:
-            artists.append(part)
-    return list(dict.fromkeys(artists))
-
-def export_csv(csv_artists: Set[str]):
-    """Exporta CSV con país y género"""
-    if not csv_artists:
-        logger.warning("⚠️  No artists to export")
-        return
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        placeholders = ','.join(['?'] * len(csv_artists))
-        query = f'SELECT name, country, macro_genre FROM artist WHERE name IN ({placeholders}) ORDER BY name'
-        df = pd.read_sql_query(query, conn, params=list(csv_artists))
-        conn.close()
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_name = os.path.basename(CSV_PATH).replace('.csv', '')
-        output = f"/home/alfonso/Python/2-youtube/2-enriquecer/pais/{base_name}_countries_genres_{timestamp}.csv"
-        df.to_csv(output, index=False, encoding='utf-8')
-
-        logger.info(f"\n📤 CSV: {output}")
-        logger.info(f"   Records: {len(df)}")
-
-        countries = df[df['country'] != 'Unknown']['country'].value_counts()
-        if not countries.empty:
-            logger.info("\n🌍 TOP 15 COUNTRIES:")
-            for country, count in countries.head(15).items():
-                logger.info(f"   {country}: {count}")
-
-        genres = df[df['macro_genre'].notna() & (df['macro_genre'] != 'Unknown')]['macro_genre'].value_counts()
-        if not genres.empty:
-            logger.info("\n🎵 TOP 15 GENRES:")
-            for genre, count in genres.head(15).items():
-                logger.info(f"   {genre}: {count}")
-
-    except Exception as e:
-        logger.error(f"❌ Export error: {e}")
-
-# ============================================================================
-# FUNCIÓN PARA OBTENER LA ÚLTIMA BASE DE DATOS DE CHARTS 
+# FUNCIÓN PARA OBTENER LA ÚLTIMA BASE DE DATOS DE CHARTS
 # ============================================================================
 def get_latest_chart_database() -> Optional[Path]:
-    """
-    Busca en el directorio charts_archive/1_download-chart/databases/
-    el archivo más reciente con formato youtube_charts_YYYY-Www.db
-    """
     if not CHARTS_DB_DIR.exists():
         logger.error(f"❌ Directorio no encontrado: {CHARTS_DB_DIR}")
         return None
-
     db_files = list(CHARTS_DB_DIR.glob("youtube_charts_*.db"))
     if not db_files:
         logger.error("❌ No se encontraron bases de datos de charts")
         return None
-
-    # Ordenar por fecha de modificación (más reciente primero)
     latest = max(db_files, key=lambda f: f.stat().st_mtime)
     logger.info(f"📁 Usando base de datos: {latest.name}")
     return latest
@@ -10463,42 +10392,30 @@ def get_latest_chart_database() -> Optional[Path]:
 # FUNCIÓN PARA OBTENER ARTISTAS DESDE LA BASE DE DATOS DE CHARTS
 # ============================================================================
 def get_artists_from_chart_db(db_path: Path) -> Set[str]:
-    """Extrae artistas únicos de la tabla chart_data (columna 'Artist Names')"""
     if not db_path.exists():
         logger.error(f"❌ Archivo no encontrado: {db_path}")
         return set()
-
     artists = set()
     try:
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
-
-        # Verificar columnas
         cursor.execute("PRAGMA table_info(chart_data)")
         columns = [col[1] for col in cursor.fetchall()]
-
-        # Buscar columna de artistas
         artist_column = None
         for col in ['Artist Names', 'Artist', 'Artists', 'artist', 'Artista']:
             if col in columns:
                 artist_column = col
                 break
-
         if not artist_column:
             logger.error("❌ No se encontró columna de artistas en chart_data")
             conn.close()
             return set()
-
-        # Escapar nombre si tiene espacios
         safe_column = f'"{artist_column}"' if ' ' in artist_column else artist_column
-        query = f"SELECT {safe_column} FROM chart_data WHERE {safe_column} IS NOT NULL"
-        cursor.execute(query)
+        cursor.execute(f"SELECT {safe_column} FROM chart_data WHERE {safe_column} IS NOT NULL")
         rows = cursor.fetchall()
-
         for row in rows:
             if row[0]:
                 artists.update(split_artists(str(row[0])))
-
         conn.close()
         logger.info(f"📊 {len(artists)} artistas únicos en la base de datos de charts")
         return artists
@@ -10518,16 +10435,13 @@ def main():
     logger.info(f"💾 DB de artistas: {ARTIST_DB_PATH}")
     logger.info("="*80)
 
-    # 1. Asegurar que existe la base de datos de artistas
     create_database()
 
-    # 2. Obtener la última base de datos de charts
     chart_db = get_latest_chart_database()
     if not chart_db:
         logger.error("❌ No se pudo obtener la base de datos de charts. Abortando.")
         sys.exit(1)
 
-    # 3. Extraer artistas
     chart_artists = get_artists_from_chart_db(chart_db)
     if not chart_artists:
         logger.error("❌ No se encontraron artistas en la base de datos.")
@@ -10535,7 +10449,6 @@ def main():
 
     logger.info(f"🎯 {len(chart_artists)} artistas únicos a procesar\n")
 
-    # Contadores
     in_db = 0
     new_found = 0
     not_found = 0
@@ -10581,12 +10494,10 @@ def main():
             if not country and not genre:
                 not_found += 1
 
-        # Reporte parcial cada 10 artistas
         if i % 10 == 0:
             logger.info(f"\n  📊 {i}/{len(chart_artists)} | "
                         f"✅ Completos: {in_db} | 🔍 Nuevos país: {new_found} | 🎵 Nuevos género: {genre_found} | ❌ Sin info: {not_found}\n")
 
-    # Resumen final
     logger.info("\n" + "="*80)
     logger.info(f"📈 SUMMARY")
     logger.info(f"   Total artistas procesados: {len(chart_artists)}")
@@ -10598,7 +10509,6 @@ def main():
     logger.info(f"   🗃️  Total en DB: {count_artists_in_database()}")
     logger.info("="*80)
 
-    # Nota: No se exporta CSV porque no es necesario en GitHub
-
 if __name__ == "__main__":
     main()
+
