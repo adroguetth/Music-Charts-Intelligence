@@ -10276,7 +10276,7 @@ def search_country(artist: str) -> Tuple[Optional[str], str]:
 def create_database():
     """Crea la base de datos con la columna de género"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='artist'")
         exists = cursor.fetchone()
@@ -10307,7 +10307,7 @@ def create_database():
 def artist_in_database(artist: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """Retorna: (existe, country, macro_genre)"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
         cursor.execute('SELECT country, macro_genre FROM artist WHERE name = ?', (artist,))
         res = cursor.fetchone()
@@ -10323,7 +10323,7 @@ def artist_in_database(artist: str) -> Tuple[bool, Optional[str], Optional[str]]
 def insert_artist(artist: str, country: str, genre: Optional[str] = None, source: str = ""):
     """Inserta o actualiza un artista con país y género"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
         cursor.execute('SELECT country, macro_genre FROM artist WHERE name = ?', (artist,))
         existing = cursor.fetchone()
@@ -10365,7 +10365,7 @@ def insert_artist(artist: str, country: str, genre: Optional[str] = None, source
 
 def count_artists_in_database() -> int:
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
         cursor.execute('SELECT COUNT(*) FROM artist')
         total = cursor.fetchone()[0]
@@ -10397,7 +10397,7 @@ def get_artists_from_chart_db(db_path: Path) -> Set[str]:
         return set()
     artists = set()
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(chart_data)")
         columns = [col[1] for col in cursor.fetchall()]
