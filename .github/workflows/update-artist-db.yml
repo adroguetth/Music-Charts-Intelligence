@@ -86,6 +86,12 @@ jobs:
         else
           DATE=$(date +'%Y-%m-%d')
           git commit -m "🤖 Update artist database ${DATE} [Automated]"
+          
+          # Actualizar con los últimos cambios remotos (rebase para evitar merges)
+          echo "⬇️ Pulling latest changes with rebase..."
+          git pull --rebase origin main
+          
+          echo "⬆️ Pushing changes to repository..."
           git push origin HEAD:main
           echo "✅ Changes pushed successfully"
         fi
