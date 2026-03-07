@@ -10339,6 +10339,49 @@ def search_country(artist: str) -> Tuple[Optional[str], str]:
     return None, "Not found"
 
 # ============================================================================
+# ARTIST SPLITTING FUNCTIONS
+# ============================================================================
+
+def split_artists(artist_str: str) -> List[str]:
+    """
+    Split a string that may contain multiple artists (feat., &, etc.)
+    into a list of individual artist names.
+
+    Args:
+        artist_str: String containing one or more artist names
+
+    Returns:
+        List of cleaned individual artist names
+    """
+    if not artist_str or not isinstance(artist_str, str):
+        return []
+
+    # Replace common feat. patterns
+    artist_str = re.sub(r'\s+feat\.?\s+', ', ', artist_str, flags=re.IGNORECASE)
+    artist_str = re.sub(r'\s+ft\.?\s+', ', ', artist_str, flags=re.IGNORECASE)
+    artist_str = re.sub(r'\s+featuring\s+', ', ', artist_str, flags=re.IGNORECASE)
+
+    # Replace conjunctions
+    artist_str = re.sub(r'\s+&\s+', ', ', artist_str)
+    artist_str = re.sub(r'\s+y\s+', ', ', artist_str)
+    artist_str = re.sub(r'\s+and\s+', ', ', artist_str, flags=re.IGNORECASE)
+
+    # Handle parentheses (sometimes feat. is in parentheses)
+    artist_str = re.sub(r'[\(\)]', '', artist_str)
+
+    # Split by comma and clean up
+    artists = [a.strip() for a in artist_str.split(',')]
+
+    # Remove empty strings and strip whitespace
+    artists = [a for a in artists if a and len(a) > 1]
+
+    # Optional: filter out common non-artist words
+    skip_words = {'various', 'various artists', 'unknown', 'varios', 'varios artistas'}
+    artists = [a for a in artists if a.lower() not in skip_words]
+
+    return artists
+
+# ============================================================================
 # DATABASE FUNCTIONS
 # ============================================================================
 
