@@ -53,7 +53,7 @@ jobs:
     - name: 📁 Ensure directory structure
       run: |
         mkdir -p charts_archive/1_download-chart/databases
-        mkdir -p charts_archive/2_artist_countries_genres
+        mkdir -p charts_archive/2_countries_genres_artist  # ← CAMBIADO
     
     # ==================================================
     # EXECUTION PHASE
@@ -74,11 +74,11 @@ jobs:
     - name: ✅ Verify database integrity
       run: |
         echo "📊 Verifying artist database..."
-        DB_PATH="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+        DB_PATH="charts_archive/2_countries_genres_artist/artist_countries_genres.db"  # ← CAMBIADO
         
         # Check directory contents
         echo "📂 Directory contents:"
-        ls -la charts_archive/2_artist_countries_genres/
+        ls -la charts_archive/2_countries_genres_artist/  # ← CAMBIADO
         
         # Verify database exists and has size
         if [ -f "$DB_PATH" ]; then
@@ -107,7 +107,7 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
         # Stage only artist database files
-        git add charts_archive/2_artist_countries_genres/
+        git add charts_archive/2_countries_genres_artist/  # ← CAMBIADO
         
         # Check if there are changes to commit
         if git diff --cached --quiet; then
@@ -151,7 +151,7 @@ jobs:
         echo "🔗 Commit: ${{ github.sha }}"
         echo ""
         
-        DB_FILE="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+        DB_FILE="charts_archive/2_countries_genres_artist/artist_countries_genres.db"  # ← CAMBIADO
         if [ -f "$DB_FILE" ]; then
           SIZE=$(stat -c%s "$DB_FILE")
           echo "✅ Artist database: $((SIZE / 1024)) KB"
