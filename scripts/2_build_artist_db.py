@@ -48,7 +48,7 @@ from typing import Optional, Tuple, Dict, Set, List
 
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 CHARTS_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
-ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_artist_countries_genres" / "artist_countries_genres.db"
+ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_countries_genres_artist" / "artist_countries_genres.db"
 
 ARTIST_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
