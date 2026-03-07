@@ -1,4 +1,4 @@
-# Documentation `1_download.py`: Automated Data Acquisition from YouTube Charts
+# 🎵 Script 2: Automated Data Acquisition from YouTube Charts
 
 ![Texto alternativo](https://img.shields.io/badge/License-MIT-green)
 ![Texto alternativo](https://img.shields.io/badge/Web-Scraping-orange)
