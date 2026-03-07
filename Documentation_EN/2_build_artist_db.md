@@ -131,7 +131,6 @@ graph TD
     N2 -.-> AC
 ```
 
-
 ### **Legend**
 
 | Color        | Type     | Description                   |
@@ -143,6 +142,27 @@ graph TD
 | 🔴 Red        | Decision | Conditional branching points  |
 | 🟢 Dark Green | Output   | Results and final database    |
 
+### **Simplified Flow**
+
+1. **Input**: Reads weekly chart database (`youtube_charts_YYYY-WXX.db`)
+2. **Extraction**: Gets and splits artist names (handles feat., &, etc.)
+3. **Deduplication**: Creates list of unique artists
+4. **For each artist**:
+   - Checks if already in `artist_countries_genres.db`
+   - If complete → skip
+   - If missing info → search only missing fields
+   - If new → search full country and genre
+5. **Country Search**: MusicBrainz → Wikipedia EN → Wikipedia other languages → Wikidata
+6. **Genre Search**: MusicBrainz → Wikidata → Wikipedia (with language detection)
+7. **Voting System**:
+   - Normalize candidates to macro-genres
+   - Apply source weights
+   - Bonus for specific terms
+   - Apply country priority (2.0x, 1.5x, 1.2x)
+   - Apply country-specific rules (force_macro, map_generic_to)
+   - Script detection bonus
+8. **Database Update**: Insert or update with partial logic (only missing fields)
+9. **Report**: Final statistics and automatic commit
 
 
 ## 🔍 Detailed Analysis of `2_build_artist_db.py`
