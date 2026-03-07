@@ -11,16 +11,34 @@ This project is the second component of the YouTube Charts intelligence system. 
 ### Key Features
 
 - **Multi-Source Lookup**: Intelligent cascading queries to MusicBrainz, Wikipedia (summary & infobox), and Wikidata
-- **Smart Name Variation**: Generates up to 15 variations per artist (accents removed, prefixes stripped, etc.)
+- **Smart Name Variation**: Generates up to 15 variations per artist (accents removed, prefixes stripped, etc.) for maximum match rate
 - **Geographic Intelligence**: Country detection from cities, demonyms, and regional references using a curated dictionary of 30,000+ terms
 - **Genre Classification**: 200+ macro-genres and 5,000+ subgenre mappings with weighted voting system
 - **Country-Specific Rules**: Special handling for 50+ countries (e.g., K-Pop for South Korea, Sertanejo for Brazil)
-- **Script Detection**: Automatic language detection for non-Latin scripts (Cyrillic, Devanagari, Arabic, etc.)
+- **Script Detection**: Automatic language detection for non-Latin scripts (Cyrillic, Devanagari, Arabic, Hangul, etc.)
 - **Intelligent Updates**: Only fills missing data, never overwrites existing correct information
+- **In-Memory Caching**: Avoids redundant API calls during execution
+- **CI/CD Optimized**: Specifically configured for GitHub Actions with progressive fallbacks
 
 ## 📊 Process Flow Diagram
 
-pendiente
+<center>
+<img src="https://drive.google.com/uc?export=view&id=1Ot-b9rX_1qaFgWSqx6kG3VD6R" 
+     width="60%" 
+     alt="Artist Country + Genre Detection System Flow Diagram">
+</center>
+### **Legend**
+
+| Color        | Type     | Description                   |
+| :----------- | :------- | :---------------------------- |
+| 🔵 Blue       | Input    | Source data (charts database) |
+| 🟠 Orange     | Process  | Internal processing logic     |
+| 🟣 Purple     | API      | External service queries      |
+| 🟢 Green      | Cache    | In-memory temporary storage   |
+| 🔴 Red        | Decision | Conditional branching points  |
+| 🟢 Dark Green | Output   | Results and final database    |
+
+
 
 ## 🔍 Detailed Analysis of `2_build_artist_db.py`
 
@@ -36,11 +54,9 @@ ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_artist_countries_genres" /
 
 The script reads from the downloader's output and creates its own enriched database:
 
-- Input: Weekly chart databases from step 1 (youtube_charts_YYYY-WXX.db)
-
-- Output: Artist metadata database (artist_countries_genres.db)
-
-- Structure: charts_archive/2_artist_countries_genres/
+- **Input**: Weekly chart databases from step 1 (`youtube_charts_YYYY-WXX.db`)
+- **Output**: Artist metadata database (`artist_countries_genres.db`)
+- **Structure**: `charts_archive/2_artist_countries_genres/`
 
 #### **2. Intelligent Name Variation System**
 
@@ -139,10 +155,12 @@ The `GENRE_MAPPINGS` dictionary contains **5,000+ genre variants** mapped to 200
 
 **Macro-genre categories (200+):**
 
-- Global: `Pop`, `Rock`, `Hip-Hop/Rap`, `R&B/Soul`, `Electrónica/Dance`
-- Regional: `K-Pop/K-Rock`, `J-Pop/J-Rock`, `C-Pop/C-Rock`, `Reggaetón/Trap Latino`
-- Traditional: `Flamenco / Copla`, `Sertanejo`, `Funk Brasileiro`, `Afrobeats`
-- Indigenous: `Māori Pop/Rock`, `Aboriginal Australian Pop/Rock`, `Siberian Indigenous Pop/Rock`
+- **Global**: `Pop`, `Rock`, `Hip-Hop/Rap`, `R&B/Soul`, `Electrónica/Dance`
+- **Regional America**: `Reggaetón/Trap Latino`, `Bachata`, `Cumbia`, `Sertanejo`, `Funk Brasileiro`, `Regional Mexicano`, `Vallenato`
+- **Regional Asia**: `K-Pop/K-Rock`, `J-Pop/J-Rock`, `C-Pop/C-Rock`, `T-Pop/T-Rock`, `V-Pop/V-Rock`, `OPM`, `Indonesian Pop/Dangdut`, `Pakistani Pop`
+- **Regional Africa**: `Afrobeats`, `Amapiano`, `Bongo Flava`, `Zim Dancehall`, `Kuduro`, `Kizomba/Zouk`
+- **Regional Europe**: `Turbo-folk`, `Manele`, `Schlager`, `Chanson`, `Flamenco / Copla`, `Canzone Italiana`
+- **Indigenous**: `Māori Pop/Rock`, `Aboriginal Australian Pop/Rock`, `Siberian Indigenous Pop/Rock`, `Hawaiian Pop/Rock`
 
 #### **5. Multi-Source API Queries**
 
@@ -152,9 +170,9 @@ The script queries three knowledge bases in cascade:
 def search_artist_genre(artist: str, country: Optional[str] = None):
     """
     Optimized search flow:
-    1. MusicBrainz (structured, high reliability)
-    2. Wikidata (semantic, medium reliability)
-    3. Wikipedia in priority languages (rich text, lower reliability)
+    1. MusicBrainz (structured, high reliability) → 1.5x weight
+    2. Wikidata (semantic, medium reliability) → 1.3x weight
+    3. Wikipedia in priority languages (rich text) → 1.0-1.2x weight
     """
 ```
 
@@ -202,3 +220,544 @@ _SESSION_WIKIDATA = requests.Session()
 _SESSION_MUSICBRAINZ = requests.Session()
 ```
 
+**Benefits:**
+
+- **Performance**: Avoids redundant API calls for the same artist
+- **Politeness**: Reduces load on external services
+- **Speed**: In-memory cache for current execution
+- **Session reuse**: Keep-alive connections for multiple queries
+
+#### **7. Script/Language Detection**
+
+```python
+def detect_script_from_name(name: str) -> Optional[str]:
+    """
+    Detects writing system and returns ISO 639-1 language code.
+    
+    Ranges detected:
+    - Devanagari (hi, ne) → India/Nepal
+    - Tamil (ta) → South India/Sri Lanka
+    - Arabic/Urdu (ar/ur) → Middle East/Pakistan
+    - Cyrillic (ru/uk/bg/sr) → Eastern Europe
+    - Hangul (ko) → Korea
+    - Hanzi/Kanji (zh/ja) → China/Japan
+    """
+```
+
+**Used for:**
+
+- Prioritizing Wikipedia queries in the right language
+- Applying regional bonuses (e.g., Korean script → K-Pop)
+- Improving name variation generation
+
+#### **8. Weighted Voting System**
+
+The `select_primary_genre` function implements a sophisticated voting algorithm:
+
+```python
+def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str]],
+                         country: Optional[str] = None, detected_lang: Optional[str] = None):
+    """
+    Weighted voting system:
+    - Base weight from source (MusicBrainz 1.5x, Infobox 1.2x, Wikidata 1.3x)
+    - Term bonuses for specific genres (K-Pop, Reggaetón, etc.) 1.4x
+    - Country priority bonus (top genre 2.0x, second 1.5x)
+    - Country-specific rules (force_macro, map_generic_to)
+    - Script detection bonus (1.2x for matching region)
+    """
+```
+
+**Example for a South Korean artist:**
+
+```python
+Candidate genres detected:
+- "k-pop" from MusicBrainz (weight 1.5) → K-Pop/K-Rock
+- "pop" from Wikipedia (weight 1.0) → Pop
+- "dance" from Wikipedia (weight 0.5) → Electrónica/Dance
+
+Country = South Korea (priority: K-Pop/K-Rock #1 → 2.0x bonus)
+Detected script = Korean (1.2x bonus for K-Pop/K-Rock)
+
+Final votes:
+- K-Pop/K-Rock: (1.5 × 2.0 × 1.2) = 3.6
+- Pop: (1.0 × 1.2) = 1.2
+- Electrónica/Dance: (0.5 × 1.2) = 0.6
+
+Winner: K-Pop/K-Rock ✓
+```
+
+#### **9. Country-Specific Rules**
+
+```python
+COUNTRY_SPECIFIC_RULES = {
+    "South Korea": {
+        "keywords": ["k-pop", "kpop", "korean pop", "idol group"],
+        "bonus_extra": 1.5,
+        "force_macro": "K-Pop/K-Rock",
+        "map_generic_to": "K-Pop/K-Rock"  # Maps "pop" → K-Pop
+    },
+    "Brazil": {
+        "keywords": ["sertanejo", "funk brasileiro", "funk carioca", "brazilian funk"],
+        "bonus_extra": 1.5
+    },
+    "Jamaica": {
+        "keywords": ["dancehall", "reggae", "roots reggae", "dub"],
+        "bonus_extra": 1.5
+    },
+    "Puerto Rico": {
+        "keywords": ["reggaeton", "reggaetón", "trap latino", "urbano", "dembow"],
+        "bonus_extra": 2.0,
+        "force_macro": "Reggaetón/Trap Latino"
+    },
+    # ... 50+ countries with specific rules
+}
+```
+
+#### **10. Smart Database Updates**
+
+```python
+def insert_artist(artist: str, country: str, genre: Optional[str] = None, source: str = ""):
+    """
+    Intelligent upsert:
+    - If artist exists, only update missing fields
+    - Never overwrite existing correct data
+    - Track source of information for transparency
+    """
+```
+
+**Example scenarios:**
+
+```python
+Artist already in DB: (Country: USA, Genre: null)
+New search finds: (Country: null, Genre: Hip-Hop)
+Result: (Country: USA, Genre: Hip-Hop)  ✓ Only genre updated
+
+Artist already in DB: (Country: null, Genre: Rock)
+New search finds: (Country: UK, Genre: Rock)
+Result: (Country: UK, Genre: Rock)  ✓ Only country updated
+```
+
+### **`artist` Table Structure**
+
+| Column      | Type   | Description               | Example        |
+| :---------- | :----- | :------------------------ | :------------- |
+| name        | `TEXT` | Artist name (primary key) | "BTS"          |
+| country     | `TEXT` | Canonical country name    | "South Korea"  |
+| macro_genre | `TEXT` | Primary macro-genre       | "K-Pop/K-Rock" |
+
+## ⚙️ GitHub Actions Workflow Analysis (`2-update-artist-database.yml`)
+
+### **Workflow Structure**
+
+```python
+name: 2- Update Artist Database
+
+on:
+  schedule:
+    # Run every Monday at 14:00 UTC (2 hours after download)
+    - cron: '0 14 * * 1'
+  workflow_dispatch:       # Manual execution
+  workflow_run:            # Trigger after download workflow
+    workflows: ["1- Download YouTube Chart"]
+    types:
+      - completed
+    branches:
+      - main
+```
+
+### **Jobs and Steps**
+
+#### **Job: `build-artist-database`**
+
+- **Operating system**: Ubuntu Latest
+- **Timeout**: 60 minutes (allows for API rate limiting)
+- **Permissions**: Repository write access
+
+#### **Detailed Steps:**
+
+1. **📚 Repository Checkout**
+
+```python
+uses: actions/checkout@v4
+with:
+  fetch-depth: 0  # Full history for git operations
+```
+
+2. **🐍 Python 3.12 Setup**
+
+```yaml
+uses: actions/setup-python@v5
+with:
+  cache: 'pip'  # Dependency caching
+```
+
+3. 📦 **Dependency Installation**
+
+```yaml
+run: |
+  pip install -r requirements.txt
+  # Playwright not needed for this script
+```
+
+4. **📁 Directory Structure Creation**
+
+```yaml
+run: |
+  mkdir -p charts_archive/1_download-chart/databases
+  mkdir -p charts_archive/2_artist_countries_genres
+```
+
+5. **🚀 Main Script Execution**
+
+```yaml
+- name: 🚀 Build artist database
+  run: |
+    python scripts/2_build_artist_db.py
+  env:
+    GITHUB_ACTIONS: true  # Environment variable for detection
+```
+
+6. **✅ Database Integrity Verification**
+
+```yaml
+- name: ✅ Verify database integrity
+  run: |
+    echo "📊 Verifying artist database..."
+    DB_PATH="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+    
+    # Check directory contents
+    echo "📂 Directory contents:"
+    ls -la charts_archive/2_artist_countries_genres/
+    
+    # Verify database exists and has size
+    if [ -f "$DB_PATH" ]; then
+      SIZE=$(stat -c%s "$DB_PATH")
+      echo "✅ Database found: $((SIZE / 1024)) KB"
+      
+      # Optional: Verify database integrity with sqlite3
+      if command -v sqlite3 &> /dev/null; then
+        echo "🔍 Checking database integrity..."
+        sqlite3 "$DB_PATH" "PRAGMA integrity_check;"
+      fi
+    else
+      echo "❌ Database not found!"
+      exit 1
+    fi
+```
+
+7. **📤 Automatic Commit and Push**
+
+```yaml
+- name: 📤 Commit and push changes
+  run: |
+    echo "📝 Preparing commit..."
+    
+    # Configure git user for automated commits
+    git config --global user.name "github-actions[bot]"
+    git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    
+    # Stage only artist database files
+    git add charts_archive/2_artist_countries_genres/
+    
+    # Check if there are changes to commit
+    if git diff --cached --quiet; then
+      echo "🔭 No changes to commit"
+    else
+      DATE=$(date +'%Y-%m-%d')
+      git commit -m "🤖 Update artist database ${DATE} [Automated]"
+      
+      # Pull latest changes with rebase to avoid merge commits
+      echo "⬇️ Pulling latest changes with rebase..."
+      git pull --rebase origin main
+      
+      echo "⬆️ Pushing changes to repository..."
+      git push origin HEAD:main
+      echo "✅ Changes pushed successfully"
+    fi
+```
+
+8. **📦 Artifact Upload (on failure)**
+
+```yaml
+- name: 📦 Upload debug artifacts
+  if: failure()
+  uses: actions/upload-artifact@v4
+  with:
+    name: artist-db-debug-${{ github.run_number }}
+    path: |
+      charts_archive/
+    retention-days: 7
+```
+
+9. **📋 Final Report**
+
+```yaml
+- name: 📋 Generate final report
+  if: always()
+  run: |
+    echo "========================================"
+    echo "🎵 FINAL EXECUTION REPORT"
+    echo "========================================"
+    echo "📅 Date: $(date)"
+    echo "📌 Trigger: ${{ github.event_name }}"
+    echo "🔗 Commit: ${{ github.sha }}"
+    echo ""
+    
+    DB_FILE="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+    if [ -f "$DB_FILE" ]; then
+      SIZE=$(stat -c%s "$DB_FILE")
+      echo "✅ Artist database: $((SIZE / 1024)) KB"
+      
+      # Count artists
+      if command -v sqlite3 &> /dev/null; then
+        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artist;" 2>/dev/null || echo "N/A")
+        echo "👤 Artists processed: ${ARTIST_COUNT}"
+      fi
+    else
+      echo "⚠️ Artist database not found"
+    fi
+    
+    # Show trigger information
+    echo ""
+    echo "📊 Trigger details:"
+    if [ "${{ github.event_name }}" = "workflow_run" ]; then
+      echo "   • Triggered by: Download workflow"
+      echo "   • Workflow status: ${{ github.event.workflow_run.conclusion }}"
+    elif [ "${{ github.event_name }}" = "schedule" ]; then
+      echo "   • Triggered by: Scheduled cron (Tuesday 14:00 UTC)"
+    else
+      echo "   • Triggered by: Manual dispatch"
+    fi
+```
+
+### **Cron Scheduling**
+
+```crom
+'0 14 * * 1'  # Minute 0, Hour 14, Any day of month, Any month, Monday
+```
+
+- **Execution**: Every Monday at 14:00 UTC
+- **Offset**: 2 hours after the download workflow (12:00 UTC)
+- **Purpose**: Allows download workflow to complete before enrichment begins
+
+## 🚀 Installation and Local Setup
+
+### **Prerequisites**
+
+- Python 3.7 or higher
+- Git installed
+- Internet access for API queries
+
+### **Step-by-Step Installation**
+
+1. **Clone the Repository**
+
+```bash
+git clone <repository-url>
+cd <project-directory>
+```
+
+2. **Create Virtual Environment (recommended)**
+
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux/Mac
+source venv/bin/activate
+```
+
+3. **Install Dependencies**
+
+```bash
+pip install -r requirements.txt
+# Playwright is not required for this script
+```
+
+4. **Run Initial Test**
+
+
+```bash
+python scripts/2_build_artist_db.py
+```
+
+### **Development Configuration**
+
+```bash
+# To simulate GitHub Actions environment
+export GITHUB_ACTIONS=true
+
+# For detailed debugging (shows genre candidates)
+export LOG_LEVEL=DEBUG
+```
+
+## 📁 Generated File Structure
+
+```text
+charts_archive/
+├── 1_download-chart/
+│   ├── latest_chart.csv
+│   ├── databases/
+│   │   ├── youtube_charts_2025-W01.db
+│   │   ├── youtube_charts_2025-W02.db
+│   │   └── ...
+│   └── backup/
+│       └── ...
+└── 2_artist_countries_genres/          # ← This script's output
+    └── artist_countries_genres.db       # Enriched artist database
+```
+
+### **Database Growth**
+
+- Initial run: 100-200 artists
+
+- Weekly growth: 10-50 new artists (only new ones from weekly charts)
+
+- Size estimate: ~10KB per 100 artists
+
+
+## 🔧 Customization and Configuration
+
+### **Adjustable Parameters in Script**
+
+```python
+# In 2_build_artist_db.py
+MIN_CANDIDATES = 3        # Minimum genre candidates before Wikipedia search
+RETRY_DELAY = 0.5          # Delay between API calls (seconds)
+DEFAULT_TIMEOUT = 10       # API timeout (seconds)
+```
+
+### **Workflow Configuration**
+
+```yaml
+# In 2-update-artist-database.yml
+env:
+  RETENTION_DAYS: 30       # Days for artifacts
+
+timeout-minutes: 60        # Total job timeout (allows for API rate limits)
+```
+
+### **Adding New Countries**
+
+```python
+# Extend COUNTRIES_CANONICAL
+'New Country': {
+    'country name', 'demonyms', 'capital', 'major cities'
+}
+```
+
+### **Adding New Genre Mappings**
+
+```python
+# Extend GENRE_MAPPINGS
+'new subgenre': ('Macro-Genre', 'subgenre')
+```
+
+### **Adjusting Country Priorities**
+
+```python
+# Modify COUNTRY_GENRE_PRIORITY
+"Country Name": [
+    "Priority Genre 1",   # Gets 2.0x bonus
+    "Priority Genre 2",   # Gets 1.5x bonus
+    "Priority Genre 3"    # Gets 1.2x bonus
+]
+```
+
+## 🐛 Troubleshooting
+
+### **Common Issues and Solutions**
+
+1. **Error: "No chart databases found"**
+   - Run the download workflow (script 1) first
+   - Check if `charts_archive/1_download-chart/databases/` exists
+   - Verify file permissions
+2. **Error: API timeouts in GitHub Actions**
+
+```bash
+# Increase timeouts in script
+DEFAULT_TIMEOUT = 20
+RETRY_DELAY = 1.0
+```
+
+3. **Error: Rate limiting from APIs**
+   - The script includes delays between calls
+   - For large batches, consider adding longer delays
+   - Monitor API response headers for rate limit info
+4. **Error: Artist not found in any source**
+   - Check if artist name has special characters
+   - Try manual search in MusicBrainz
+   - Add fallback rules for the country
+
+### **Logs and Debugging**
+
+**Available log levels:**
+
+1. **Basic information**: Shows progress and results
+2. **DEBUG mode**: Shows genre candidates and voting details
+3. **GitHub Actions mode**: Enhanced logging for CI/CD
+4. **Verbose API logging**: Uncomment `print` statements in API functions
+
+## 📈 Monitoring and Maintenance
+
+### **Health Indicators**
+
+1. **Database size**: Grows by ~10-50 records/week
+2. **Success rate**: Should be >90% for established artists
+3. **API response time**: <2 seconds average
+4. **Cache hit rate**: Increases over time as artists accumulate
+
+### **Performance Metrics**
+
+| Metric                 | Expected Range | Notes                                         |
+| :--------------------- | :------------- | :-------------------------------------------- |
+| Artists processed/hour | 500-1000       | Depends on API response times                 |
+| Cache hit rate         | 30-70%         | Increases with database size                  |
+| Genre detection rate   | 85-95%         | Lower for very niche artists                  |
+| Country detection rate | 80-90%         | Lower for artists with little online presence |
+
+## 📄 License and Attribution
+
+- **License**: MIT
+- **Author**: Alfonso Droguett
+  - 🔗 **LinkedIn:** [Alfonso Droguett](https://www.linkedin.com/in/adroguetth/)
+  - 🌐 **Web portfolio:** [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/)
+  - 📧 **Email:** adroguett.consultor@gmail.com
+- **Data Sources**:
+  - MusicBrainz (GPL License)
+  - Wikipedia (CC BY-SA)
+  - Wikidata (CC0)
+
+## 🤝 Contribution
+
+1. Report issues with complete logs
+2. Propose improvements with use cases
+3. Add new genre mappings with examples
+4. Contribute country variants (especially for underrepresented regions)
+5. Maintain compatibility with existing database structure
+
+## 🧪 Known Limitations and Future Improvements
+
+### **Current Limitations**
+
+- **API Dependency**: System relies on external services that may change or rate-limit
+- **New Artists**: Recently emerging artists may not appear in knowledge bases
+- **Niche Genres**: Some micro-genres may not have mappings yet
+- **Brazilian MCs**: Currently receive `Sertanejo` as fallback (priority list order)
+- **Script Detection**: Heuristic-based, may occasionally misidentify
+
+### **Planned Improvements**
+
+- Add Spotify API as additional source
+- Implement exponential backoff for rate limits
+- Create training data for ML-based genre classification
+- Add confidence scores to database entries
+- Support for group/band member country detection
+- Geographic heatmaps of music genres by region
+- Automated testing suite for API changes
+
+------
+
+**⭐ If you find this project useful, please consider starring it on GitHub!**
