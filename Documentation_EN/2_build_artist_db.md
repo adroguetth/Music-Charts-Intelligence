@@ -21,12 +21,12 @@ This project is the second component of the YouTube Charts intelligence system. 
 - **CI/CD Optimized**: Specifically configured for GitHub Actions with progressive fallbacks
 
 ## 📊 Process Flow Diagram
-
 <center>
-<img src="src="https://drive.google.com/uc?id=1ZZeifoTgmbPdpEBcQot-spyROXOv0SJf" 
-     width="60%" 
-     alt="Artist Country + Genre Detection System Flow Diagram">
+<img src="https://drive.google.com/uc?id=1Ot-b9rX_1qaFgWSqx6kG3VD6R_-nwCvl" 
+     width="100%" 
+     alt="Artist Country + Genre Detection System - Process Flow Diagram">
 </center>
+
 ### **Legend**
 
 | Color        | Type     | Description                   |
