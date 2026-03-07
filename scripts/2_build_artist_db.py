@@ -3,9 +3,28 @@
 
 """
 Artist Country + Genre Detection System
-Versión para GitHub Actions
-Lee la última base de datos de charts desde charts_archive/1_download-chart/databases/
-y actualiza charts_archive/2_artist_countries_genres/artist_countries_genres.db
+=========================================
+Intelligent enricher that adds geographic and genre metadata to artists from YouTube Charts.
+
+Features:
+- Multi-source lookup (MusicBrainz, Wikipedia, Wikidata) with intelligent cascading
+- Smart name variation generation (accents, prefixes, suffixes) for maximum match rate
+- Country detection from cities, demonyms, and geographic references
+- Genre classification with 200+ macro-genres and 5000+ subgenre mappings
+- Weighted voting system with country-specific rules (e.g., K-Pop for South Korea)
+- Persistent SQLite storage with partial update logic (only fills missing data)
+- In-memory caching to avoid redundant API calls
+- Automatic script detection for non-Latin artist names (Cyrillic, Devanagari, Arabic, etc.)
+
+Requirements:
+- Python 3.7+
+- requests
+- pandas
+- sqlite3 (included in Python standard library)
+- difflib (included)
+
+Author: Alfonso Droguett
+License: MIT
 """
 
 import os
@@ -24,7 +43,7 @@ from collections import defaultdict
 from typing import Optional, Tuple, Dict, Set, List
 
 # ============================================================================
-# CONFIGURACIÓN - RUTAS RELATIVAS AL REPOSITORIO
+# CONFIGURATION - REPOSITORY RELATIVE PATHS
 # ============================================================================
 
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
@@ -34,13 +53,13 @@ ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_artist_countries_genres" /
 ARTIST_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # ============================================================================
-# CONFIGURACIÓN DE LOGGING
+# LOGGING CONFIGURATION
 # ============================================================================
 logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# CACHÉ EN MEMORIA Y SESIONES HTTP
+# IN-MEMORY CACHE AND HTTP SESSIONS
 # ============================================================================
 _CACHE = {
     'musicbrainz_country': {},
@@ -56,12 +75,20 @@ _SESSION_WIKIDATA = requests.Session()
 _SESSION_MUSICBRAINZ = requests.Session()
 
 # ============================================================================
-# FUNCIONES DE VARIACIONES DE NOMBRE
+# NAME VARIATION FUNCTIONS
 # ============================================================================
 
 def generate_name_variations(name: str) -> List[str]:
+    """
+    Generate basic variations of an artist name:
+    - original
+    - without accents
+    - without dots
+    - without hyphens
+    """
     variations = [name]
 
+    # Remove accents
     no_accents = ''.join(
         c for c in unicodedata.normalize('NFD', name)
         if unicodedata.category(c) != 'Mn'
@@ -69,11 +96,13 @@ def generate_name_variations(name: str) -> List[str]:
     if no_accents != name:
         variations.append(no_accents)
 
+    # Remove dots
     no_dots = name.replace('.', '')
     if no_dots != name:
         variations.append(no_dots)
         variations.append(no_dots.replace(' ', ''))
 
+    # Replace hyphens with spaces
     no_hyphens = name.replace('-', ' ')
     if no_hyphens != name:
         variations.append(no_hyphens)
@@ -94,6 +123,10 @@ ARTIST_PREFIXES = {
 }
 
 def remove_artist_prefixes(name: str) -> List[str]:
+    """
+    Remove common prefixes (DJ, MC, Lil, The, etc.) from a name.
+    Returns a list of variations without prefixes.
+    """
     variations = [name]
     for prefix_base, variants in ARTIST_PREFIXES.items():
         for variant in variants:
@@ -105,6 +138,11 @@ def remove_artist_prefixes(name: str) -> List[str]:
     return list(dict.fromkeys(variations))
 
 def generate_all_variations(name: str) -> List[str]:
+    """
+    Generate an extensive list of name variations by combining
+    accent removal, dot removal, hyphen replacement, and prefix removal.
+    Returns up to 15 unique variations.
+    """
     all_vars = set()
     for var in generate_name_variations(name):
         all_vars.add(var)
@@ -120,39 +158,39 @@ def generate_all_variations(name: str) -> List[str]:
     return result[:15]
 
 # ============================================================================
-# DICCIONARIO DE PAÍSES
+# DICTIONARY OF COUNTRIES (COUNTRIES_CANONICAL)
 # ============================================================================
 COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     # =========================================================================
-    # NORTEAMÉRICA
+    # NORTH AMERICA
     # =========================================================================
     'United States': {
-        # Nombres del país
+        # Country names
         'united states', 'usa', 'us', 'u.s.', 'u.s.a.', 'america',
         'estados unidos', 'ee.uu.', 'eeuu', 'estadosunidos',
-        # Gentilicios EN/ES
+        # Demonyms EN/ES
         'american', 'americano', 'americanos', 'estadounidense', 'estadounidenses',
-        # Ciudades — Noreste
+        # Cities — Northeast
         'new york', 'nyc', 'brooklyn', 'bronx', 'queens', 'manhattan', 'staten island',
         'boston', 'philadelphia', 'philly', 'baltimore', 'pittsburgh',
         'washington d.c.', 'dc', 'newark', 'hartford', 'providence', 'buffalo',
-        # Ciudades — Sureste
+        # Cities — Southeast
         'miami', 'miami beach', 'fort lauderdale', 'orlando', 'tampa', 'jacksonville',
         'atlanta', 'charlotte', 'raleigh', 'nashville', 'memphis', 'new orleans',
         'louisville', 'richmond', 'virginia beach', 'columbia sc',
-        # Ciudades — Medio Oeste
+        # Cities — Midwest
         'chicago', 'detroit', 'cleveland', 'columbus', 'indianapolis',
         'milwaukee', 'minneapolis', 'saint paul', 'st. louis', 'kansas city',
         'cincinnati', 'omaha', 'des moines',
-        # Ciudades — Suroeste / Texas
+        # Cities — Southwest / Texas
         'houston', 'dallas', 'fort worth', 'san antonio', 'austin', 'el paso',
         'albuquerque', 'tucson', 'phoenix', 'las vegas', 'henderson',
-        # Ciudades — Oeste
+        # Cities — West
         'los angeles', 'la', 'hollywood', 'compton', 'long beach', 'anaheim',
         'san francisco', 'sf', 'bay area', 'oakland', 'san jose',
         'sacramento', 'san diego', 'portland', 'seattle', 'denver',
         'salt lake city', 'boise',
-        # Ciudades — Hawái / Alaska
+        # Cities — Hawaii / Alaska
         'honolulu', 'anchorage',
     },
 
@@ -160,21 +198,21 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'canada', 'canadá', 'canadian', 'canadiense', 'canadienses',
         # EN regional
         'canuck', 'anglo-canadian', 'franco-canadian', 'québécois',
-        # Ciudades
+        # Cities
         'toronto', 'montreal', 'montréal', 'vancouver', 'calgary',
         'edmonton', 'ottawa', 'québec city', 'quebec', 'winnipeg',
         'hamilton', 'kitchener', 'victoria', 'london ontario', 'halifax',
         'saskatoon', 'regina', 'windsor', 'oshawa', 'moncton', 'fredericton',
-        # Regiones
+        # Regions
         'ontario', 'british columbia', 'alberta', 'québec', 'nova scotia',
         'new brunswick', 'manitoba', 'saskatchewan',
     },
 
     'Mexico': {
         'mexico', 'méxico', 'méjico',
-        # Gentilicios
+        # Demonyms
         'mexican', 'mexicano', 'mexicana', 'mexicanos', 'mexicanas', 'azteca',
-        # Ciudades
+        # Cities
         'ciudad de méxico', 'cdmx', 'df', 'distrito federal',
         'guadalajara', 'monterrey', 'puebla', 'tijuana',
         'juárez', 'ciudad juárez', 'léon', 'zapopan', 'nezahualcóyotl',
@@ -182,12 +220,12 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'hermosillo', 'saltillo', 'mexicali', 'culiacán', 'acapulco',
         'torreón', 'morelia', 'toluca', 'querétaro', 'cancún',
         'veracruz', 'oaxaca', 'xalapa', 'tuxtla gutiérrez',
-        # Regiones culturales
+        # Cultural regions
         'norteño', 'chilango', 'tapatío', 'regiomontano', 'defeño',
     },
 
     # =========================================================================
-    # CENTROAMÉRICA Y CARIBE
+    # CENTRAL AMERICA AND THE CARIBBEAN
     # =========================================================================
     'Cuba': {
         'cuba', 'cuban', 'cubano', 'cubana', 'cubanos', 'cubanas',
@@ -217,7 +255,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'yardie', 'rasta', 'rastafari',
         'kingston', 'spanish town', 'montego bay', 'portmore',
         'mandeville', 'may pen', 'old harbour',
-        # Términos culturales
+        # Cultural terms
         'yard', 'yardie', 'jamrock', 'jah',
     },
 
@@ -287,7 +325,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # SUDAMÉRICA
+    # SOUTH AMERICA
     # =========================================================================
     'Argentina': {
         'argentina', 'argentinian', 'argentine', 'argentino', 'argentina',
@@ -310,7 +348,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'campo grande', 'joão pessoa', 'teresina', 'macapá',
         'porto velho', 'cuiabá', 'aracaju', 'florianópolis',
         'vitória', 'uberlândia', 'ribeirão preto',
-        # Regiones
+        # Regions
         'nordeste', 'nordeste brasileiro', 'amazônia', 'pampa', 'cerrado',
     },
 
@@ -386,23 +424,23 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # EUROPA OCCIDENTAL
+    # WESTERN EUROPE
     # =========================================================================
     'United Kingdom': {
         'united kingdom', 'uk', 'reino unido', 'great britain', 'britain',
-        # Gentilicios
+        # Demonyms
         'british', 'english', 'inglés', 'inglesa', 'británico', 'británica',
         'scottish', 'escocés', 'escocesa', 'welsh', 'galés', 'galesa',
         'northern irish', 'ulsterman',
-        # Ciudades — Inglaterra
+        # Cities — England
         'london', 'londres', 'manchester', 'birmingham', 'liverpool',
         'leeds', 'bristol', 'sheffield', 'nottingham', 'leicester',
         'newcastle', 'coventry', 'southampton', 'oxford', 'cambridge',
         'brighton', 'reading', 'portsmouth', 'sunderland', 'wolverhampton',
-        # Ciudades — Escocia, Gales, Irlanda del Norte
+        # Cities — Scotland, Wales, Northern Ireland
         'glasgow', 'edinburgh', 'edimburgo', 'aberdeen', 'dundee',
         'cardiff', 'swansea', 'belfast',
-        # Regiones culturales
+        # Cultural regions
         'england', 'scotland', 'wales', 'northern ireland',
         'midlands', 'yorkshire', 'cornwall', 'merseyside',
     },
@@ -425,7 +463,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'pamplona', 'santander', 'logroño', 'burgos', 'salamanca',
         'toledo', 'cádiz', 'huelva', 'badajoz', 'mérida', 'oviedo',
         'gijón', 'vigo', 'a coruña', 'santiago de compostela',
-        # Regiones
+        # Regions
         'cataluña', 'catalonia', 'país vasco', 'basque country',
         'andalucía', 'galicia', 'castilla', 'asturias', 'aragón',
         'extremadura', 'navarra', 'canarias', 'baleares',
@@ -438,7 +476,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'nice', 'bordeaux', 'lille', 'strasbourg', 'nantes', 'montpellier',
         'rennes', 'reims', 'grenoble', 'dijon', 'angers', 'saint-étienne',
         'toulon', 'rouen', 'brest', 'metz', 'perpignan',
-        # Regiones
+        # Regions
         'île-de-france', 'bretagne', 'bretaña', 'normandie', 'normandía',
         'alsace', 'alsacia', 'occitanie', 'loire', 'provence', 'provenza',
         # DOM-TOM
@@ -455,7 +493,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'dresden', 'hanover', 'hannover', 'nuremberg', 'nürnberg',
         'bonn', 'mannheim', 'karlsruhe', 'augsburg', 'münster',
         'bielefeld', 'wiesbaden', 'bochum', 'freiburg',
-        # Regiones
+        # Regions
         'bavaria', 'baviera', 'saxony', 'sajonia', 'thuringia', 'thuringia',
         'rhineland', 'westphalia', 'nordrhein-westfalen',
     },
@@ -468,7 +506,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'bologna', 'florence', 'firenze', 'venice', 'venezia', 'verona',
         'catania', 'bari', 'messina', 'padova', 'trieste',
         'brescia', 'prato', 'parma', 'modena', 'reggio calabria',
-        # Regiones
+        # Regions
         'sicilia', 'sicily', 'sardegna', 'sardinia', 'cerdeña',
         'toscana', 'tuscany', 'lazio', 'lombardia', 'lombardy',
         'calabria', 'puglia', 'apulia', 'veneto', 'liguria',
@@ -479,7 +517,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'lisbon', 'lisboa', 'lisboeta',
         'porto', 'braga', 'coimbra', 'funchal', 'setúbal',
         'aveiro', 'viseu', 'leiria', 'faro', 'évora',
-        # Regiones y archipiélagos
+        # Regions and archipelagos
         'azores', 'açores', 'madeira', 'algarve', 'alentejo',
     },
 
@@ -657,7 +695,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ASIA OCCIDENTAL / MEDIO ORIENTE
+    # WEST ASIA / MIDDLE EAST
     # =========================================================================
     'Turkey': {
         'turkey', 'turquía', 'turkish', 'turco', 'turca', 'türk', 'türkiye',
@@ -753,13 +791,13 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ASIA MERIDIONAL
+    # SOUTH ASIA
     # =========================================================================
     'India': {
         'india', 'indian', 'indio', 'india', 'bharatiya', 'bharat', 'hindustan',
-        # Industrias cinematográficas
+        # Film industries
         'bollywood', 'tollywood', 'kollywood', 'mollywood', 'sandalwood',
-        # Ciudades
+        # Cities
         'mumbai', 'bombay', 'delhi', 'new delhi', 'kolkata', 'calcutta',
         'chennai', 'madras', 'bangalore', 'bengaluru', 'hyderabad',
         'ahmedabad', 'pune', 'surat', 'jaipur', 'lucknow',
@@ -769,11 +807,11 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'srinagar', 'amritsar', 'allahabad', 'prayagraj', 'guwahati',
         'chandigarh', 'coimbatore', 'kochi', 'cochin', 'thiruvananthapuram',
         'madurai', 'vijayawada', 'aurangabad', 'gwalior', 'jodhpur',
-        # Gentilicios regionales
+        # Regional demonyms
         'punjabi', 'bengalí', 'tamul', 'tamil', 'telugu', 'kannada',
         'malayali', 'gujarati', 'marathi', 'rajasthani', 'bihari',
         'assamese', 'odia', 'kashmiri', 'sikh',
-        # Regiones/estados
+        # Regions/States
         'punjab', 'gujarat', 'maharashtra', 'tamil nadu', 'kerala',
         'karnataka', 'andhra pradesh', 'telangana', 'west bengal',
         'rajasthan', 'uttar pradesh', 'madhya pradesh', 'bihar',
@@ -786,9 +824,9 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'karachi', 'lahore', 'islamabad', 'rawalpindi', 'faisalabad',
         'multan', 'gujranwala', 'peshawar', 'quetta', 'sialkot',
         'hyderabad (pk)', 'larkana', 'sukkur', 'bahawalpur', 'sargodha',
-        # Industria
+        # Industry
         'lollywood',
-        # Regiones
+        # Regions
         'punjab (pakistan)', 'sindh', 'khyber pakhtunkhwa', 'kpk', 'balochistan',
         'gilgit-baltistan', 'azad kashmir',
     },
@@ -797,7 +835,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'bangladesh', 'bangladeshi', 'bangladesí', 'bangladeshi', 'bangali',
         'dhaka', 'chittagong', 'chattogram', 'khulna', 'rajshahi',
         'sylhet', 'barisal', 'rangpur', 'mymensingh', 'comilla', 'narayanganj',
-        # Industria
+        # Industry
         'dhallywood',
     },
 
@@ -824,12 +862,12 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ASIA ORIENTAL
+    # EAST ASIA
     # =========================================================================
     'China': {
         'china', 'chinese', 'chino', 'china', 'zhongguo', 'zhonghua',
         'beijingese', 'shanghainese', 'cantonese', 'cantones', 'mandarín',
-        # Ciudades
+        # Cities
         'beijing', 'pekín', 'shanghai', 'shanghái', 'hong kong', 'hongkong',
         'guangzhou', 'cantón', 'shenzhen', 'chengdu', 'tianjin',
         'wuhan', 'chongqing', 'nanjing', 'hangzhou', 'xian', "xi'an",
@@ -837,7 +875,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'kunming', 'harbin', 'zhengzhou', 'changsha', 'jinan',
         'wuxi', 'suzhou', 'hefei', 'nanchang', 'shijiazhuang',
         'guiyang', 'taiyuan', 'lanzhou', 'urumqi', 'lhasa',
-        # Regiones especiales
+        # Special regions
         'macau', 'macao',
     },
 
@@ -850,12 +888,12 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     'Japan': {
         'japan', 'japón', 'japanese', 'japonés', 'japonesa', 'nihonjin',
         'tokyoite', 'osakan', 'osakano',
-        # Ciudades
+        # Cities
         'tokyo', 'tokio', 'osaka', 'nagoya', 'yokohama', 'sapporo',
         'fukuoka', 'kyoto', 'kobe', 'kawasaki', 'saitama', 'hiroshima',
         'sendai', 'kitakyushu', 'chiba', 'sakai', 'niigata',
         'hamamatsu', 'kumamoto', 'okayama', 'shizuoka', 'naha',
-        # Islas
+        # Islands
         'okinawa', 'hokkaido', 'kyushu', 'shikoku', 'honshu',
         # Pop culture
         'j-pop', 'jpop', 'j-rock', 'anime', 'otaku',
@@ -864,7 +902,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     'South Korea': {
         'south korea', 'corea del sur', 'korea', 'korean', 'coreano', 'coreana',
         'hanguk', 'koreans', 'hangukssaram',
-        # Ciudades
+        # Cities
         'seoul', 'seúl', 'busan', 'pusan', 'incheon', 'daegu', 'daejeon',
         'gwangju', 'suwon', 'ulsan', 'changwon', 'goyang',
         'seongnam', 'yongin', 'jeju', 'cheju', 'pohang',
@@ -883,7 +921,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ASIA SUDORIENTAL
+    # SOUTH EAST ASIA
     # =========================================================================
     'Indonesia': {
         'indonesia', 'indonesian', 'indonesio', 'indonesa', 'orang indonesia',
@@ -892,7 +930,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'makassar', 'yogyakarta', 'jogja', 'palembang', 'denpasar',
         'batam', 'pekanbaru', 'bandar lampung', 'malang', 'padang',
         'samarinda', 'balikpapan', 'manado',
-        # Islas / regiones
+        # Islands/regions
         'java', 'sumatra', 'borneo', 'kalimantan', 'bali',
         'sulawesi', 'papua', 'lombok', 'flores',
     },
@@ -904,7 +942,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'zamboanga', 'antipolo', 'taguig', 'pasig', 'cagayan de oro',
         'makati', 'pasay', 'valenzuela', 'paranaque', 'las piñas',
         'marikina', 'muntinlupa', 'mandaluyong',
-        # Islas
+        # Islands
         'luzon', 'visayas', 'mindanao', 'palawan', 'cebu island',
     },
 
@@ -961,7 +999,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ASIA CENTRAL
+    # CENTRAL ASIA
     # =========================================================================
     'Kazakhstan': {
         'kazakhstan', 'kazajistán', 'kazakhstani', 'kazajo', 'qazaqstanlyq',
@@ -1004,7 +1042,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ÁFRICA DEL NORTE
+    # NORTH AFRICA
     # =========================================================================
     'Egypt': {
         'egypt', 'egipto', 'egyptian', 'egipcio', 'egipcia', 'masri', 'masriyyin',
@@ -1043,7 +1081,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ÁFRICA OCCIDENTAL
+    # WEST AFRICA
     # =========================================================================
     'Nigeria': {
         'nigeria', 'nigerian', 'nigeriano', 'nigeriana', 'naija',
@@ -1138,7 +1176,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ÁFRICA ORIENTAL
+    # EAST AFRICA
     # =========================================================================
     'Kenya': {
         'kenya', 'kenia', 'kenyan', 'keniano', 'keniana', 'kenyan',
@@ -1216,7 +1254,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ÁFRICA CENTRAL
+    # CENTRAL AFRICA
     # =========================================================================
     'Democratic Republic of Congo': {
         'democratic republic of congo', 'drc', 'congo dr', 'república democrática del congo',
@@ -1247,7 +1285,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     },
 
     # =========================================================================
-    # ÁFRICA MERIDIONAL
+    # SOUTH AFRICA
     # =========================================================================
     'South Africa': {
         'south africa', 'sudáfrica', 'south african', 'sudafricano', 'sudafricana',
@@ -1256,7 +1294,7 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
         'durban', 'pretoria', 'tshwane', 'port elizabeth',
         'gqeberha', 'bloemfontein', 'east london', 'pietermaritzburg',
         'soweto', 'benoni', 'tembisa', 'midrand', 'vereeniging',
-        # Regiones
+        # Regions
         'gauteng', 'kwazulu-natal', 'western cape', 'eastern cape',
         'northern cape', 'free state', 'limpopo', 'mpumalanga',
         'north west province',
@@ -1288,11 +1326,11 @@ COUNTRIES_CANONICAL: Dict[str, Set[str]] = {
     'Australia': {
         'australia', 'australian', 'australiano', 'australiana',
         'aussie', 'oz',
-        # Ciudades
+        # Cities
         'sydney', 'melbourne', 'brisbane', 'perth', 'adelaide',
         'canberra', 'gold coast', 'newcastle', 'wollongong', 'hobart',
         'darwin', 'townsville', 'geelong', 'cairns', 'toowoomba',
-        # Regiones
+        # Regions
         'new south wales', 'nsw', 'victoria', 'vic', 'queensland', 'qld',
         'western australia', 'wa', 'south australia', 'sa',
         'tasmania', 'tas', 'northern territory', 'nt', 'act',
@@ -1387,7 +1425,7 @@ def validate_and_normalize_country(text: str) -> Optional[str]:
     return None
 
 # ============================================================================
-# DICCIONARIO DE GÉNEROS AMPLIADO (OK)
+# EXPANDED MUSIC GENRES DICTIONARY
 # ============================================================================
 
 MACRO_GENRES = [
@@ -1409,6 +1447,7 @@ MACRO_GENRES = [
     'Bongo Flava',
     'Bruneian Pop/Rock',
     'Burmese Pop/Rock',
+    'Calypso / Soca'
     'Cambodian Pop/Rock',
     'Canzone Italiana',
     'Chalga',
@@ -1511,10 +1550,15 @@ MACRO_GENRES = [
 ]
 
 GENRE_MAPPINGS = {
+
     ###############################################################################
-    # Pop y derivados (occidental)
+    # GLOBAL MUSIC GENRES
     ###############################################################################
-    ## Pop mainstream
+
+    ###############################################################################
+    # Pop and derivatives (western)
+    ###############################################################################
+    ## Mainstream pop
     'pop': ('Pop', 'pop'),
     'pops': ('Pop', 'pop'),
     'pop music': ('Pop', 'pop'),
@@ -1556,11 +1600,11 @@ GENRE_MAPPINGS = {
     'pop-rock': ('Pop', 'pop-rock'),
     'pop rock español': ('Pop', 'pop rock español'),
 
-    ## Latin popwith dick
+    ## Latin pop
     'pop latino': ('Pop', 'pop latino'),
     'latin pop': ('Pop', 'latin pop'),
 
-    ## Balada
+    ## Ballad
     'balada': ('Pop', 'balada'),
     'balada romántica': ('Pop', 'balada romántica'),
     'balada pop': ('Pop', 'balada pop'),
@@ -1589,7 +1633,7 @@ GENRE_MAPPINGS = {
     'sunshine pop': ('Pop', 'sunshine pop'),
 
     ###############################################################################
-    # Rock (género principal)
+    # Rock (main genre)
     ###############################################################################
     ## Rock & Roll
     'rock': ('Rock', 'rock'),
@@ -1645,7 +1689,7 @@ GENRE_MAPPINGS = {
     ## Heartland rock
     'heartland rock': ('Rock', 'heartland rock'),
 
-    ## Rock en español
+    ## Rock en español / Latin rock
     'rock en español': ('Rock', 'rock en español'),
     'rock español': ('Rock', 'rock español'),
     'rock latino': ('Rock', 'rock latino'),
@@ -1654,7 +1698,7 @@ GENRE_MAPPINGS = {
     'soft rock': ('Rock', 'soft rock'),
 
     ###############################################################################
-    # Alternative Rock/Indie
+    # Alternative Rock/Indie Rock
     ###############################################################################
     ## Alternative general
     'alternative': ('Alternative', 'alternative'),
@@ -1662,7 +1706,7 @@ GENRE_MAPPINGS = {
     'rock alternativo': ('Alternative', 'rock alternativo'),
     'alternative rock': ('Alternative', 'alternative rock'),
 
-    ## Indie
+    ## Indie rock
     'indie': ('Alternative', 'indie'),
     'indie rock': ('Alternative', 'indie rock'),
     'indie-rock': ('Alternative', 'indie-rock'),
@@ -1710,11 +1754,12 @@ GENRE_MAPPINGS = {
     'sadcore': ('Alternative', 'sadcore'),
     'sad core': ('Alternative', 'sad core'),
 
-    ## College rock / Madchester / uk post-punk revival
+    ## College rock / Madchester / UK post-punk revival
     'madchester': ('Alternative', 'madchester'),
     'baggy': ('Alternative', 'baggy'),
     'c86': ('Alternative', 'c86'),
     'uk post-punk revival': ('Alternative', 'uk post-punk revival'),
+
 
     ###############################################################################
     # Metal
@@ -1790,7 +1835,7 @@ GENRE_MAPPINGS = {
     'symphonic-metal': ('Metal', 'symphonic-metal'),
     'symphonic': ('Metal', 'symphonic'),
 
-    ## Folk metal / Pagan metal (ampliado)
+    ## Folk metal / Pagan metal
     'folk metal': ('Metal', 'folk metal'),
     'folk-metal': ('Metal', 'folk-metal'),
     'pagan metal': ('Metal', 'pagan metal'),
@@ -1833,7 +1878,7 @@ GENRE_MAPPINGS = {
     'goregrind': ('Metal', 'goregrind'),
     'pornogrind': ('Metal', 'pornogrind'),
 
-    ## Rap metal / Rapeore
+    ## Rap metal / Rapcore
     'rap metal': ('Metal', 'rap metal'),
     'rap-metal': ('Metal', 'rap-metal'),
     'rapcore': ('Metal', 'rapcore'),
@@ -1841,7 +1886,7 @@ GENRE_MAPPINGS = {
     ###############################################################################
     # Punk
     ###############################################################################
-    ## Punk general
+    ## General punk
     'punk': ('Punk', 'punk'),
     'punk rock': ('Punk', 'punk rock'),
     'punk-rock': ('Punk', 'punk-rock'),
@@ -1911,7 +1956,7 @@ GENRE_MAPPINGS = {
     ###############################################################################
     # Post-Punk / New Wave
     ###############################################################################
-    ## Post-punk general
+    ## General post-punk
     'post-punk': ('Post-Punk/New Wave', 'post-punk'),
     'post punk': ('Post-Punk/New Wave', 'post punk'),
     'postpunk': ('Post-Punk/New Wave', 'postpunk'),
@@ -1962,7 +2007,7 @@ GENRE_MAPPINGS = {
     'indie sleaze': ('Post-Punk/New Wave', 'indie sleaze'),
 
     ###############################################################################
-    # Experimental/Prog/Art
+    # Experimental / Prog Rock (and derivatives) / Art Rock / Art Pop
     ###############################################################################
     ## Progressive rock
     'progressive': ('Experimental/Prog/Art', 'progressive'),
@@ -1994,7 +2039,7 @@ GENRE_MAPPINGS = {
     'avant-pop': ('Experimental/Prog/Art', 'avant-pop'),
     'experimental pop': ('Experimental/Prog/Art', 'experimental pop'),
 
-    ## Pop psicodélico
+    ## Psychedelic pop
     'pop psicodélico': ('Experimental/Prog/Art', 'pop psicodélico'),
     'psychedelic pop': ('Experimental/Prog/Art', 'psychedelic pop'),
 
@@ -2029,7 +2074,7 @@ GENRE_MAPPINGS = {
     'rock in opposition': ('Experimental/Prog/Art', 'rock in opposition'),
     'zeuhl': ('Experimental/Prog/Art', 'zeuhl'),
 
-    ## Música concreta / Electroacústica
+    ## Musique concrète / Electroacoustic
     'musique concrete': ('Experimental/Prog/Art', 'musique concrete'),
     'música concreta': ('Experimental/Prog/Art', 'música concreta'),
     'electroacoustic': ('Experimental/Prog/Art', 'electroacoustic'),
@@ -2041,7 +2086,7 @@ GENRE_MAPPINGS = {
     'drone': ('Experimental/Prog/Art', 'drone'),
     'drone music': ('Experimental/Prog/Art', 'drone music'),
 
-    ## Experimental electrónica / Glitch
+    ## Experimental electronic / Glitch
     'experimental electronic': ('Experimental/Prog/Art', 'experimental electronic'),
     'electrónica experimental': ('Experimental/Prog/Art', 'electrónica experimental'),
     'glitch': ('Experimental/Prog/Art', 'glitch'),
@@ -2049,13 +2094,13 @@ GENRE_MAPPINGS = {
     'idm': ('Experimental/Prog/Art', 'idm'),
     'braindance': ('Experimental/Prog/Art', 'braindance'),
 
-    ## Minimalismo
+    ## Minimalism
     'minimalism': ('Experimental/Prog/Art', 'minimalism'),
     'minimalismo': ('Experimental/Prog/Art', 'minimalismo'),
     'minimal music': ('Experimental/Prog/Art', 'minimal music'),
 
     ###############################################################################
-    # Hip-Hop/Rap/Trap (anglo)
+    # Hip-Hop/Rap/Trap (Anglo)
     ###############################################################################
     ## General
     'hip hop': ('Hip-Hop/Rap', 'hip hop'),
@@ -2063,7 +2108,7 @@ GENRE_MAPPINGS = {
     'hiphop': ('Hip-Hop/Rap', 'hiphop'),
     'rap': ('Hip-Hop/Rap', 'rap'),
 
-    ## Trap y derivados
+    ## Trap (Anglo)
     'trap': ('Hip-Hop/Rap', 'trap'),
     'trap anglo': ('Hip-Hop/Rap', 'trap anglo'),
     'cloud rap': ('Hip-Hop/Rap', 'cloud rap'),
@@ -2086,7 +2131,7 @@ GENRE_MAPPINGS = {
     'political hip-hop': ('Hip-Hop/Rap', 'political hip-hop'),
     'political rap': ('Hip-Hop/Rap', 'political rap'),
 
-    ## Escenas regionales (US)
+    ## Regional scenes (US)
     'east coast': ('Hip-Hop/Rap', 'east coast'),
     'east coast hip hop': ('Hip-Hop/Rap', 'east coast hip hop'),
     'west coast': ('Hip-Hop/Rap', 'west coast'),
@@ -2099,7 +2144,7 @@ GENRE_MAPPINGS = {
     'old school rap': ('Hip-Hop/Rap', 'old school rap'),
     'old school hip hop': ('Hip-Hop/Rap', 'old school hip hop'),
 
-    ## Rap rock (solo el que no está en Metal)
+    ## Rap rock
     'rap rock': ('Hip-Hop/Rap', 'rap rock'),
     'rap-rock': ('Hip-Hop/Rap', 'rap-rock'),
 
@@ -2172,67 +2217,7 @@ GENRE_MAPPINGS = {
     'battle rap': ('Hip-Hop/Rap', 'battle rap'),
 
     ###############################################################################
-    # Reggaetón/Trap Latino
-    ###############################################################################
-    ## Reggaetón general
-    'reggaeton': ('Reggaetón/Trap Latino', 'reggaeton'),
-    'reggaetón': ('Reggaetón/Trap Latino', 'reggaetón'),
-    'regueton': ('Reggaetón/Trap Latino', 'regueton'),
-    'reguetón': ('Reggaetón/Trap Latino', 'reguetón'),
-
-    ## Trap latino
-    'trap latino': ('Reggaetón/Trap Latino', 'trap latino'),
-    'latin trap': ('Reggaetón/Trap Latino', 'latin trap'),
-
-    ## Música urbana (latina)
-    'urbano': ('Reggaetón/Trap Latino', 'urbano'),
-    'música urbana': ('Reggaetón/Trap Latino', 'música urbana'),
-    'latin urban': ('Reggaetón/Trap Latino', 'latin urban'),
-
-    ## Subgéneros y estilos
-    'dembow': ('Reggaetón/Trap Latino', 'dembow'),
-    'perreo': ('Reggaetón/Trap Latino', 'perreo'),
-    'malianteo': ('Reggaetón/Trap Latino', 'malianteo'),
-    'guaracha': ('Reggaetón/Trap Latino', 'guaracha'),
-    'rkt': ('Reggaetón/Trap Latino', 'rkt'),
-    'neoperreo': ('Reggaetón/Trap Latino', 'neoperreo'),
-
-    ## Reggaetón por temática
-    'reggaeton romántico': ('Reggaetón/Trap Latino', 'reggaeton romántico'),
-    'reggaetón romántico': ('Reggaetón/Trap Latino', 'reggaetón romántico'),
-    'trap romántico': ('Reggaetón/Trap Latino', 'trap romántico'),
-    'reggaeton consciente': ('Reggaetón/Trap Latino', 'reggaeton consciente'),
-    'reggaetón consciente': ('Reggaetón/Trap Latino', 'reggaetón consciente'),
-    'trap pesado': ('Reggaetón/Trap Latino', 'trap pesado'),
-
-    ## Reggaetón clásico / old school
-    'reggaeton clásico': ('Reggaetón/Trap Latino', 'reggaeton clásico'),
-    'reggaetón clásico': ('Reggaetón/Trap Latino', 'reggaetón clásico'),
-    'old school reggaeton': ('Reggaetón/Trap Latino', 'old school reggaeton'),
-
-    ## Fusiones y derivados
-    'reggaeton pop': ('Reggaetón/Trap Latino', 'reggaeton pop'),
-    'pop reggaeton': ('Reggaetón/Trap Latino', 'pop reggaeton'),
-    'trap pop': ('Reggaetón/Trap Latino', 'trap pop'),
-
-    ## Escenas regionales
-    'reggaeton puertorriqueño': ('Reggaetón/Trap Latino', 'reggaeton puertorriqueño'),
-    'reggaeton colombiano': ('Reggaetón/Trap Latino', 'reggaeton colombiano'),
-    'reggaeton argentino': ('Reggaetón/Trap Latino', 'reggaeton argentino'),
-    'trap argentino': ('Reggaetón/Trap Latino', 'trap argentino'),
-    'trap chileno': ('Reggaetón/Trap Latino', 'trap chileno'),
-    'trap español': ('Reggaetón/Trap Latino', 'trap español'),
-
-    ## Underground / Alternativo
-    'underground reggaeton': ('Reggaetón/Trap Latino', 'underground reggaeton'),
-    'alternativo urbano': ('Reggaetón/Trap Latino', 'alternativo urbano'),
-
-    ## Maratones / Perreo intenso
-    'perreo intenso': ('Reggaetón/Trap Latino', 'perreo intenso'),
-    'perreo pesado': ('Reggaetón/Trap Latino', 'perreo pesado'),
-
-    ###############################################################################
-    # Electrónica/Dance
+    # Electronic/Dance
     ###############################################################################
     ## General
     'electronic': ('Electrónica/Dance', 'electronic'),
@@ -2352,27 +2337,29 @@ GENRE_MAPPINGS = {
     'dutch eurodance': ('Electrónica/Dance', 'dutch eurodance'),
     'europop': ('Electrónica/Dance', 'europop'),
     'scandinavian pop': ('Electrónica/Dance', 'scandinavian pop'),
-    
+
     ## Phonk
     'phonk': ('Electrónica/Dance', 'phonk'),
 
     ###############################################################################
-    # R&B / Soul (Global) - Ampliado con Funk
+    # R&B / Soul / Funk (Anglo)
     ###############################################################################
-    ## R&B General
+    ## General R&B
     'rnb': ('R&B/Soul', 'rnb'),
     'r&b': ('R&B/Soul', 'r&b'),
     'r and b': ('R&B/Soul', 'r and b'),
     'rhythm and blues': ('R&B/Soul', 'rhythm and blues'),
     'rhythm & blues': ('R&B/Soul', 'rhythm & blues'),
 
-    ## Funk (añadido)
+    ## Funk
+        ## NOTE: This section covers Anglo/American funk only.
+        ## For Brazilian funk, see "Funk Brasileiro" section.
     'funk': ('R&B/Soul', 'funk'),
     'funk music': ('R&B/Soul', 'funk music'),
     'p-funk': ('R&B/Soul', 'p-funk'),
     'funk rock': ('R&B/Soul', 'funk rock'),
 
-    ## Soul General
+    ## General Soul
     'soul': ('R&B/Soul', 'soul'),
     'soul music': ('R&B/Soul', 'soul music'),
     'soul clásico': ('R&B/Soul', 'soul clásico'),
@@ -2419,7 +2406,7 @@ GENRE_MAPPINGS = {
     'trap soul': ('R&B/Soul', 'trap soul'),
     'trap r&b': ('R&B/Soul', 'trap r&b'),
 
-    ## R&B latino
+    ## Latin R&B
     'r&b latino': ('R&B/Soul', 'r&b latino'),
     'latin r&b': ('R&B/Soul', 'latin r&b'),
     'rnb latino': ('R&B/Soul', 'rnb latino'),
@@ -2463,13 +2450,13 @@ GENRE_MAPPINGS = {
     'slow jams': ('R&B/Soul', 'slow jams'),
 
     ###############################################################################
-    # Jazz / Blues (Global)
+    # Jazz / Blues
     ###############################################################################
-    ## Jazz General
+    ## General Jazz
     'jazz': ('Jazz/Blues', 'jazz'),
     'jazz music': ('Jazz/Blues', 'jazz music'),
 
-    ## Jazz tradicional / Dixieland
+    ## Traditional jazz / Dixieland
     'trad jazz': ('Jazz/Blues', 'trad jazz'),
     'traditional jazz': ('Jazz/Blues', 'traditional jazz'),
     'dixieland': ('Jazz/Blues', 'dixieland'),
@@ -2504,7 +2491,7 @@ GENRE_MAPPINGS = {
     ## Soul jazz
     'soul jazz': ('Jazz/Blues', 'soul jazz'),
 
-    ## Blues General
+    ## General Blues
     'blues': ('Jazz/Blues', 'blues'),
     'blues music': ('Jazz/Blues', 'blues music'),
 
@@ -2515,12 +2502,12 @@ GENRE_MAPPINGS = {
     'chicago blues': ('Jazz/Blues', 'chicago blues'),
     'electric blues': ('Jazz/Blues', 'electric blues'),
 
-    ## Rhythm and blues (clásico)
+    ## Rhythm and blues (classic)
     'rhythm and blues clasico': ('Jazz/Blues', 'rhythm and blues clasico'),
     'r&b clasico': ('Jazz/Blues', 'r&b clasico'),
     'classic r&b': ('Jazz/Blues', 'classic r&b'),
 
-    ## Otros blues
+    ## Other blues styles
     'piedmont blues': ('Jazz/Blues', 'piedmont blues'),
     'texas blues': ('Jazz/Blues', 'texas blues'),
     'memphis blues': ('Jazz/Blues', 'memphis blues'),
@@ -2529,9 +2516,9 @@ GENRE_MAPPINGS = {
     'country blues': ('Jazz/Blues', 'country blues'),
 
     ###############################################################################
-    # Folklore / Raíces (Global)
+    # Folk / Roots
     ###############################################################################
-    ## Folklore General
+    ## General Folk
     'folklore': ('Folklore/Raíces', 'folklore'),
     'folk': ('Folklore/Raíces', 'folk'),
     'folk music': ('Folklore/Raíces', 'folk music'),
@@ -2541,7 +2528,7 @@ GENRE_MAPPINGS = {
     ## Country folk
     'country folk': ('Folklore/Raíces', 'country folk'),
 
-    ## Celtic folk (ampliado)
+    ## Celtic folk
     'celtic': ('Folklore/Raíces', 'celtic'),
     'celtic folk': ('Folklore/Raíces', 'celtic folk'),
     'música celta': ('Folklore/Raíces', 'música celta'),
@@ -2554,16 +2541,15 @@ GENRE_MAPPINGS = {
     'música galega': ('Folklore/Raíces', 'música galega'),
     'galician folk': ('Folklore/Raíces', 'galician folk'),
     'celtic rock': ('Folklore/Raíces', 'celtic rock'),
-    'celtic punk': ('Folklore/Raíces', 'celtic punk'),  # Nota: también existe en Punk, pero se redefine aquí
 
-    ## Fado (ampliado)
+    ## Fado
     'fado': ('Folklore/Raíces', 'fado'),
     'fado de coimbra': ('Folklore/Raíces', 'fado de coimbra'),
     'fado de lisboa': ('Folklore/Raíces', 'fado de lisboa'),
     'fado vadio': ('Folklore/Raíces', 'fado vadio'),
     'fado fusion': ('Folklore/Raíces', 'fado fusion'),
 
-    ## Nueva Canción / Nova Cançó (ampliado)
+    ## Nueva Canción / Nova Cançó
     'nueva canción': ('Folklore/Raíces', 'nueva canción'),
     'nova cançó': ('Folklore/Raíces', 'nova cançó'),
     'cantautor catalán': ('Folklore/Raíces', 'cantautor catalán'),
@@ -2579,12 +2565,12 @@ GENRE_MAPPINGS = {
     'world music': ('Folklore/Raíces', 'world music'),
     'música del mundo': ('Folklore/Raíces', 'música del mundo'),
 
-    ## Música andina
+    ## Andean music
     'andina': ('Folklore/Raíces', 'andina'),
     'música andina': ('Folklore/Raíces', 'música andina'),
     'andean music': ('Folklore/Raíces', 'andean music'),
 
-    ## Folklore latinoamericano
+    ## Latin American folklore
     'folklore latinoamericano': ('Folklore/Raíces', 'folklore latinoamericano'),
     'zamacueca': ('Folklore/Raíces', 'zamacueca'),
     'cueca': ('Folklore/Raíces', 'cueca'),
@@ -2598,7 +2584,7 @@ GENRE_MAPPINGS = {
     'cantautor folk': ('Folklore/Raíces', 'cantautor folk'),
     'trova': ('Folklore/Raíces', 'trova'),
 
-    ## Folk contemporáneo
+    ## Contemporary folk
     'contemporary folk': ('Folklore/Raíces', 'contemporary folk'),
     'folk contemporáneo': ('Folklore/Raíces', 'folk contemporáneo'),
     'freak folk': ('Folklore/Raíces', 'freak folk'),
@@ -2606,12 +2592,12 @@ GENRE_MAPPINGS = {
     ###############################################################################
     # Country
     ###############################################################################
-    ## Country General
+    ## General Country
     'country': ('Country', 'country'),
     'country music': ('Country', 'country music'),
     'música country': ('Country', 'música country'),
 
-    ## Country clásico / Honky tonk
+    ## Classic country / Honky tonk
     'classic country': ('Country', 'classic country'),
     'country clásico': ('Country', 'country clásico'),
     'honky tonk': ('Country', 'honky tonk'),
@@ -2643,7 +2629,7 @@ GENRE_MAPPINGS = {
     'nashville sound': ('Country', 'nashville sound'),
     'nashville country': ('Country', 'nashville country'),
 
-    ## Country alternativo / Alt-country
+    ## Alternative country / Alt-country
     'alternative country': ('Country', 'alternative country'),
     'alt-country': ('Country', 'alt-country'),
     'country alternativo': ('Country', 'country alternativo'),
@@ -2658,7 +2644,7 @@ GENRE_MAPPINGS = {
     ## Bakersfield sound
     'bakersfield sound': ('Country', 'bakersfield sound'),
 
-    ## Bluegrass progresivo
+    ## Progressive bluegrass
     'progressive bluegrass': ('Country', 'progressive bluegrass'),
     'newgrass': ('Country', 'newgrass'),
 
@@ -2723,17 +2709,80 @@ GENRE_MAPPINGS = {
     'operetta': ('Classical', 'operetta'),
     'opereta': ('Classical', 'opereta'),
 
-    ## Otros términos comunes en inglés
-    'classic': ('Classical', 'classic'),  # aunque 'classic' puede ser ambiguo (rock clásico), pero en contexto clásico
+    ## Other common English terms
     'classical period': ('Classical', 'classical period'),
     'early music': ('Classical', 'early music'),
     'renaissance music': ('Classical', 'renaissance music'),
     'medieval music': ('Classical', 'medieval music'),
 
     ###############################################################################
-    # Dancehall / Reggae (Regional)
+    # AMERICA - Regional scenes (non-global)
     ###############################################################################
-    ## Reggae General
+
+    ###############################################################################
+    # Reggaetón/Latin Trap
+    ###############################################################################
+    ## General reggaeton
+    'reggaeton': ('Reggaetón/Trap Latino', 'reggaeton'),
+    'reggaetón': ('Reggaetón/Trap Latino', 'reggaetón'),
+    'regueton': ('Reggaetón/Trap Latino', 'regueton'),
+    'reguetón': ('Reggaetón/Trap Latino', 'reguetón'),
+
+    ## Latin trap
+    'trap latino': ('Reggaetón/Trap Latino', 'trap latino'),
+    'latin trap': ('Reggaetón/Trap Latino', 'latin trap'),
+
+    ## Latin urban music
+    'urbano': ('Reggaetón/Trap Latino', 'urbano'),
+    'música urbana': ('Reggaetón/Trap Latino', 'música urbana'),
+    'latin urban': ('Reggaetón/Trap Latino', 'latin urban'),
+
+    ## Subgenres and styles
+    'dembow': ('Reggaetón/Trap Latino', 'dembow'),
+    'perreo': ('Reggaetón/Trap Latino', 'perreo'),
+    'malianteo': ('Reggaetón/Trap Latino', 'malianteo'),
+    'guaracha': ('Reggaetón/Trap Latino', 'guaracha'),
+    'rkt': ('Reggaetón/Trap Latino', 'rkt'),
+    'neoperreo': ('Reggaetón/Trap Latino', 'neoperreo'),
+
+    ## Reggaeton by theme
+    'reggaeton romántico': ('Reggaetón/Trap Latino', 'reggaeton romántico'),
+    'reggaetón romántico': ('Reggaetón/Trap Latino', 'reggaetón romántico'),
+    'trap romántico': ('Reggaetón/Trap Latino', 'trap romántico'),
+    'reggaeton consciente': ('Reggaetón/Trap Latino', 'reggaeton consciente'),
+    'reggaetón consciente': ('Reggaetón/Trap Latino', 'reggaetón consciente'),
+    'trap pesado': ('Reggaetón/Trap Latino', 'trap pesado'),
+
+    ## Classic / old school reggaeton
+    'reggaeton clásico': ('Reggaetón/Trap Latino', 'reggaeton clásico'),
+    'reggaetón clásico': ('Reggaetón/Trap Latino', 'reggaetón clásico'),
+    'old school reggaeton': ('Reggaetón/Trap Latino', 'old school reggaeton'),
+
+    ## Fusions and derivatives
+    'reggaeton pop': ('Reggaetón/Trap Latino', 'reggaeton pop'),
+    'pop reggaeton': ('Reggaetón/Trap Latino', 'pop reggaeton'),
+    'trap pop': ('Reggaetón/Trap Latino', 'trap pop'),
+
+    ## Regional scenes
+    'reggaeton puertorriqueño': ('Reggaetón/Trap Latino', 'reggaeton puertorriqueño'),
+    'reggaeton colombiano': ('Reggaetón/Trap Latino', 'reggaeton colombiano'),
+    'reggaeton argentino': ('Reggaetón/Trap Latino', 'reggaeton argentino'),
+    'trap argentino': ('Reggaetón/Trap Latino', 'trap argentino'),
+    'trap chileno': ('Reggaetón/Trap Latino', 'trap chileno'),
+    'trap español': ('Reggaetón/Trap Latino', 'trap español'),
+
+    ## Underground / Alternative
+    'underground reggaeton': ('Reggaetón/Trap Latino', 'underground reggaeton'),
+    'alternativo urbano': ('Reggaetón/Trap Latino', 'alternativo urbano'),
+
+    ## Marathons / perreo intenso
+    'perreo intenso': ('Reggaetón/Trap Latino', 'perreo intenso'),
+    'perreo pesado': ('Reggaetón/Trap Latino', 'perreo pesado'),
+
+    ###############################################################################
+    # Dancehall / Reggae
+    ###############################################################################
+    ## General Reggae
     'reggae': ('Dancehall/Reggae', 'reggae'),
     'reggae music': ('Dancehall/Reggae', 'reggae music'),
     'reggae jamaicano': ('Dancehall/Reggae', 'reggae jamaicano'),
@@ -2780,7 +2829,7 @@ GENRE_MAPPINGS = {
     'contemporary dancehall': ('Dancehall/Reggae', 'contemporary dancehall'),
     'dancehall moderno': ('Dancehall/Reggae', 'dancehall moderno'),
 
-    ## Reggae fusión
+    ## Reggae fusion
     'reggae fusion': ('Dancehall/Reggae', 'reggae fusion'),
     'reggae fusión': ('Dancehall/Reggae', 'reggae fusión'),
     'reggae-pop': ('Dancehall/Reggae', 'reggae-pop'),
@@ -2793,20 +2842,20 @@ GENRE_MAPPINGS = {
     'british reggae': ('Dancehall/Reggae', 'british reggae'),
     'lovers rock uk': ('Dancehall/Reggae', 'lovers rock uk'),
 
-    ## Escenas regionales
+    ## Regional scenes
     'jamaican reggae': ('Dancehall/Reggae', 'jamaican reggae'),
     'dancehall jamaicano': ('Dancehall/Reggae', 'dancehall jamaicano'),
 
-    ## Reggae latino
+    ## Latin reggae
     'reggae latino': ('Dancehall/Reggae', 'reggae latino'),
     'latin reggae': ('Dancehall/Reggae', 'latin reggae'),
     'reggae en español': ('Dancehall/Reggae', 'reggae en español'),
 
-    ## Reggae brasileño
+    ## Brazilian reggae
     'reggae brasileiro': ('Dancehall/Reggae', 'reggae brasileiro'),
     'brazilian reggae': ('Dancehall/Reggae', 'brazilian reggae'),
 
-    ## Reggae africano
+    ## African reggae
     'african reggae': ('Dancehall/Reggae', 'african reggae'),
     'reggae africano': ('Dancehall/Reggae', 'reggae africano'),
 
@@ -2827,14 +2876,14 @@ GENRE_MAPPINGS = {
     'reggae steppers': ('Dancehall/Reggae', 'reggae steppers'),
 
     ###############################################################################
-    # Bachata (Regional)
+    # Bachata (Central America)
     ###############################################################################
-    ## Bachata General
+    ## General Bachata
     'bachata': ('Bachata', 'bachata'),
     'bachata music': ('Bachata', 'bachata music'),
     'música bachata': ('Bachata', 'música bachata'),
 
-    ## Bachata tradicional
+    ## Traditional bachata
     'bachata tradicional': ('Bachata', 'bachata tradicional'),
     'traditional bachata': ('Bachata', 'traditional bachata'),
     'bachata clásica': ('Bachata', 'bachata clásica'),
@@ -2842,25 +2891,25 @@ GENRE_MAPPINGS = {
     'bachata original': ('Bachata', 'bachata original'),
     'bachata del campo': ('Bachata', 'bachata del campo'),
 
-    ## Bachata romántica
+    ## Romantic bachata
     'bachata romántica': ('Bachata', 'bachata romántica'),
     'romantic bachata': ('Bachata', 'romantic bachata'),
     'bachata amorosa': ('Bachata', 'bachata amorosa'),
     'bachata de amor': ('Bachata', 'bachata de amor'),
 
-    ## Bachata urbana
+    ## Urban bachata
     'bachata urbana': ('Bachata', 'bachata urbana'),
     'urban bachata': ('Bachata', 'urban bachata'),
     'bachata callejera': ('Bachata', 'bachata callejera'),
     'bachata moderna': ('Bachata', 'bachata moderna'),
     'modern bachata': ('Bachata', 'modern bachata'),
 
-    ## Bachata sensual
+    ## Sensual bachata
     'bachata sensual': ('Bachata', 'bachata sensual'),
     'sensual bachata': ('Bachata', 'sensual bachata'),
     'bachata sexy': ('Bachata', 'bachata sexy'),
 
-    ## Bachata fusión
+    ## Fusion bachata
     'bachata fusion': ('Bachata', 'bachata fusion'),
     'bachata fusión': ('Bachata', 'bachata fusión'),
     'bachata pop': ('Bachata', 'bachata pop'),
@@ -2870,20 +2919,20 @@ GENRE_MAPPINGS = {
     'bachata house': ('Bachata', 'bachata house'),
     'bachata electronica': ('Bachata', 'bachata electronica'),
 
-    ## Bachata con guitarra
+    ## Guitar bachata
     'bachata con guitarra': ('Bachata', 'bachata con guitarra'),
     'bachata guitar': ('Bachata', 'bachata guitar'),
     'guitar bachata': ('Bachata', 'guitar bachata'),
     'bachata acústica': ('Bachata', 'bachata acústica'),
     'acoustic bachata': ('Bachata', 'acoustic bachata'),
 
-    ## Bachata por épocas
+    ## Bachata by era
     'bachata 80s': ('Bachata', 'bachata 80s'),
     'bachata 90s': ('Bachata', 'bachata 90s'),
     'bachata 2000s': ('Bachata', 'bachata 2000s'),
     'bachata actual': ('Bachata', 'bachata actual'),
 
-    ## Escenas regionales
+    ## Regional scenes
     'bachata dominicana': ('Bachata', 'bachata dominicana'),
     'dominican bachata': ('Bachata', 'dominican bachata'),
     'bachata de república dominicana': ('Bachata', 'bachata de república dominicana'),
@@ -2894,36 +2943,36 @@ GENRE_MAPPINGS = {
     'bachata europea': ('Bachata', 'bachata europea'),
     'european bachata': ('Bachata', 'european bachata'),
 
-    ## Bachata instrumental
+    ## Instrumental bachata
     'bachata instrumental': ('Bachata', 'bachata instrumental'),
     'instrumental bachata': ('Bachata', 'instrumental bachata'),
 
-    ## Subgéneros específicos
+    ## Specific subgenres
     'bachata amargue': ('Bachata', 'bachata amargue'),
     'amargue': ('Bachata', 'amargue'),
     'bachata de amargue': ('Bachata', 'bachata de amargue'),
     'bachata caliente': ('Bachata', 'bachata caliente'),
     'hot bachata': ('Bachata', 'hot bachata'),
 
-    ## Bachata mainstream
+    ## Mainstream bachata
     'bachata mainstream': ('Bachata', 'bachata mainstream'),
     'commercial bachata': ('Bachata', 'commercial bachata'),
     'bachata comercial': ('Bachata', 'bachata comercial'),
 
-    ## Bachata underground
+    ## Underground bachata
     'bachata underground': ('Bachata', 'bachata underground'),
     'underground bachata': ('Bachata', 'underground bachata'),
     'bachata independiente': ('Bachata', 'bachata independiente'),
 
     ###############################################################################
-    # Cumbia (Regional)
+    # Cumbia
     ###############################################################################
-    ## Cumbia General
+    ## General Cumbia
     'cumbia': ('Cumbia', 'cumbia'),
     'cumbia music': ('Cumbia', 'cumbia music'),
     'música cumbia': ('Cumbia', 'música cumbia'),
 
-    ## Cumbia colombiana (tradicional)
+    ## Colombian cumbia (traditional)
     'cumbia colombiana': ('Cumbia', 'cumbia colombiana'),
     'colombian cumbia': ('Cumbia', 'colombian cumbia'),
     'cumbia tradicional': ('Cumbia', 'cumbia tradicional'),
@@ -2939,7 +2988,7 @@ GENRE_MAPPINGS = {
     'argentine cumbia': ('Cumbia', 'argentine cumbia'),
     'cumbia villera argentina': ('Cumbia', 'cumbia villera argentina'),
 
-    ## Cumbia andina / Peruana
+    ## Andean / Peruvian cumbia
     'cumbia andina': ('Cumbia', 'cumbia andina'),
     'andean cumbia': ('Cumbia', 'andean cumbia'),
     'cumbia peruana': ('Cumbia', 'cumbia peruana'),
@@ -2948,7 +2997,7 @@ GENRE_MAPPINGS = {
     'chicha': ('Cumbia', 'chicha'),
     'chicha peruana': ('Cumbia', 'chicha peruana'),
 
-    ## Cumbia mexicana / Sonidera
+    ## Mexican / Sonidera cumbia
     'cumbia mexicana': ('Cumbia', 'cumbia mexicana'),
     'mexican cumbia': ('Cumbia', 'mexican cumbia'),
     'cumbia sonidera': ('Cumbia', 'cumbia sonidera'),
@@ -2969,28 +3018,28 @@ GENRE_MAPPINGS = {
     'cumbia pop latina': ('Cumbia', 'cumbia pop latina'),
     'cumbia comercial': ('Cumbia', 'cumbia comercial'),
 
-    ## Cumbia santafesina
+    ## Santa Fe cumbia
     'cumbia santafesina': ('Cumbia', 'cumbia santafesina'),
     'santafesina': ('Cumbia', 'santafesina'),
     'cumbia de santa fe': ('Cumbia', 'cumbia de santa fe'),
 
-    ## Cumbia rebajada
+    ## Slowed cumbia
     'cumbia rebajada': ('Cumbia', 'cumbia rebajada'),
     'rebajada': ('Cumbia', 'rebajada'),
     'cumbia slowed': ('Cumbia', 'cumbia slowed'),
     'cumbia chopped': ('Cumbia', 'cumbia chopped'),
 
-    ## Cumbia psicodélica / Chicha
+    ## Psychedelic cumbia / Chicha
     'cumbia psicodélica': ('Cumbia', 'cumbia psicodélica'),
     'psychedelic cumbia': ('Cumbia', 'psychedelic cumbia'),
     'cumbia chicha': ('Cumbia', 'cumbia chicha'),
 
-    ## Cumbia tropical
+    ## Tropical cumbia
     'cumbia tropical': ('Cumbia', 'cumbia tropical'),
     'tropical cumbia': ('Cumbia', 'tropical cumbia'),
     'cumbia tropical latina': ('Cumbia', 'cumbia tropical latina'),
 
-    ## Cumbia por regiones adicionales
+    ## Cumbia by additional regions
     'cumbia boliviana': ('Cumbia', 'cumbia boliviana'),
     'bolivian cumbia': ('Cumbia', 'bolivian cumbia'),
     'cumbia chilena': ('Cumbia', 'cumbia chilena'),
@@ -3004,7 +3053,7 @@ GENRE_MAPPINGS = {
     'cumbia venezolana': ('Cumbia', 'cumbia venezolana'),
     'venezuelan cumbia': ('Cumbia', 'venezuelan cumbia'),
 
-    ## Cumbia fusión
+    ## Fusion cumbia
     'cumbia fusion': ('Cumbia', 'cumbia fusion'),
     'cumbia fusión': ('Cumbia', 'cumbia fusión'),
     'cumbia rock': ('Cumbia', 'cumbia rock'),
@@ -3014,38 +3063,38 @@ GENRE_MAPPINGS = {
     'cumbia ska': ('Cumbia', 'cumbia ska'),
     'ska cumbia': ('Cumbia', 'ska cumbia'),
 
-    ## Cumbia instrumental
+    ## Instrumental cumbia
     'cumbia instrumental': ('Cumbia', 'cumbia instrumental'),
     'instrumental cumbia': ('Cumbia', 'instrumental cumbia'),
 
-    ## Cumbia romántica
+    ## Romantic cumbia
     'cumbia romántica': ('Cumbia', 'cumbia romántica'),
     'romantic cumbia': ('Cumbia', 'romantic cumbia'),
 
-    ## Cumbia por épocas
+    ## Cumbia by era
     'cumbia 80s': ('Cumbia', 'cumbia 80s'),
     'cumbia 90s': ('Cumbia', 'cumbia 90s'),
     'cumbia 2000s': ('Cumbia', 'cumbia 2000s'),
     'cumbia actual': ('Cumbia', 'cumbia actual'),
     'modern cumbia': ('Cumbia', 'modern cumbia'),
 
-    ## Cumbia underground / alternativa
+    ## Underground / Alternative cumbia
     'cumbia underground': ('Cumbia', 'cumbia underground'),
     'underground cumbia': ('Cumbia', 'underground cumbia'),
     'cumbia alternativa': ('Cumbia', 'cumbia alternativa'),
     'alternative cumbia': ('Cumbia', 'alternative cumbia'),
 
     ###############################################################################
-    # Sertanejo (Regional - Brasil)
+    # Sertanejo (Brazil)
     ###############################################################################
-    ## Sertanejo General
+    ## General Sertanejo
     'sertanejo': ('Sertanejo', 'sertanejo'),
     'música sertaneja': ('Sertanejo', 'música sertaneja'),
     'sertanejo music': ('Sertanejo', 'sertanejo music'),
     'sertanejo brasileiro': ('Sertanejo', 'sertanejo brasileiro'),
     'brazilian sertanejo': ('Sertanejo', 'brazilian sertanejo'),
 
-    ## Sertanejo raiz / Tradicional
+    ## Sertanejo raiz / Traditional
     'sertanejo raiz': ('Sertanejo', 'sertanejo raiz'),
     'sertanejo tradicional': ('Sertanejo', 'sertanejo tradicional'),
     'traditional sertanejo': ('Sertanejo', 'traditional sertanejo'),
@@ -3065,7 +3114,7 @@ GENRE_MAPPINGS = {
     'sertanejo moderno': ('Sertanejo', 'sertanejo moderno'),
     'modern sertanejo': ('Sertanejo', 'modern sertanejo'),
 
-    ## Sertanejo romântico
+    ## Romantic sertanejo
     'sertanejo romântico': ('Sertanejo', 'sertanejo romântico'),
     'romantic sertanejo': ('Sertanejo', 'romantic sertanejo'),
     'sertanejo de amor': ('Sertanejo', 'sertanejo de amor'),
@@ -3093,7 +3142,7 @@ GENRE_MAPPINGS = {
     'moda caipira': ('Sertanejo', 'moda caipira'),
     'moda de viola': ('Sertanejo', 'moda de viola'),
 
-    ## Sertanejo com viola
+    ## Sertanejo with viola
     'sertanejo com viola': ('Sertanejo', 'sertanejo com viola'),
     'sertanejo de viola': ('Sertanejo', 'sertanejo de viola'),
     'viola sertaneja': ('Sertanejo', 'viola sertaneja'),
@@ -3101,7 +3150,7 @@ GENRE_MAPPINGS = {
     'acoustic sertanejo': ('Sertanejo', 'acoustic sertanejo'),
     'sertanejo viola caipira': ('Sertanejo', 'sertanejo viola caipira'),
 
-    ## Sertanejo por épocas
+    ## Sertanejo by era
     'sertanejo 80s': ('Sertanejo', 'sertanejo 80s'),
     'sertanejo 90s': ('Sertanejo', 'sertanejo 90s'),
     'sertanejo 2000s': ('Sertanejo', 'sertanejo 2000s'),
@@ -3110,7 +3159,7 @@ GENRE_MAPPINGS = {
     'sertanejo atual': ('Sertanejo', 'sertanejo atual'),
     'current sertanejo': ('Sertanejo', 'current sertanejo'),
 
-    ## Sertanejo fusión
+    ## Fusion sertanejo
     'sertanejo fusion': ('Sertanejo', 'sertanejo fusion'),
     'sertanejo fusão': ('Sertanejo', 'sertanejo fusão'),
     'sertanejo rock': ('Sertanejo', 'sertanejo rock'),
@@ -3120,16 +3169,16 @@ GENRE_MAPPINGS = {
     'sertanejo reggae': ('Sertanejo', 'sertanejo reggae'),
     'reggae sertanejo': ('Sertanejo', 'reggae sertanejo'),
 
-    ## Sertanejo instrumental
+    ## Instrumental sertanejo
     'sertanejo instrumental': ('Sertanejo', 'sertanejo instrumental'),
     'instrumental sertanejo': ('Sertanejo', 'instrumental sertanejo'),
 
-    ## Duplas sertanejas
+    ## Sertanejo duos
     'dupla sertaneja': ('Sertanejo', 'dupla sertaneja'),
     'sertanejo dupla': ('Sertanejo', 'sertanejo dupla'),
     'duplas sertanejas': ('Sertanejo', 'duplas sertanejas'),
 
-    ## Feminejo (sertanejo femenino)
+    ## Feminejo (female sertanejo)
     'feminejo': ('Sertanejo', 'feminejo'),
     'sertanejo feminino': ('Sertanejo', 'sertanejo feminino'),
     'female sertanejo': ('Sertanejo', 'female sertanejo'),
@@ -3140,11 +3189,11 @@ GENRE_MAPPINGS = {
     'gospel sertanejo': ('Sertanejo', 'gospel sertanejo'),
     'sertanejo cristão': ('Sertanejo', 'sertanejo cristão'),
 
-    ## Sertanejo universitário - subcategorías
+    ## Sertanejo universitário - subcategories
     'sertanejo universitário antigo': ('Sertanejo', 'sertanejo universitário antigo'),
     'sertanejo universitário novo': ('Sertanejo', 'sertanejo universitário novo'),
 
-    ## Sertanejo por región
+    ## Sertanejo by region
     'sertanejo goiano': ('Sertanejo', 'sertanejo goiano'),
     'goiano sertanejo': ('Sertanejo', 'goiano sertanejo'),
     'sertanejo paulista': ('Sertanejo', 'sertanejo paulista'),
@@ -3160,9 +3209,9 @@ GENRE_MAPPINGS = {
     'violeiros': ('Sertanejo', 'violeiros'),
 
     ###############################################################################
-    # Funk Brasileiro (Regional)
+    # Funk Brasileiro
     ###############################################################################
-    ## Funk Brasileiro General
+    ## General Brazilian Funk
     'funk brasileiro': ('Funk Brasileiro', 'funk brasileiro'),
     'brazilian funk': ('Funk Brasileiro', 'brazilian funk'),
     'funk br': ('Funk Brasileiro', 'funk br'),
@@ -3178,14 +3227,14 @@ GENRE_MAPPINGS = {
     'funk do rio de janeiro': ('Funk Brasileiro', 'funk do rio de janeiro'),
     'funk carioca tradicional': ('Funk Brasileiro', 'funk carioca tradicional'),
 
-    ## Funk ostentação
+    ## Ostentação funk
     'funk ostentação': ('Funk Brasileiro', 'funk ostentação'),
     'ostentação funk': ('Funk Brasileiro', 'ostentação funk'),
     'funk ostentacao': ('Funk Brasileiro', 'funk ostentacao'),
     'funk de luxo': ('Funk Brasileiro', 'funk de luxo'),
     'luxury funk': ('Funk Brasileiro', 'luxury funk'),
 
-    ## Funk consciente
+    ## Conscious funk
     'funk consciente': ('Funk Brasileiro', 'funk consciente'),
     'conscious funk': ('Funk Brasileiro', 'conscious funk'),
     'funk de mensagem': ('Funk Brasileiro', 'funk de mensagem'),
@@ -3199,7 +3248,7 @@ GENRE_MAPPINGS = {
     'romantic funk': ('Funk Brasileiro', 'romantic funk'),
     'funk melody romântico': ('Funk Brasileiro', 'funk melody romântico'),
 
-    ## Funk proibidão
+    ## Proibidão funk
     'funk proibidão': ('Funk Brasileiro', 'funk proibidão'),
     'proibidão': ('Funk Brasileiro', 'proibidão'),
     'funk proibido': ('Funk Brasileiro', 'funk proibido'),
@@ -3225,21 +3274,21 @@ GENRE_MAPPINGS = {
     'funk pesado': ('Funk Brasileiro', 'funk pesado'),
     'heavy funk': ('Funk Brasileiro', 'heavy funk'),
 
-    ## Funk paulista
+    ## Paulista funk
     'funk paulista': ('Funk Brasileiro', 'funk paulista'),
     'paulista funk': ('Funk Brasileiro', 'paulista funk'),
     'funk de são paulo': ('Funk Brasileiro', 'funk de são paulo'),
     'funk sp': ('Funk Brasileiro', 'funk sp'),
     'funk 012': ('Funk Brasileiro', 'funk 012'),
 
-    ## Funk com trap
+    ## Funk with trap
     'funk com trap': ('Funk Brasileiro', 'funk com trap'),
     'funk trap': ('Funk Brasileiro', 'funk trap'),
     'trap funk': ('Funk Brasileiro', 'trap funk'),
     'funk trap brasileiro': ('Funk Brasileiro', 'funk trap brasileiro'),
     'trap brasileiro': ('Funk Brasileiro', 'trap brasileiro'),
 
-    ## Funk por épocas
+    ## Funk by era
     'funk 90s': ('Funk Brasileiro', 'funk 90s'),
     'funk anos 90': ('Funk Brasileiro', 'funk anos 90'),
     'funk 2000s': ('Funk Brasileiro', 'funk 2000s'),
@@ -3247,7 +3296,7 @@ GENRE_MAPPINGS = {
     'funk 2010s': ('Funk Brasileiro', 'funk 2010s'),
     'funk atual': ('Funk Brasileiro', 'funk atual'),
 
-    ## Funk fusión
+    ## Funk fusion
     'funk fusion': ('Funk Brasileiro', 'funk fusion'),
     'funk fusão': ('Funk Brasileiro', 'funk fusão'),
     'funk rock': ('Funk Brasileiro', 'funk rock'),
@@ -3257,13 +3306,13 @@ GENRE_MAPPINGS = {
     'funk eletrônico': ('Funk Brasileiro', 'funk eletrônico'),
     'eletrônico funk': ('Funk Brasileiro', 'eletrônico funk'),
 
-    ## Funk instrumental
+    ## Instrumental funk
     'funk instrumental': ('Funk Brasileiro', 'funk instrumental'),
     'instrumental funk': ('Funk Brasileiro', 'instrumental funk'),
     'batidão': ('Funk Brasileiro', 'batidão'),
     'batidão funk': ('Funk Brasileiro', 'batidão funk'),
 
-    ## Vertentes regionais
+    ## Regional variations
     'funk de comunidade': ('Funk Brasileiro', 'funk de comunidade'),
     'funk da quebrada': ('Funk Brasileiro', 'funk da quebrada'),
     'funk da favela': ('Funk Brasileiro', 'funk da favela'),
@@ -3274,7 +3323,7 @@ GENRE_MAPPINGS = {
     'passinho funk': ('Funk Brasileiro', 'passinho funk'),
     'passinho do malafaia': ('Funk Brasileiro', 'passinho do malafaia'),
 
-    ## Funk feminino
+    ## Female funk
     'funk feminino': ('Funk Brasileiro', 'funk feminino'),
     'female funk': ('Funk Brasileiro', 'female funk'),
     'funk das minas': ('Funk Brasileiro', 'funk das minas'),
@@ -3284,7 +3333,7 @@ GENRE_MAPPINGS = {
     'putaria funk': ('Funk Brasileiro', 'putaria funk'),
     'funk putero': ('Funk Brasileiro', 'funk putero'),
 
-    ## Funk de faculdade
+    ## University funk
     'funk de faculdade': ('Funk Brasileiro', 'funk de faculdade'),
     'university funk': ('Funk Brasileiro', 'university funk'),
 
@@ -3293,14 +3342,14 @@ GENRE_MAPPINGS = {
     'gospel funk': ('Funk Brasileiro', 'gospel funk'),
     'funk cristão': ('Funk Brasileiro', 'funk cristão'),
 
-    ## Funk antigo / Clássico
+    ## Old school / Classic funk
     'funk antigo': ('Funk Brasileiro', 'funk antigo'),
     'old school funk brasileiro': ('Funk Brasileiro', 'old school funk brasileiro'),
     'funk clássico': ('Funk Brasileiro', 'funk clássico'),
     'classic brazilian funk': ('Funk Brasileiro', 'classic brazilian funk'),
 
     ###############################################################################
-    # Regional Mexicano
+    # Regional Mexican
     ###############################################################################
     ## General
     'regional mexicano': ('Regional Mexicano', 'regional mexicano'),
@@ -3386,7 +3435,7 @@ GENRE_MAPPINGS = {
     'calentana': ('Regional Mexicano', 'calentana'),
     'musica calentana': ('Regional Mexicano', 'musica calentana'),
 
-    ## Otros subgéneros regionales
+    ## Other regional subgenres
     'huapango': ('Regional Mexicano', 'huapango'),
     'son huasteco': ('Regional Mexicano', 'son huasteco'),
     'son jarocho': ('Regional Mexicano', 'son jarocho'),
@@ -3395,7 +3444,7 @@ GENRE_MAPPINGS = {
     'son mexicano': ('Regional Mexicano', 'son mexicano'),
     'abajeño': ('Regional Mexicano', 'abajeño'),
 
-    ## Fusiones contemporáneas
+    ## Contemporary fusions
     'regional mexicano urbano': ('Regional Mexicano', 'regional mexicano urbano'),
     'regional fusion': ('Regional Mexicano', 'regional fusion'),
     'regional mexicano pop': ('Regional Mexicano', 'regional mexicano pop'),
@@ -3405,7 +3454,7 @@ GENRE_MAPPINGS = {
     'regional mexicano trap': ('Regional Mexicano', 'regional mexicano trap'),
     'trap regional mexicano': ('Regional Mexicano', 'trap regional mexicano'),
 
-    ## Por época
+    ## By era
     'regional mexicano clasico': ('Regional Mexicano', 'regional mexicano clasico'),
     'regional mexicano tradicional': ('Regional Mexicano', 'regional mexicano tradicional'),
     'regional mexicano moderno': ('Regional Mexicano', 'regional mexicano moderno'),
@@ -3419,9 +3468,9 @@ GENRE_MAPPINGS = {
     'acordeon regional': ('Regional Mexicano', 'acordeon regional'),
 
     ###############################################################################
-    # Vallenato (Regional - Colombia)
+    # Vallenato (Colombia)
     ###############################################################################
-    ## Vallenato General
+    ## General Vallenato
     'vallenato': ('Vallenato', 'vallenato'),
     'música vallenata': ('Vallenato', 'música vallenata'),
     'vallenato music': ('Vallenato', 'vallenato music'),
@@ -3429,7 +3478,7 @@ GENRE_MAPPINGS = {
     'colombian vallenato': ('Vallenato', 'colombian vallenato'),
     'vallenato de colombia': ('Vallenato', 'vallenato de colombia'),
 
-    ## Vallenato tradicional
+    ## Traditional vallenato
     'vallenato tradicional': ('Vallenato', 'vallenato tradicional'),
     'traditional vallenato': ('Vallenato', 'traditional vallenato'),
     'vallenato clásico': ('Vallenato', 'vallenato clásico'),
@@ -3438,14 +3487,14 @@ GENRE_MAPPINGS = {
     'vallenato costeño': ('Vallenato', 'vallenato costeño'),
     'vallenato auténtico': ('Vallenato', 'vallenato auténtico'),
 
-    ## Vallenato romántico
+    ## Romantic vallenato
     'vallenato romántico': ('Vallenato', 'vallenato romántico'),
     'romantic vallenato': ('Vallenato', 'romantic vallenato'),
     'vallenato de amor': ('Vallenato', 'vallenato de amor'),
     'vallenato enamorado': ('Vallenato', 'vallenato enamorado'),
     'vallenato sentimental': ('Vallenato', 'vallenato sentimental'),
 
-    ## Vallenato pop / Vallenato comercial
+    ## Pop vallenato / Commercial vallenato
     'vallenato pop': ('Vallenato', 'vallenato pop'),
     'pop vallenato': ('Vallenato', 'pop vallenato'),
     'vallenato comercial': ('Vallenato', 'vallenato comercial'),
@@ -3454,7 +3503,7 @@ GENRE_MAPPINGS = {
     'modern vallenato': ('Vallenato', 'modern vallenato'),
     'vallenato contemporáneo': ('Vallenato', 'vallenato contemporáneo'),
 
-    ## Vallenato con acordeón
+    ## Vallenato with accordion
     'vallenato con acordeón': ('Vallenato', 'vallenato con acordeón'),
     'vallenato acordeón': ('Vallenato', 'vallenato acordeón'),
     'acordeón vallenato': ('Vallenato', 'acordeón vallenato'),
@@ -3462,7 +3511,7 @@ GENRE_MAPPINGS = {
     'acordeon vallenato': ('Vallenato', 'acordeon vallenato'),
     'vallenato instrumental': ('Vallenato', 'vallenato instrumental'),
 
-    ## Vallenato - cumbia fusión
+    ## Vallenato - cumbia fusion
     'vallenato cumbia': ('Vallenato', 'vallenato cumbia'),
     'cumbia vallenato': ('Vallenato', 'cumbia vallenato'),
     'vallenato - cumbia': ('Vallenato', 'vallenato - cumbia'),
@@ -3483,27 +3532,27 @@ GENRE_MAPPINGS = {
     'merengue costeño': ('Vallenato', 'merengue costeño'),
     'merengue colombiano': ('Vallenato', 'merengue colombiano'),
 
-    ## Aires vallenatos (ritmos tradicionales)
+    ## Vallenato rhythms (traditional)
     'son vallenato': ('Vallenato', 'son vallenato'),
     'puya vallenata': ('Vallenato', 'puya vallenata'),
     'puya': ('Vallenato', 'puya'),
     'merengue': ('Vallenato', 'merengue'),
     'paseo vallenato tradicional': ('Vallenato', 'paseo vallenato tradicional'),
 
-    ## Vallenato por instrumentos
+    ## Vallenato by instrument
     'vallenato con caja': ('Vallenato', 'vallenato con caja'),
     'vallenato con guacharaca': ('Vallenato', 'vallenato con guacharaca'),
     'vallenato con guitarra': ('Vallenato', 'vallenato con guitarra'),
     'vallenato con bajo': ('Vallenato', 'vallenato con bajo'),
 
-    ## Vallenato por región
+    ## Vallenato by region
     'vallenato cesarense': ('Vallenato', 'vallenato cesarense'),
     'vallenato guajiro': ('Vallenato', 'vallenato guajiro'),
     'vallenato samario': ('Vallenato', 'vallenato samario'),
     'vallenato de la costa caribe': ('Vallenato', 'vallenato de la costa caribe'),
     'vallenato del magdalena': ('Vallenato', 'vallenato del magdalena'),
 
-    ## Vallenato por época
+    ## Vallenato by era
     'vallenato 80s': ('Vallenato', 'vallenato 80s'),
     'vallenato 90s': ('Vallenato', 'vallenato 90s'),
     'vallenato 2000s': ('Vallenato', 'vallenato 2000s'),
@@ -3511,7 +3560,7 @@ GENRE_MAPPINGS = {
     'vallenato nuevo': ('Vallenato', 'vallenato nuevo'),
     'vallenato de antes': ('Vallenato', 'vallenato de antes'),
 
-    ## Vallenato fusión
+    ## Fusion vallenato
     'vallenato fusion': ('Vallenato', 'vallenato fusion'),
     'vallenato fusión': ('Vallenato', 'vallenato fusión'),
     'vallenato rock': ('Vallenato', 'vallenato rock'),
@@ -3520,24 +3569,122 @@ GENRE_MAPPINGS = {
     'vallenato electrónico': ('Vallenato', 'vallenato electrónico'),
     'vallenato tropical': ('Vallenato', 'vallenato tropical'),
 
-    ## Vallenato cristiano
+    ## Christian vallenato
     'vallenato cristiano': ('Vallenato', 'vallenato cristiano'),
     'christian vallenato': ('Vallenato', 'christian vallenato'),
     'vallenato gospel': ('Vallenato', 'vallenato gospel'),
 
-    ## Festival Vallenato
+    ## Vallenato Festival
     'festival vallenato': ('Vallenato', 'festival vallenato'),
     'vallenato festival': ('Vallenato', 'vallenato festival'),
     'rey de reyes vallenato': ('Vallenato', 'rey de reyes vallenato'),
 
-    ## Vallenato letras / temática
+    ## Vallenato lyrics / themes
     'vallenato social': ('Vallenato', 'vallenato social'),
     'vallenato costumbrista': ('Vallenato', 'vallenato costumbrista'),
     'vallenato folclórico': ('Vallenato', 'vallenato folclórico'),
     'vallenato de protesta': ('Vallenato', 'vallenato de protesta'),
 
     ###############################################################################
-    # Música Tropical / Salsa / Merengue / Bolero
+    # Calypso / Soca (Caribbean)
+    ###############################################################################
+    ## Calypso
+    'calypso': ('Calypso / Soca', 'calypso'),
+    'calypso music': ('Calypso / Soca', 'calypso music'),
+    'calypso caribeño': ('Calypso / Soca', 'calypso caribeño'),
+    'calypso tradicional': ('Calypso / Soca', 'calypso tradicional'),
+    'traditional calypso': ('Calypso / Soca', 'traditional calypso'),
+    'calypso trinidad': ('Calypso / Soca', 'calypso trinidad'),
+
+    'soca': ('Calypso / Soca', 'soca'),
+    'soca music': ('Calypso / Soca', 'soca music'),
+    'soca caribeña': ('Calypso / Soca', 'soca caribeña'),
+    'soca trinidad': ('Calypso / Soca', 'soca trinidad'),
+
+    ## Classic soca
+    'soca clásica': ('Calypso / Soca', 'soca clásica'),
+    'classic soca': ('Calypso / Soca', 'classic soca'),
+    'soca tradicional': ('Calypso / Soca', 'soca tradicional'),
+    'old school soca': ('Calypso / Soca', 'old school soca'),
+
+    ## Power soca
+    'power soca': ('Calypso / Soca', 'power soca'),
+    'power soca music': ('Calypso / Soca', 'power soca music'),
+    'soca power': ('Calypso / Soca', 'soca power'),
+
+    ## Groovy soca
+    'groovy soca': ('Calypso / Soca', 'groovy soca'),
+    'groove soca': ('Calypso / Soca', 'groove soca'),
+    'soca groovy': ('Calypso / Soca', 'soca groovy'),
+
+    ## Chutney soca
+    'chutney soca': ('Calypso / Soca', 'chutney soca'),
+    'soca chutney': ('Calypso / Soca', 'soca chutney'),
+    'chutney soca fusion': ('Calypso / Soca', 'chutney soca fusion'),
+
+    ## Rapso
+    'rapso': ('Calypso / Soca', 'rapso'),
+    'rapso music': ('Calypso / Soca', 'rapso music'),
+    'rapso trinidad': ('Calypso / Soca', 'rapso trinidad'),
+
+    ## Extempo
+    'extempo': ('Calypso / Soca', 'extempo'),
+    'extempo calypso': ('Calypso / Soca', 'extempo calypso'),
+    'calypso extempo': ('Calypso / Soca', 'calypso extempo'),
+
+    ## Parang soca
+    'parang soca': ('Calypso / Soca', 'parang soca'),
+    'soca parang': ('Calypso / Soca', 'soca parang'),
+    'parang soca music': ('Calypso / Soca', 'parang soca music'),
+
+    ## Bouyon soca (Dominica)
+    'bouyon soca': ('Calypso / Soca', 'bouyon soca'),
+    'bouyon': ('Calypso / Soca', 'bouyon'),
+    'bouyon music': ('Calypso / Soca', 'bouyon music'),
+    'bouyon soca dominica': ('Calypso / Soca', 'bouyon soca dominica'),
+    'dominica bouyon': ('Calypso / Soca', 'dominica bouyon'),
+
+    ## Modern / Contemporary soca
+    'soca moderna': ('Calypso / Soca', 'soca moderna'),
+    'modern soca': ('Calypso / Soca', 'modern soca'),
+    'soca contemporánea': ('Calypso / Soca', 'soca contemporánea'),
+    'contemporary soca': ('Calypso / Soca', 'contemporary soca'),
+
+    ## Soca fusions
+    'soca fusion': ('Calypso / Soca', 'soca fusion'),
+    'soca fusión': ('Calypso / Soca', 'soca fusión'),
+    'soca pop': ('Calypso / Soca', 'soca pop'),
+    'pop soca': ('Calypso / Soca', 'pop soca'),
+    'soca reggae': ('Calypso / Soca', 'soca reggae'),
+    'reggae soca': ('Calypso / Soca', 'reggae soca'),
+    'soca dancehall': ('Calypso / Soca', 'soca dancehall'),
+    'dancehall soca': ('Calypso / Soca', 'dancehall soca'),
+
+    ## Soca by region
+    'soca trinitaria': ('Calypso / Soca', 'soca trinitaria'),
+    'trinidad soca': ('Calypso / Soca', 'trinidad soca'),
+    'soca tobago': ('Calypso / Soca', 'soca tobago'),
+    'soca barbados': ('Calypso / Soca', 'soca barbados'),
+    'soca grenada': ('Calypso / Soca', 'soca grenada'),
+    'soca san vicente': ('Calypso / Soca', 'soca san vicente'),
+    'soca caribe oriental': ('Calypso / Soca', 'soca caribe oriental'),
+
+    ## Calypso by era
+    'calypso 50s': ('Calypso / Soca', 'calypso 50s'),
+    'calypso 60s': ('Calypso / Soca', 'calypso 60s'),
+    'calypso 70s': ('Calypso / Soca', 'calypso 70s'),
+    'calypso 80s': ('Calypso / Soca', 'calypso 80s'),
+    'calypso moderno': ('Calypso / Soca', 'calypso moderno'),
+
+    ## Carnival / Festival
+    'carnival soca': ('Calypso / Soca', 'carnival soca'),
+    'soca carnival': ('Calypso / Soca', 'soca carnival'),
+    'road march': ('Calypso / Soca', 'road march'),
+    'soca road march': ('Calypso / Soca', 'soca road march'),
+    'carnival calypso': ('Calypso / Soca', 'carnival calypso'),
+
+    ###############################################################################
+    # Tropical Music / Salsa / Merengue / Bolero
     ###############################################################################
     ## Salsa
     'salsa': ('Tropical/Salsa/Merengue/Bolero', 'salsa'),
@@ -3583,7 +3730,7 @@ GENRE_MAPPINGS = {
     'bolero instrumental': ('Tropical/Salsa/Merengue/Bolero', 'bolero instrumental'),
     'bolero moderno': ('Tropical/Salsa/Merengue/Bolero', 'bolero moderno'),
 
-    ## Música Tropical general
+    ## General Tropical Music
     'tropical': ('Tropical/Salsa/Merengue/Bolero', 'tropical'),
     'música tropical': ('Tropical/Salsa/Merengue/Bolero', 'música tropical'),
     'tropical music': ('Tropical/Salsa/Merengue/Bolero', 'tropical music'),
@@ -3632,7 +3779,7 @@ GENRE_MAPPINGS = {
     'porro tradicional': ('Tropical/Salsa/Merengue/Bolero', 'porro tradicional'),
     'porro costeño': ('Tropical/Salsa/Merengue/Bolero', 'porro costeño'),
 
-    ## Festejo / Landó (Perú)
+    ## Festejo / Landó (Peru)
     'festejo': ('Tropical/Salsa/Merengue/Bolero', 'festejo'),
     'festejo peruano': ('Tropical/Salsa/Merengue/Bolero', 'festejo peruano'),
     'landó': ('Tropical/Salsa/Merengue/Bolero', 'landó'),
@@ -3644,107 +3791,12 @@ GENRE_MAPPINGS = {
     'plena': ('Tropical/Salsa/Merengue/Bolero', 'plena'),
     'plena puertorriqueña': ('Tropical/Salsa/Merengue/Bolero', 'plena puertorriqueña'),
 
-    ## Calypso / Soca
-    'calypso': ('Tropical/Salsa/Merengue/Bolero', 'calypso'),
-    'calypso music': ('Tropical/Salsa/Merengue/Bolero', 'calypso music'),
-    'calypso caribeño': ('Tropical/Salsa/Merengue/Bolero', 'calypso caribeño'),
-    'calypso tradicional': ('Tropical/Salsa/Merengue/Bolero', 'calypso tradicional'),
-    'traditional calypso': ('Tropical/Salsa/Merengue/Bolero', 'traditional calypso'),
-    'calypso trinidad': ('Tropical/Salsa/Merengue/Bolero', 'calypso trinidad'),
-
-    'soca': ('Tropical/Salsa/Merengue/Bolero', 'soca'),
-    'soca music': ('Tropical/Salsa/Merengue/Bolero', 'soca music'),
-    'soca caribeña': ('Tropical/Salsa/Merengue/Bolero', 'soca caribeña'),
-    'soca trinidad': ('Tropical/Salsa/Merengue/Bolero', 'soca trinidad'),
-
-    ### Soca clásica
-    'soca clásica': ('Tropical/Salsa/Merengue/Bolero', 'soca clásica'),
-    'classic soca': ('Tropical/Salsa/Merengue/Bolero', 'classic soca'),
-    'soca tradicional': ('Tropical/Salsa/Merengue/Bolero', 'soca tradicional'),
-    'old school soca': ('Tropical/Salsa/Merengue/Bolero', 'old school soca'),
-
-    ### Power soca
-    'power soca': ('Tropical/Salsa/Merengue/Bolero', 'power soca'),
-    'power soca music': ('Tropical/Salsa/Merengue/Bolero', 'power soca music'),
-    'soca power': ('Tropical/Salsa/Merengue/Bolero', 'soca power'),
-
-    ### Groovy soca
-    'groovy soca': ('Tropical/Salsa/Merengue/Bolero', 'groovy soca'),
-    'groove soca': ('Tropical/Salsa/Merengue/Bolero', 'groove soca'),
-    'soca groovy': ('Tropical/Salsa/Merengue/Bolero', 'soca groovy'),
-
-    ### Chutney soca
-    'chutney soca': ('Tropical/Salsa/Merengue/Bolero', 'chutney soca'),
-    'soca chutney': ('Tropical/Salsa/Merengue/Bolero', 'soca chutney'),
-    'chutney soca fusion': ('Tropical/Salsa/Merengue/Bolero', 'chutney soca fusion'),
-
-    ### Rapso
-    'rapso': ('Tropical/Salsa/Merengue/Bolero', 'rapso'),
-    'rapso music': ('Tropical/Salsa/Merengue/Bolero', 'rapso music'),
-    'rapso trinidad': ('Tropical/Salsa/Merengue/Bolero', 'rapso trinidad'),
-
-    ### Extempo
-    'extempo': ('Tropical/Salsa/Merengue/Bolero', 'extempo'),
-    'extempo calypso': ('Tropical/Salsa/Merengue/Bolero', 'extempo calypso'),
-    'calypso extempo': ('Tropical/Salsa/Merengue/Bolero', 'calypso extempo'),
-
-    ### Parang soca
-    'parang soca': ('Tropical/Salsa/Merengue/Bolero', 'parang soca'),
-    'soca parang': ('Tropical/Salsa/Merengue/Bolero', 'soca parang'),
-    'parang soca music': ('Tropical/Salsa/Merengue/Bolero', 'parang soca music'),
-
-    ### Bouyon soca (Dominica)
-    'bouyon soca': ('Tropical/Salsa/Merengue/Bolero', 'bouyon soca'),
-    'bouyon': ('Tropical/Salsa/Merengue/Bolero', 'bouyon'),
-    'bouyon music': ('Tropical/Salsa/Merengue/Bolero', 'bouyon music'),
-    'bouyon soca dominica': ('Tropical/Salsa/Merengue/Bolero', 'bouyon soca dominica'),
-    'dominica bouyon': ('Tropical/Salsa/Merengue/Bolero', 'dominica bouyon'),
-
-    ### Soca moderna / contemporánea
-    'soca moderna': ('Tropical/Salsa/Merengue/Bolero', 'soca moderna'),
-    'modern soca': ('Tropical/Salsa/Merengue/Bolero', 'modern soca'),
-    'soca contemporánea': ('Tropical/Salsa/Merengue/Bolero', 'soca contemporánea'),
-    'contemporary soca': ('Tropical/Salsa/Merengue/Bolero', 'contemporary soca'),
-
-    ### Fusiones de soca
-    'soca fusion': ('Tropical/Salsa/Merengue/Bolero', 'soca fusion'),
-    'soca fusión': ('Tropical/Salsa/Merengue/Bolero', 'soca fusión'),
-    'soca pop': ('Tropical/Salsa/Merengue/Bolero', 'soca pop'),
-    'pop soca': ('Tropical/Salsa/Merengue/Bolero', 'pop soca'),
-    'soca reggae': ('Tropical/Salsa/Merengue/Bolero', 'soca reggae'),
-    'reggae soca': ('Tropical/Salsa/Merengue/Bolero', 'reggae soca'),
-    'soca dancehall': ('Tropical/Salsa/Merengue/Bolero', 'soca dancehall'),
-    'dancehall soca': ('Tropical/Salsa/Merengue/Bolero', 'dancehall soca'),
-
-    ### Soca por regiones
-    'soca trinitaria': ('Tropical/Salsa/Merengue/Bolero', 'soca trinitaria'),
-    'trinidad soca': ('Tropical/Salsa/Merengue/Bolero', 'trinidad soca'),
-    'soca tobago': ('Tropical/Salsa/Merengue/Bolero', 'soca tobago'),
-    'soca barbados': ('Tropical/Salsa/Merengue/Bolero', 'soca barbados'),
-    'soca grenada': ('Tropical/Salsa/Merengue/Bolero', 'soca grenada'),
-    'soca san vicente': ('Tropical/Salsa/Merengue/Bolero', 'soca san vicente'),
-    'soca caribe oriental': ('Tropical/Salsa/Merengue/Bolero', 'soca caribe oriental'),
-
-    ### Calypso por épocas
-    'calypso 50s': ('Tropical/Salsa/Merengue/Bolero', 'calypso 50s'),
-    'calypso 60s': ('Tropical/Salsa/Merengue/Bolero', 'calypso 60s'),
-    'calypso 70s': ('Tropical/Salsa/Merengue/Bolero', 'calypso 70s'),
-    'calypso 80s': ('Tropical/Salsa/Merengue/Bolero', 'calypso 80s'),
-    'calypso moderno': ('Tropical/Salsa/Merengue/Bolero', 'calypso moderno'),
-
-    ### Carnaval / Festival
-    'carnival soca': ('Tropical/Salsa/Merengue/Bolero', 'carnival soca'),
-    'soca carnival': ('Tropical/Salsa/Merengue/Bolero', 'soca carnival'),
-    'road march': ('Tropical/Salsa/Merengue/Bolero', 'road march'),
-    'soca road march': ('Tropical/Salsa/Merengue/Bolero', 'soca road march'),
-    'carnival calypso': ('Tropical/Salsa/Merengue/Bolero', 'carnival calypso'),
-
-    ## Compás / Méringue (Haití)
+    ## Compás / Méringue (Haiti)
     'compas': ('Tropical/Salsa/Merengue/Bolero', 'compas'),
     'compas haitiano': ('Tropical/Salsa/Merengue/Bolero', 'compas haitiano'),
     'méringue': ('Tropical/Salsa/Merengue/Bolero', 'méringue'),
 
-    ## Fusiones tropicales
+    ## Tropical fusions
     'tropical fusion': ('Tropical/Salsa/Merengue/Bolero', 'tropical fusion'),
     'tropical pop': ('Tropical/Salsa/Merengue/Bolero', 'tropical pop'),
     'pop tropical': ('Tropical/Salsa/Merengue/Bolero', 'pop tropical'),
@@ -3752,7 +3804,7 @@ GENRE_MAPPINGS = {
     'rock tropical': ('Tropical/Salsa/Merengue/Bolero', 'rock tropical'),
     'tropical electronica': ('Tropical/Salsa/Merengue/Bolero', 'tropical electronica'),
 
-    ## Por época
+    ## By era
     'tropical clasico': ('Tropical/Salsa/Merengue/Bolero', 'tropical clasico'),
     'tropical 80s': ('Tropical/Salsa/Merengue/Bolero', 'tropical 80s'),
     'tropical 90s': ('Tropical/Salsa/Merengue/Bolero', 'tropical 90s'),
@@ -3760,18 +3812,18 @@ GENRE_MAPPINGS = {
     'tropical contemporáneo': ('Tropical/Salsa/Merengue/Bolero', 'tropical contemporáneo'),
 
     ###############################################################################
-    # EUROPA - Escenas regionales (no globales)
+    # EUROPE - Regional scenes (non-global)
     ###############################################################################
 
-    # NOTA: Los géneros globales como pop, rock, hip-hop, etc. ya están cubiertos
-    # en las secciones anteriores. Aquí solo añadimos aquellos con fuerte identidad
-    # regional y que no encajan en las categorías estándar.
+    # NOTE: Global genres like pop, rock, hip-hop, etc. are already covered
+    # in previous sections. Here we only add those with strong regional identity
+    # that don't fit into standard categories.
 
     ###############################################################################
-    # Balcanes
+    # Balkans
     ###############################################################################
 
-    ## Manele (Rumanía)
+    ## Manele (Romania)
     'manele': ('Manele', 'manele'),
     'muzică manele': ('Manele', 'muzică manele'),
     'muzica de petrecere': ('Manele', 'muzica de petrecere'),
@@ -3782,7 +3834,7 @@ GENRE_MAPPINGS = {
     'manele pop': ('Manele', 'manele pop'),
     'manele house': ('Manele', 'manele house'),
 
-    ## Turbo-folk (Serbia / Balcanes)
+    ## Turbo-folk (Serbia / Balkans)
     'turbo folk': ('Turbo-folk', 'turbo folk'),
     'turbofolk': ('Turbo-folk', 'turbofolk'),
     'турбо фолк': ('Turbo-folk', 'турбо фолк'),
@@ -3811,7 +3863,7 @@ GENRE_MAPPINGS = {
     'etno pop': ('Chalga', 'etno pop'),
     'payner style': ('Chalga', 'payner style'),
 
-    ## Laïko / Skyladiko (Grecia / Chipre)
+    ## Laïko / Skyladiko (Greece / Cyprus)
     'laiko': ('Laïko', 'laiko'),
     'λαϊκό': ('Laïko', 'λαϊκό'),
     'laïkó': ('Laïko', 'laïkó'),
@@ -3825,10 +3877,10 @@ GENRE_MAPPINGS = {
     'pontiako laiko': ('Laïko', 'pontiako laiko'),
 
     ###############################################################################
-    # Europa Central y Alpes
+    # Central Europe and Alps
     ###############################################################################
 
-    ## Oberkrainer / Alpine Folk (Alpes)
+    ## Oberkrainer / Alpine Folk (Alps)
     'oberkrainer': ('Alpine Folk', 'oberkrainer'),
     'alpenrock': ('Alpine Folk', 'alpenrock'),
     'volkstümliche musik': ('Alpine Folk', 'volkstümliche musik'),
@@ -3839,7 +3891,7 @@ GENRE_MAPPINGS = {
     'alpenpop': ('Alpine Folk', 'alpenpop'),
     'volksrock': ('Alpine Folk', 'volksrock'),
 
-    ## Schlager (Alemania / Austria / Suiza / Benelux)
+    ## Schlager (Germany / Austria / Switzerland / Benelux)
     'schlager': ('Schlager', 'schlager'),
     'volksmusik': ('Schlager', 'volksmusik'),
     'deutsche schlager': ('Schlager', 'deutsche schlager'),
@@ -3851,10 +3903,10 @@ GENRE_MAPPINGS = {
     'nederlandstalige muziek': ('Schlager', 'nederlandstalige muziek'),
 
     ###############################################################################
-    # Europa del Este y judía
+    # Eastern Europe and Jewish
     ###############################################################################
 
-    ## Klezmer / Jewish Music (Europa del Este / Diáspora)
+    ## Klezmer / Jewish Music (Eastern Europe / Diaspora)
     'klezmer': ('Klezmer', 'klezmer'),
     'klezmer music': ('Klezmer', 'klezmer music'),
     'ייִדישע מוזיק': ('Klezmer', 'ייִדישע מוזיק'),
@@ -3866,7 +3918,7 @@ GENRE_MAPPINGS = {
     'romanian klezmer': ('Klezmer', 'romanian klezmer'),
     'hungarian klezmer': ('Klezmer', 'hungarian klezmer'),
 
-    ## Roma / Gypsy Music (Europa del Este)
+    ## Roma / Gypsy Music (Eastern Europe)
     'romani music': ('Roma Music', 'romani music'),
     'gypsy music': ('Roma Music', 'gypsy music'),
     'muzică țigănească': ('Roma Music', 'muzică țigănească'),
@@ -3882,10 +3934,10 @@ GENRE_MAPPINGS = {
     'spanish roma music': ('Roma Music', 'spanish roma music'),
 
     ###############################################################################
-    # Escandinavia y Nórdicos
+    # Scandinavia and Nordic
     ###############################################################################
 
-    ## Dansband (Suecia / Noruega / Dinamarca)
+    ## Dansband (Sweden / Norway / Denmark)
     'dansband': ('Dansband', 'dansband'),
     'dansbandsmusik': ('Dansband', 'dansbandsmusik'),
     'modern dansband': ('Dansband', 'modern dansband'),
@@ -3895,7 +3947,7 @@ GENRE_MAPPINGS = {
     'norsk dansband': ('Dansband', 'norsk dansband'),
     'dansk dansband': ('Dansband', 'dansk dansband'),
 
-    ## Iskelmä / Kuunku (Finlandia)
+    ## Iskelmä / Kuunku (Finland)
     'iskelmä': ('Iskelmä', 'iskelmä'),
     'suomalainen iskelmä': ('Iskelmä', 'suomalainen iskelmä'),
     'kuunku': ('Iskelmä', 'kuunku'),
@@ -3905,10 +3957,10 @@ GENRE_MAPPINGS = {
     'iskelmä pop': ('Iskelmä', 'iskelmä pop'),
 
     ###############################################################################
-    # Francia y Benelux
+    # France and Benelux
     ###############################################################################
 
-    ## Chanson / Variété (Francia / Bélgica / Suiza)
+    ## Chanson / Variété (France / Belgium / Switzerland)
     'chanson': ('Chanson', 'chanson'),
     'chanson française': ('Chanson', 'chanson française'),
     'chanson réaliste': ('Chanson', 'chanson réaliste'),
@@ -3920,10 +3972,10 @@ GENRE_MAPPINGS = {
     'chanson suisse': ('Chanson', 'chanson suisse'),
 
     ###############################################################################
-    # Reino Unido e Irlanda
+    # United Kingdom and Ireland
     ###############################################################################
 
-    ## Electroswing / Swing Revival (Reino Unido / Europa)
+    ## Electroswing / Swing Revival (UK / Europe)
     'electro swing': ('Electroswing', 'electro swing'),
     'electroswing': ('Electroswing', 'electroswing'),
     'swing house': ('Electroswing', 'swing house'),
@@ -3933,10 +3985,10 @@ GENRE_MAPPINGS = {
     'neo swing': ('Electroswing', 'neo swing'),
 
     ###############################################################################
-    # Italia
+    # Italy
     ###############################################################################
 
-    ## Canzone Italiana / Cantautori (Italia)
+    ## Canzone Italiana / Cantautori (Italy)
     'canzone italiana': ('Canzone Italiana', 'canzone italiana'),
     'pop italiano': ('Canzone Italiana', 'pop italiano'),
     'rock italiano': ('Canzone Italiana', 'rock italiano'),
@@ -3948,10 +4000,10 @@ GENRE_MAPPINGS = {
     'liscio': ('Canzone Italiana', 'liscio'),
 
     ###############################################################################
-    # España y Portugal (Flamenco / Copla unificado y ampliado)
+    # Spain and Portugal (Flamenco / Copla)
     ###############################################################################
 
-    ## Flamenco / Copla (España y Portugal) - Categoría unificada y ampliada
+    ## Flamenco / Copla (Spain and Portugal)
     'flamenco': ('Flamenco / Copla', 'flamenco'),
     'cante flamenco': ('Flamenco / Copla', 'cante flamenco'),
     'toque flamenco': ('Flamenco / Copla', 'toque flamenco'),
@@ -4009,13 +4061,17 @@ GENRE_MAPPINGS = {
     'levantica': ('Flamenco / Copla', 'levantica'),
     'saeta': ('Flamenco / Copla', 'saeta'),
 
-    'fado flamenco': ('Flamenco / Copla', 'fado flamenco'),  # fusión con Portugal
+    'fado flamenco': ('Flamenco / Copla', 'fado flamenco'),  # fusion with Portugal
     'portuguese flamenco': ('Flamenco / Copla', 'portuguese flamenco'),
 
     ###############################################################################
-    # Asia - K-Pop/K-Rock (Regional - Corea)
+    # ASIA - Regional scenes
     ###############################################################################
-    ## K-Pop General
+
+    ###############################################################################
+    # K-Pop/K-Rock (Korea)
+    ###############################################################################
+    ## General K-Pop
     'kpop': ('K-Pop/K-Rock', 'kpop'),
     'k-pop': ('K-Pop/K-Rock', 'k-pop'),
     'k pop': ('K-Pop/K-Rock', 'k pop'),
@@ -4023,7 +4079,7 @@ GENRE_MAPPINGS = {
     'corean pop': ('K-Pop/K-Rock', 'corean pop'),
     'música kpop': ('K-Pop/K-Rock', 'música kpop'),
 
-    ## K-pop idol (grupos)
+    ## K-pop idol (groups)
     'kpop idol': ('K-Pop/K-Rock', 'kpop idol'),
     'k-pop idol': ('K-Pop/K-Rock', 'k-pop idol'),
     'idol group': ('K-Pop/K-Rock', 'idol group'),
@@ -4033,13 +4089,13 @@ GENRE_MAPPINGS = {
     'boy band kpop': ('K-Pop/K-Rock', 'boy band kpop'),
     'girl group kpop': ('K-Pop/K-Rock', 'girl group kpop'),
 
-    ## K-pop solista
+    ## K-pop soloist
     'kpop solo': ('K-Pop/K-Rock', 'kpop solo'),
     'k-pop solo': ('K-Pop/K-Rock', 'k-pop solo'),
     'solo kpop': ('K-Pop/K-Rock', 'solo kpop'),
     'kpop soloist': ('K-Pop/K-Rock', 'kpop soloist'),
 
-    ## Idol group (subunidades)
+    ## Idol group (sub-units)
     'subunit': ('K-Pop/K-Rock', 'subunit'),
     'kpop subunit': ('K-Pop/K-Rock', 'kpop subunit'),
     'subunidad kpop': ('K-Pop/K-Rock', 'subunidad kpop'),
@@ -4077,7 +4133,7 @@ GENRE_MAPPINGS = {
     'rock coreano': ('K-Pop/K-Rock', 'rock coreano'),
     'korean indie rock': ('K-Pop/K-Rock', 'korean indie rock'),
 
-    ### Subgéneros de K-rock
+    ### K-rock subgenres
     'korean metal': ('K-Pop/K-Rock', 'korean metal'),
     'k-metal': ('K-Pop/K-Rock', 'k-metal'),
     'korean punk': ('K-Pop/K-Rock', 'korean punk'),
@@ -4097,26 +4153,26 @@ GENRE_MAPPINGS = {
     'trot coreano': ('K-Pop/K-Rock', 'trot coreano'),
     'ppongjjak': ('K-Pop/K-Rock', 'ppongjjak'),
 
-    ## K-pop experimental
+    ## Experimental K-pop
     'kpop experimental': ('K-Pop/K-Rock', 'kpop experimental'),
     'experimental kpop': ('K-Pop/K-Rock', 'experimental kpop'),
     'kpop avantgarde': ('K-Pop/K-Rock', 'kpop avantgarde'),
 
-    ## K-pop fusión
+    ## K-pop fusion
     'kpop fusion': ('K-Pop/K-Rock', 'kpop fusion'),
     'kpop edm': ('K-Pop/K-Rock', 'kpop edm'),
     'kpop electronic': ('K-Pop/K-Rock', 'kpop electronic'),
     'kpop jazz': ('K-Pop/K-Rock', 'kpop jazz'),
     'kpop latin': ('K-Pop/K-Rock', 'kpop latin'),
 
-    ## Generaciones de K-pop
+    ## K-pop generations
     '1st gen kpop': ('K-Pop/K-Rock', '1st gen kpop'),
     '2nd gen kpop': ('K-Pop/K-Rock', '2nd gen kpop'),
     '3rd gen kpop': ('K-Pop/K-Rock', '3rd gen kpop'),
     '4th gen kpop': ('K-Pop/K-Rock', '4th gen kpop'),
     '5th gen kpop': ('K-Pop/K-Rock', '5th gen kpop'),
 
-    ## K-pop por concepto
+    ## K-pop by concept
     'kpop dark': ('K-Pop/K-Rock', 'kpop dark'),
     'kpop cute': ('K-Pop/K-Rock', 'kpop cute'),
     'kpop sexy': ('K-Pop/K-Rock', 'kpop sexy'),
@@ -4125,14 +4181,14 @@ GENRE_MAPPINGS = {
     'kpop retro': ('K-Pop/K-Rock', 'kpop retro'),
     'kpop concept': ('K-Pop/K-Rock', 'kpop concept'),
 
-    ## K-pop por sonido
+    ## K-pop by sound
     'kpop noise music': ('K-Pop/K-Rock', 'kpop noise music'),
     'kpop orchestral': ('K-Pop/K-Rock', 'kpop orchestral'),
     'kpop orchestrada': ('K-Pop/K-Rock', 'kpop orchestrada'),
     'kpop rock': ('K-Pop/K-Rock', 'kpop rock'),
     'kpop pop rock': ('K-Pop/K-Rock', 'kpop pop rock'),
 
-    ## K-OST (bandas sonoras coreanas)
+    ## K-OST (Korean soundtracks)
     'kost': ('K-Pop/K-Rock', 'kost'),
     'k-ost': ('K-Pop/K-Rock', 'k-ost'),
     'korean ost': ('K-Pop/K-Rock', 'korean ost'),
@@ -4140,7 +4196,7 @@ GENRE_MAPPINGS = {
     'drama ost': ('K-Pop/K-Rock', 'drama ost'),
     'k-drama ost': ('K-Pop/K-Rock', 'k-drama ost'),
 
-    ## K-pop acústico / balada
+    ## Acoustic K-pop / Ballad
     'kpop acoustic': ('K-Pop/K-Rock', 'kpop acoustic'),
     'acoustic kpop': ('K-Pop/K-Rock', 'acoustic kpop'),
     'kpop ballad': ('K-Pop/K-Rock', 'kpop ballad'),
@@ -4151,23 +4207,23 @@ GENRE_MAPPINGS = {
     'dance kpop': ('K-Pop/K-Rock', 'dance kpop'),
     'kpop choreo': ('K-Pop/K-Rock', 'kpop choreo'),
 
-    ## K-pop city pop
+    ## Korean city pop
     'korean city pop': ('K-Pop/K-Rock', 'korean city pop'),
     'k-city pop': ('K-Pop/K-Rock', 'k-city pop'),
     'city pop coreano': ('K-Pop/K-Rock', 'city pop coreano'),
 
-    ## K-pop retro / synth
+    ## Retro / synth K-pop
     'kpop retro': ('K-Pop/K-Rock', 'kpop retro'),
     'kpop synthwave': ('K-Pop/K-Rock', 'kpop synthwave'),
     'kpop 80s': ('K-Pop/K-Rock', 'kpop 80s'),
     'kpop 90s': ('K-Pop/K-Rock', 'kpop 90s'),
 
-    ## K-pop por región (Corea del Sur)
+    ## K-pop by region (South Korea)
     'kpop seoul': ('K-Pop/K-Rock', 'kpop seoul'),
     'kpop busan': ('K-Pop/K-Rock', 'kpop busan'),
     'kpop daegu': ('K-Pop/K-Rock', 'kpop daegu'),
 
-    ## K-pop companies (estilos)
+    ## K-pop companies (styles)
     'kpop sm': ('K-Pop/K-Rock', 'kpop sm'),
     'sm entertainment style': ('K-Pop/K-Rock', 'sm entertainment style'),
     'kpop yg': ('K-Pop/K-Rock', 'kpop yg'),
@@ -4178,9 +4234,9 @@ GENRE_MAPPINGS = {
     'hybe style': ('K-Pop/K-Rock', 'hybe style'),
 
     ###############################################################################
-    # J-Pop/J-Rock (Regional - Japón)
+    # J-Pop/J-Rock (Japan)
     ###############################################################################
-    ## J-Pop General
+    ## General J-Pop
     'jpop': ('J-Pop/J-Rock', 'jpop'),
     'j-pop': ('J-Pop/J-Rock', 'j-pop'),
     'j pop': ('J-Pop/J-Rock', 'j pop'),
@@ -4188,7 +4244,7 @@ GENRE_MAPPINGS = {
     'japonés pop': ('J-Pop/J-Rock', 'japonés pop'),
     'pop japonés': ('J-Pop/J-Rock', 'pop japonés'),
 
-    ## J-pop mainstream
+    ## Mainstream J-pop
     'jpop mainstream': ('J-Pop/J-Rock', 'jpop mainstream'),
     'mainstream jpop': ('J-Pop/J-Rock', 'mainstream jpop'),
     'jpop comercial': ('J-Pop/J-Rock', 'jpop comercial'),
@@ -4229,7 +4285,7 @@ GENRE_MAPPINGS = {
     'japanese rock': ('J-Pop/J-Rock', 'japanese rock'),
     'rock japonés': ('J-Pop/J-Rock', 'rock japonés'),
 
-    ### Subgéneros de J-rock
+    ### J-rock subgenres
     'j-rock alternativo': ('J-Pop/J-Rock', 'j-rock alternativo'),
     'japanese alternative rock': ('J-Pop/J-Rock', 'japanese alternative rock'),
     'japanese indie rock': ('J-Pop/J-Rock', 'japanese indie rock'),
@@ -4238,14 +4294,14 @@ GENRE_MAPPINGS = {
     'japanese metal': ('J-Pop/J-Rock', 'japanese metal'),
     'j-metal': ('J-Pop/J-Rock', 'j-metal'),
 
-    ## Visual kei (vertiente pop)
+    ## Visual kei (pop side)
     'visual kei': ('J-Pop/J-Rock', 'visual kei'),
     'visual-kei': ('J-Pop/J-Rock', 'visual-kei'),
     'visual kei pop': ('J-Pop/J-Rock', 'visual kei pop'),
     'visual kei rock': ('J-Pop/J-Rock', 'visual kei rock'),
     'v系': ('J-Pop/J-Rock', 'v系'),
 
-    ### Subgéneros de Visual kei
+    ### Visual kei subgenres
     'angura kei': ('J-Pop/J-Rock', 'angura kei'),
     'oshare kei': ('J-Pop/J-Rock', 'oshare kei'),
     'kote kei': ('J-Pop/J-Rock', 'kote kei'),
@@ -4273,19 +4329,19 @@ GENRE_MAPPINGS = {
     'japanese ambient': ('J-Pop/J-Rock', 'japanese ambient'),
     'ambient pop japones': ('J-Pop/J-Rock', 'ambient pop japones'),
 
-    ## J-pop electrónico / EDM
+    ## Electronic J-pop / EDM
     'jpop edm': ('J-Pop/J-Rock', 'jpop edm'),
     'jpop electronic': ('J-Pop/J-Rock', 'jpop electronic'),
     'japanese electro': ('J-Pop/J-Rock', 'japanese electro'),
     'jpop dance': ('J-Pop/J-Rock', 'jpop dance'),
 
-    ## J-pop balada
+    ## J-pop ballad
     'jpop ballad': ('J-Pop/J-Rock', 'jpop ballad'),
     'japanese ballad': ('J-Pop/J-Rock', 'japanese ballad'),
     'ballad jpop': ('J-Pop/J-Rock', 'ballad jpop'),
     'jpop romántico': ('J-Pop/J-Rock', 'jpop romántico'),
 
-    ## J-pop por épocas
+    ## J-pop by era
     'jpop 80s': ('J-Pop/J-Rock', 'jpop 80s'),
     'jpop 90s': ('J-Pop/J-Rock', 'jpop 90s'),
     'jpop 2000s': ('J-Pop/J-Rock', 'jpop 2000s'),
@@ -4304,7 +4360,7 @@ GENRE_MAPPINGS = {
     'japanese boy band': ('J-Pop/J-Rock', 'japanese boy band'),
     'japanese girl group': ('J-Pop/J-Rock', 'japanese girl group'),
 
-    ## J-pop / J-rock fusión
+    ## J-pop / J-rock fusion
     'jpop fusion': ('J-Pop/J-Rock', 'jpop fusion'),
     'jpop rock': ('J-Pop/J-Rock', 'jpop rock'),
     'jrock pop': ('J-Pop/J-Rock', 'jrock pop'),
@@ -4313,7 +4369,7 @@ GENRE_MAPPINGS = {
     'jpop folk': ('J-Pop/J-Rock', 'jpop folk'),
     'folk jpop': ('J-Pop/J-Rock', 'folk jpop'),
 
-    ## J-OST (bandas sonoras japonesas)
+    ## J-OST (Japanese soundtracks)
     'jost': ('J-Pop/J-Rock', 'jost'),
     'j-ost': ('J-Pop/J-Rock', 'j-ost'),
     'japanese ost': ('J-Pop/J-Rock', 'japanese ost'),
@@ -4321,11 +4377,11 @@ GENRE_MAPPINGS = {
     'drama ost japones': ('J-Pop/J-Rock', 'drama ost japones'),
     'j-drama ost': ('J-Pop/J-Rock', 'j-drama ost'),
 
-    ## J-pop instrumental
+    ## Instrumental J-pop
     'jpop instrumental': ('J-Pop/J-Rock', 'jpop instrumental'),
     'instrumental jpop': ('J-Pop/J-Rock', 'instrumental jpop'),
 
-    ## J-pop por región
+    ## J-pop by region
     'jpop tokyo': ('J-Pop/J-Rock', 'jpop tokyo'),
     'tokyo jpop': ('J-Pop/J-Rock', 'tokyo jpop'),
     'jpop osaka': ('J-Pop/J-Rock', 'jpop osaka'),
@@ -4341,15 +4397,15 @@ GENRE_MAPPINGS = {
     'gs jpop': ('J-Pop/J-Rock', 'gs jpop'),
     'japanese group sounds': ('J-Pop/J-Rock', 'japanese group sounds'),
 
-    ## J-pop experimental
+    ## Experimental J-pop
     'jpop experimental': ('J-Pop/J-Rock', 'jpop experimental'),
     'experimental jpop': ('J-Pop/J-Rock', 'experimental jpop'),
     'avant jpop': ('J-Pop/J-Rock', 'avant jpop'),
 
     ###############################################################################
-    # T-Pop/T-Rock (Regional - Tailandia)
+    # T-Pop/T-Rock (Thailand)
     ###############################################################################
-    ## T-Pop General
+    ## General T-Pop
     'tpop': ('T-Pop/T-Rock', 'tpop'),
     't-pop': ('T-Pop/T-Rock', 't-pop'),
     't pop': ('T-Pop/T-Rock', 't pop'),
@@ -4357,14 +4413,14 @@ GENRE_MAPPINGS = {
     'pop tailandés': ('T-Pop/T-Rock', 'pop tailandés'),
     'música tailandesa': ('T-Pop/T-Rock', 'música tailandesa'),
 
-    ## T-pop moderno
+    ## Modern T-pop
     'tpop moderno': ('T-Pop/T-Rock', 'tpop moderno'),
     'modern tpop': ('T-Pop/T-Rock', 'modern tpop'),
     'contemporary thai pop': ('T-Pop/T-Rock', 'contemporary thai pop'),
     'thai pop moderno': ('T-Pop/T-Rock', 'thai pop moderno'),
     'tpop contemporáneo': ('T-Pop/T-Rock', 'tpop contemporáneo'),
 
-    ## Luk thung (música rural tailandesa)
+    ## Luk thung (Thai rural music)
     'luk thung': ('T-Pop/T-Rock', 'luk thung'),
     'lukthung': ('T-Pop/T-Rock', 'lukthung'),
     'thai country': ('T-Pop/T-Rock', 'thai country'),
@@ -4372,7 +4428,7 @@ GENRE_MAPPINGS = {
     'phleng luk thung': ('T-Pop/T-Rock', 'phleng luk thung'),
     'luk thung tradicional': ('T-Pop/T-Rock', 'luk thung tradicional'),
 
-    ## Mor lam (música del noreste)
+    ## Mor lam (northeastern music)
     'mor lam': ('T-Pop/T-Rock', 'mor lam'),
     'molam': ('T-Pop/T-Rock', 'molam'),
     'mor lam sing': ('T-Pop/T-Rock', 'mor lam sing'),
@@ -4387,7 +4443,7 @@ GENRE_MAPPINGS = {
     'trock': ('T-Pop/T-Rock', 'trock'),
     'rock tailandés': ('T-Pop/T-Rock', 'rock tailandés'),
 
-    ### Subgéneros de Thai rock
+    ### Thai rock subgenres
     'thai alternative rock': ('T-Pop/T-Rock', 'thai alternative rock'),
     'thai indie rock': ('T-Pop/T-Rock', 'thai indie rock'),
     'thai punk': ('T-Pop/T-Rock', 'thai punk'),
@@ -4446,7 +4502,7 @@ GENRE_MAPPINGS = {
     'thai lakorn ost': ('T-Pop/T-Rock', 'thai lakorn ost'),
     'thai movie soundtrack': ('T-Pop/T-Rock', 'thai movie soundtrack'),
 
-    ## Thai pop por épocas
+    ## Thai pop by era
     'tpop 80s': ('T-Pop/T-Rock', 'tpop 80s'),
     'tpop 90s': ('T-Pop/T-Rock', 'tpop 90s'),
     'tpop 2000s': ('T-Pop/T-Rock', 'tpop 2000s'),
@@ -4455,7 +4511,7 @@ GENRE_MAPPINGS = {
     'thai pop clasico': ('T-Pop/T-Rock', 'thai pop clasico'),
     'classic thai pop': ('T-Pop/T-Rock', 'classic thai pop'),
 
-    ## Thai pop por región
+    ## Thai pop by region
     'bangkok pop': ('T-Pop/T-Rock', 'bangkok pop'),
     'chiang mai pop': ('T-Pop/T-Rock', 'chiang mai pop'),
     'phuket pop': ('T-Pop/T-Rock', 'phuket pop'),
@@ -4479,15 +4535,15 @@ GENRE_MAPPINGS = {
     'thai jazz pop': ('T-Pop/T-Rock', 'thai jazz pop'),
     'jazz thai pop': ('T-Pop/T-Rock', 'jazz thai pop'),
 
-    ## String combo (pop tailandés clásico)
+    ## String combo (classic Thai pop)
     'string combo': ('T-Pop/T-Rock', 'string combo'),
     'thai string': ('T-Pop/T-Rock', 'thai string'),
     'string pop thai': ('T-Pop/T-Rock', 'string pop thai'),
 
     ###############################################################################
-    # V-Pop/V-Rock (Regional - Vietnam)
+    # V-Pop/V-Rock (Vietnam)
     ###############################################################################
-    ## V-Pop General
+    ## General V-Pop
     'vpop': ('V-Pop/V-Rock', 'vpop'),
     'v-pop': ('V-Pop/V-Rock', 'v-pop'),
     'v pop': ('V-Pop/V-Rock', 'v pop'),
@@ -4495,14 +4551,14 @@ GENRE_MAPPINGS = {
     'pop vietnamita': ('V-Pop/V-Rock', 'pop vietnamita'),
     'música vietnamita': ('V-Pop/V-Rock', 'música vietnamita'),
 
-    ## V-pop moderno
+    ## Modern V-pop
     'vpop moderno': ('V-Pop/V-Rock', 'vpop moderno'),
     'modern vpop': ('V-Pop/V-Rock', 'modern vpop'),
     'contemporary vietnamese pop': ('V-Pop/V-Rock', 'contemporary vietnamese pop'),
     'vpop contemporáneo': ('V-Pop/V-Rock', 'vpop contemporáneo'),
     'viet pop actual': ('V-Pop/V-Rock', 'viet pop actual'),
 
-    ## Nhạc đỏ (música roja / revolucionaria)
+    ## Nhạc đỏ (red / revolutionary music)
     'nhac do': ('V-Pop/V-Rock', 'nhac do'),
     'nhạc đỏ': ('V-Pop/V-Rock', 'nhạc đỏ'),
     'red music': ('V-Pop/V-Rock', 'red music'),
@@ -4516,7 +4572,7 @@ GENRE_MAPPINGS = {
     'vrock': ('V-Pop/V-Rock', 'vrock'),
     'rock vietnamita': ('V-Pop/V-Rock', 'rock vietnamita'),
 
-    ### Subgéneros de Vietnamese rock
+    ### Vietnamese rock subgenres
     'vietnamese alternative rock': ('V-Pop/V-Rock', 'vietnamese alternative rock'),
     'vietnamese indie rock': ('V-Pop/V-Rock', 'vietnamese indie rock'),
     'vietnamese punk': ('V-Pop/V-Rock', 'vietnamese punk'),
@@ -4539,7 +4595,7 @@ GENRE_MAPPINGS = {
     'quan ho': ('V-Pop/V-Rock', 'quan ho'),
     'ca tru': ('V-Pop/V-Rock', 'ca tru'),
 
-    ## Bolero vietnamita
+    ## Vietnamese bolero
     'vietnamese bolero': ('V-Pop/V-Rock', 'vietnamese bolero'),
     'bolero vietnamita': ('V-Pop/V-Rock', 'bolero vietnamita'),
     'nhac bolero': ('V-Pop/V-Rock', 'nhac bolero'),
@@ -4547,7 +4603,7 @@ GENRE_MAPPINGS = {
     'bolero saigon': ('V-Pop/V-Rock', 'bolero saigon'),
     'vietnamese sentimental music': ('V-Pop/V-Rock', 'vietnamese sentimental music'),
 
-    ## Cải lương (teatro musical)
+    ## Cải lương (musical theater)
     'cai luong': ('V-Pop/V-Rock', 'cai luong'),
     'cải lương': ('V-Pop/V-Rock', 'cải lương'),
     'vietnamese opera': ('V-Pop/V-Rock', 'vietnamese opera'),
@@ -4575,7 +4631,7 @@ GENRE_MAPPINGS = {
     'vpop r&b': ('V-Pop/V-Rock', 'vpop r&b'),
     'vpop folk fusion': ('V-Pop/V-Rock', 'vpop folk fusion'),
 
-    ## V-pop por épocas
+    ## V-pop by era
     'vpop 80s': ('V-Pop/V-Rock', 'vpop 80s'),
     'vpop 90s': ('V-Pop/V-Rock', 'vpop 90s'),
     'vpop 2000s': ('V-Pop/V-Rock', 'vpop 2000s'),
@@ -4586,19 +4642,19 @@ GENRE_MAPPINGS = {
     'vpop pre 75': ('V-Pop/V-Rock', 'vpop pre 75'),
     'vpop post 75': ('V-Pop/V-Rock', 'vpop post 75'),
 
-    ## V-pop por región
+    ## V-pop by region
     'saigon pop': ('V-Pop/V-Rock', 'saigon pop'),
     'hanoi pop': ('V-Pop/V-Rock', 'hanoi pop'),
     'hcmc pop': ('V-Pop/V-Rock', 'hcmc pop'),
     'danang pop': ('V-Pop/V-Rock', 'danang pop'),
 
-    ## Nhạc trẻ (música juvenil)
+    ## Nhạc trẻ (youth music)
     'nhac tre': ('V-Pop/V-Rock', 'nhac tre'),
     'nhạc trẻ': ('V-Pop/V-Rock', 'nhạc trẻ'),
     'young music vietnam': ('V-Pop/V-Rock', 'young music vietnam'),
     'vietnamese youth music': ('V-Pop/V-Rock', 'vietnamese youth music'),
 
-    ## V-pop instrumental
+    ## Instrumental V-pop
     'vpop instrumental': ('V-Pop/V-Rock', 'vpop instrumental'),
     'instrumental vpop': ('V-Pop/V-Rock', 'instrumental vpop'),
 
@@ -4623,16 +4679,16 @@ GENRE_MAPPINGS = {
     'acoustic vpop': ('V-Pop/V-Rock', 'acoustic vpop'),
     'vietnamese acoustic': ('V-Pop/V-Rock', 'vietnamese acoustic'),
 
-    ## Nhạc vàng (música amarilla - preguerra)
+    ## Nhạc vàng (yellow music - pre-war)
     'nhac vang': ('V-Pop/V-Rock', 'nhac vang'),
     'nhạc vàng': ('V-Pop/V-Rock', 'nhạc vàng'),
     'yellow music': ('V-Pop/V-Rock', 'yellow music'),
     'south vietnam pre 75': ('V-Pop/V-Rock', 'south vietnam pre 75'),
 
     ###############################################################################
-    # OPM (Original Pilipino Music) (Regional - Filipinas)
+    # OPM (Original Pilipino Music) / Pilipino rock / Pilipino pop
     ###############################################################################
-    ## OPM General
+    ## General OPM
     'opm': ('OPM', 'opm'),
     'original pilipino music': ('OPM', 'original pilipino music'),
     'filipino music': ('OPM', 'filipino music'),
@@ -4646,7 +4702,7 @@ GENRE_MAPPINGS = {
     'filipino pop': ('OPM', 'filipino pop'),
     'pop filipino': ('OPM', 'pop filipino'),
 
-    ### Subgéneros de Pinoy pop
+    ### Pinoy pop subgenres
     'pinoy pop idol': ('OPM', 'pinoy pop idol'),
     'pinoy boy band': ('OPM', 'pinoy boy band'),
     'pinoy girl group': ('OPM', 'pinoy girl group'),
@@ -4658,7 +4714,7 @@ GENRE_MAPPINGS = {
     'filipino rock': ('OPM', 'filipino rock'),
     'rock filipino': ('OPM', 'rock filipino'),
 
-    ### Subgéneros de Pinoy rock
+    ### Pinoy rock subgenres
     'pinoy alternative rock': ('OPM', 'pinoy alternative rock'),
     'pinoy indie rock': ('OPM', 'pinoy indie rock'),
     'pinoy punk': ('OPM', 'pinoy punk'),
@@ -4679,13 +4735,13 @@ GENRE_MAPPINGS = {
     'filipino rap': ('OPM', 'filipino rap'),
     'rap filipino': ('OPM', 'rap filipino'),
 
-    ### Subgéneros de Pinoy hip hop
+    ### Pinoy hip hop subgenres
     'pinoy underground rap': ('OPM', 'pinoy underground rap'),
     'pinoy conscious rap': ('OPM', 'pinoy conscious rap'),
     'pinoy trap': ('OPM', 'pinoy trap'),
     'pinoy old school hip hop': ('OPM', 'pinoy old school hip hop'),
 
-    ## Kundiman (balada tradicional)
+    ## Kundiman (traditional ballad)
     'kundiman': ('OPM', 'kundiman'),
     'filipino kundiman': ('OPM', 'filipino kundiman'),
     'traditional kundiman': ('OPM', 'traditional kundiman'),
@@ -4753,7 +4809,7 @@ GENRE_MAPPINGS = {
     'acoustic opm': ('OPM', 'acoustic opm'),
     'filipino acoustic': ('OPM', 'filipino acoustic'),
 
-    ## OPM por épocas
+    ## OPM by era
     'opm 70s': ('OPM', 'opm 70s'),
     'opm 80s': ('OPM', 'opm 80s'),
     'opm 90s': ('OPM', 'opm 90s'),
@@ -4764,7 +4820,7 @@ GENRE_MAPPINGS = {
     'opm golden era': ('OPM', 'opm golden era'),
     'modern opm': ('OPM', 'modern opm'),
 
-    ## OPM por región
+    ## OPM by region
     'tagalog pop': ('OPM', 'tagalog pop'),
     'manila pop': ('OPM', 'manila pop'),
     'cebu pop': ('OPM', 'cebu pop'),
@@ -4781,7 +4837,7 @@ GENRE_MAPPINGS = {
     'filipino world music': ('OPM', 'filipino world music'),
     'pinoy ethnic fusion': ('OPM', 'pinoy ethnic fusion'),
 
-    ## OPM instrumental
+    ## Instrumental OPM
     'opm instrumental': ('OPM', 'opm instrumental'),
     'pinoy instrumental': ('OPM', 'pinoy instrumental'),
     'filipino instrumental': ('OPM', 'filipino instrumental'),
@@ -4798,27 +4854,27 @@ GENRE_MAPPINGS = {
     'filipino pasko': ('OPM', 'filipino pasko'),
     'christmas opm': ('OPM', 'christmas opm'),
 
-    ## Original Pinoy Music (clásico)
+    ## Classic Original Pinoy Music
     'original pinoy music classic': ('OPM', 'original pinoy music classic'),
     'opm classic': ('OPM', 'opm classic'),
     'pinoy classic': ('OPM', 'pinoy classic'),
 
-    ## Himig (canciones filipinas)
+    ## Himig (Filipino songs)
     'himig': ('OPM', 'himig'),
     'himig opm': ('OPM', 'himig opm'),
     'filipino melody': ('OPM', 'filipino melody'),
 
     ###############################################################################
-    # Indonesian Pop / Dangdut (Regional - Indonesia)
+    # Indonesian Pop / Dangdut
     ###############################################################################
-    ## Indonesian Pop General
+    ## General Indonesian Pop
     'indonesian pop': ('Indonesian Pop/Dangdut', 'indonesian pop'),
     'indo-pop': ('Indonesian Pop/Dangdut', 'indo-pop'),
     'indopop': ('Indonesian Pop/Dangdut', 'indopop'),
     'pop indonesia': ('Indonesian Pop/Dangdut', 'pop indonesia'),
     'musik indonesia': ('Indonesian Pop/Dangdut', 'musik indonesia'),
 
-    ## Indo-Pop moderno
+    ## Modern Indo-Pop
     'indo pop moderno': ('Indonesian Pop/Dangdut', 'indo pop moderno'),
     'modern indonesian pop': ('Indonesian Pop/Dangdut', 'modern indonesian pop'),
     'contemporary indo pop': ('Indonesian Pop/Dangdut', 'contemporary indo pop'),
@@ -4829,7 +4885,7 @@ GENRE_MAPPINGS = {
     'indo-rock': ('Indonesian Pop/Dangdut', 'indo-rock'),
     'rock indonesia': ('Indonesian Pop/Dangdut', 'rock indonesia'),
 
-    ### Subgéneros de Indonesian rock
+    ### Indonesian rock subgenres
     'indonesian alternative rock': ('Indonesian Pop/Dangdut', 'indonesian alternative rock'),
     'indonesian indie rock': ('Indonesian Pop/Dangdut', 'indonesian indie rock'),
     'indonesian punk': ('Indonesian Pop/Dangdut', 'indonesian punk'),
@@ -4846,7 +4902,7 @@ GENRE_MAPPINGS = {
     'indo rap': ('Indonesian Pop/Dangdut', 'indo rap'),
     'indonesian rap': ('Indonesian Pop/Dangdut', 'indonesian rap'),
 
-    ## Indonesian folk / Tradicional
+    ## Indonesian folk / Traditional
     'indonesian folk': ('Indonesian Pop/Dangdut', 'indonesian folk'),
     'folk indonesia': ('Indonesian Pop/Dangdut', 'folk indonesia'),
     'musik tradisional': ('Indonesian Pop/Dangdut', 'musik tradisional'),
@@ -4857,14 +4913,14 @@ GENRE_MAPPINGS = {
     'indo edm': ('Indonesian Pop/Dangdut', 'indo edm'),
 
     ###############################################################################
-    ### Dangdut (Subcategoría dentro de Indonesian Pop/Dangdut)
+    ### Dangdut (Subcategory within Indonesian Pop/Dangdut)
     ###############################################################################
-    ## Dangdut General
+    ## General Dangdut
     'dangdut': ('Indonesian Pop/Dangdut', 'dangdut'),
     'dangdut music': ('Indonesian Pop/Dangdut', 'dangdut music'),
     'musik dangdut': ('Indonesian Pop/Dangdut', 'musik dangdut'),
 
-    ## Dangdut clásico
+    ## Classic Dangdut
     'dangdut clásico': ('Indonesian Pop/Dangdut', 'dangdut clásico'),
     'classic dangdut': ('Indonesian Pop/Dangdut', 'classic dangdut'),
     'dangdut klasik': ('Indonesian Pop/Dangdut', 'dangdut klasik'),
@@ -4880,7 +4936,7 @@ GENRE_MAPPINGS = {
     'koplo dangdut': ('Indonesian Pop/Dangdut', 'koplo dangdut'),
     'dangdut jawa timur': ('Indonesian Pop/Dangdut', 'dangdut jawa timur'),
 
-    ## Dangdut moderno
+    ## Modern Dangdut
     'dangdut moderno': ('Indonesian Pop/Dangdut', 'dangdut moderno'),
     'modern dangdut': ('Indonesian Pop/Dangdut', 'modern dangdut'),
     'contemporary dangdut': ('Indonesian Pop/Dangdut', 'contemporary dangdut'),
@@ -4896,27 +4952,27 @@ GENRE_MAPPINGS = {
     'remix dangdut': ('Indonesian Pop/Dangdut', 'remix dangdut'),
     'dangdut remix dj': ('Indonesian Pop/Dangdut', 'dangdut remix dj'),
 
-    ## Dangdut elektro
+    ## Electro dangdut
     'dangdut elektro': ('Indonesian Pop/Dangdut', 'dangdut elektro'),
     'dangdut electro': ('Indonesian Pop/Dangdut', 'dangdut electro'),
     'electro dangdut': ('Indonesian Pop/Dangdut', 'electro dangdut'),
     'dangdut electronic': ('Indonesian Pop/Dangdut', 'dangdut electronic'),
 
-    ## Campursari (fusión con javanés)
+    ## Campursari (Javanese fusion)
     'campursari': ('Indonesian Pop/Dangdut', 'campursari'),
     'campur sari': ('Indonesian Pop/Dangdut', 'campur sari'),
     'dangdut campursari': ('Indonesian Pop/Dangdut', 'dangdut campursari'),
     'javanese fusion': ('Indonesian Pop/Dangdut', 'javanese fusion'),
     'musik jawa': ('Indonesian Pop/Dangdut', 'musik jawa'),
 
-    ## Qasidah moderno
+    ## Modern Qasidah
     'qasidah': ('Indonesian Pop/Dangdut', 'qasidah'),
     'qasidah modern': ('Indonesian Pop/Dangdut', 'qasidah modern'),
     'kasidah': ('Indonesian Pop/Dangdut', 'kasidah'),
     'dangdut qasidah': ('Indonesian Pop/Dangdut', 'dangdut qasidah'),
     'islamic dangdut': ('Indonesian Pop/Dangdut', 'islamic dangdut'),
 
-    ## Dangdut por región
+    ## Dangdut by region
     'dangdut jakarta': ('Indonesian Pop/Dangdut', 'dangdut jakarta'),
     'jakarta dangdut': ('Indonesian Pop/Dangdut', 'jakarta dangdut'),
     'dangdut jawa': ('Indonesian Pop/Dangdut', 'dangdut jawa'),
@@ -4926,7 +4982,7 @@ GENRE_MAPPINGS = {
     'sundanese dangdut': ('Indonesian Pop/Dangdut', 'sundanese dangdut'),
     'dangdut bali': ('Indonesian Pop/Dangdut', 'dangdut bali'),
 
-    ## Dangdut fusión
+    ## Dangdut fusion
     'dangdut fusion': ('Indonesian Pop/Dangdut', 'dangdut fusion'),
     'dangdut pop': ('Indonesian Pop/Dangdut', 'dangdut pop'),
     'pop dangdut': ('Indonesian Pop/Dangdut', 'pop dangdut'),
@@ -4934,18 +4990,18 @@ GENRE_MAPPINGS = {
     'rock dangdut': ('Indonesian Pop/Dangdut', 'rock dangdut'),
     'dangdut reggae': ('Indonesian Pop/Dangdut', 'dangdut reggae'),
 
-    ## Dangdut dangdutan (estilo bailable)
+    ## Dangdutan (dance style)
     'dangdutan': ('Indonesian Pop/Dangdut', 'dangdutan'),
     'dangdut dance': ('Indonesian Pop/Dangdut', 'dangdut dance'),
     'dangdut party': ('Indonesian Pop/Dangdut', 'dangdut party'),
 
-    ## Dangdut koplo modern
+    ## Modern koplo
     'koplo modern': ('Indonesian Pop/Dangdut', 'koplo modern'),
     'modern koplo': ('Indonesian Pop/Dangdut', 'modern koplo'),
     'koplo remix': ('Indonesian Pop/Dangdut', 'koplo remix'),
 
     ###############################################################################
-    ## Indo-Pop por épocas
+    ## Indo-Pop by era
     'indopop 80s': ('Indonesian Pop/Dangdut', 'indopop 80s'),
     'indopop 90s': ('Indonesian Pop/Dangdut', 'indopop 90s'),
     'indopop 2000s': ('Indonesian Pop/Dangdut', 'indopop 2000s'),
@@ -4954,7 +5010,7 @@ GENRE_MAPPINGS = {
     'classic indopop': ('Indonesian Pop/Dangdut', 'classic indopop'),
     'modern indopop': ('Indonesian Pop/Dangdut', 'modern indopop'),
 
-    ## Indo-Pop por región
+    ## Indo-Pop by region
     'jakarta pop': ('Indonesian Pop/Dangdut', 'jakarta pop'),
     'bandung pop': ('Indonesian Pop/Dangdut', 'bandung pop'),
     'surabaya pop': ('Indonesian Pop/Dangdut', 'surabaya pop'),
@@ -4977,9 +5033,9 @@ GENRE_MAPPINGS = {
     'akustik indonesia': ('Indonesian Pop/Dangdut', 'akustik indonesia'),
 
     ###############################################################################
-    # Malaysian Pop (M-Pop) (Regional - Malasia)
+    # Malaysian Pop (M-Pop)
     ###############################################################################
-    ## M-Pop General
+    ## General M-Pop
     'mpop': ('Malaysian Pop', 'mpop'),
     'm-pop': ('Malaysian Pop', 'm-pop'),
     'malaysian pop': ('Malaysian Pop', 'malaysian pop'),
@@ -4996,7 +5052,7 @@ GENRE_MAPPINGS = {
     'm-rock': ('Malaysian Pop', 'm-rock'),
     'rock malasio': ('Malaysian Pop', 'rock malasio'),
 
-    ### Subgéneros de Malaysian rock
+    ### Malaysian rock subgenres
     'malaysian alternative rock': ('Malaysian Pop', 'malaysian alternative rock'),
     'malaysian indie rock': ('Malaysian Pop', 'malaysian indie rock'),
     'malaysian punk': ('Malaysian Pop', 'malaysian punk'),
@@ -5013,7 +5069,7 @@ GENRE_MAPPINGS = {
     'm-rap': ('Malaysian Pop', 'm-rap'),
     'malaysian rap': ('Malaysian Pop', 'malaysian rap'),
 
-    ## Malaysian folk / Tradicional
+    ## Malaysian folk / Traditional
     'malaysian folk': ('Malaysian Pop', 'malaysian folk'),
     'folk malasio': ('Malaysian Pop', 'folk malasio'),
     'musik tradisional malaysia': ('Malaysian Pop', 'musik tradisional malaysia'),
@@ -5026,7 +5082,7 @@ GENRE_MAPPINGS = {
     'malaysian ballad': ('Malaysian Pop', 'malaysian ballad'),
     'balada malasia': ('Malaysian Pop', 'balada malasia'),
 
-    ## Malaysian idol / Grupos
+    ## Malaysian idol / Groups
     'malaysian idol': ('Malaysian Pop', 'malaysian idol'),
     'm-idol': ('Malaysian Pop', 'm-idol'),
     'malaysian boy band': ('Malaysian Pop', 'malaysian boy band'),
@@ -5040,7 +5096,7 @@ GENRE_MAPPINGS = {
     'malaysian indian pop': ('Malaysian Pop', 'malaysian indian pop'),
     'malaysian tamil pop': ('Malaysian Pop', 'malaysian tamil pop'),
 
-    ## Irama Malaysia (música tradicional malaya)
+    ## Irama Malaysia (traditional Malay music)
     'irama malaysia': ('Malaysian Pop', 'irama malaysia'),
     'malay traditional pop': ('Malaysian Pop', 'malay traditional pop'),
 
@@ -5056,7 +5112,7 @@ GENRE_MAPPINGS = {
     'malaysian indie': ('Malaysian Pop', 'malaysian indie'),
     'm-indie': ('Malaysian Pop', 'm-indie'),
 
-    ## Malaysian pop por épocas
+    ## Malaysian pop by era
     'mpop 80s': ('Malaysian Pop', 'mpop 80s'),
     'mpop 90s': ('Malaysian Pop', 'mpop 90s'),
     'mpop 2000s': ('Malaysian Pop', 'mpop 2000s'),
@@ -5064,7 +5120,7 @@ GENRE_MAPPINGS = {
     'mpop 2020s': ('Malaysian Pop', 'mpop 2020s'),
     'classic mpop': ('Malaysian Pop', 'classic mpop'),
 
-    ## Malaysian pop por región
+    ## Malaysian pop by region
     'kuala lumpur pop': ('Malaysian Pop', 'kuala lumpur pop'),
     'penang pop': ('Malaysian Pop', 'penang pop'),
     'johor pop': ('Malaysian Pop', 'johor pop'),
@@ -5072,16 +5128,16 @@ GENRE_MAPPINGS = {
     'sabah pop': ('Malaysian Pop', 'sabah pop'),
 
     ###############################################################################
-    # Singaporean Pop (Regional - Singapur)
+    # Singaporean Pop
     ###############################################################################
-    ## Singaporean Pop General
+    ## General Singaporean Pop
     'singaporean pop': ('Singaporean Pop', 'singaporean pop'),
     'sg pop': ('Singaporean Pop', 'sg pop'),
     'singapore pop': ('Singaporean Pop', 'singapore pop'),
     'pop singapurense': ('Singaporean Pop', 'pop singapurense'),
     'musik singapura': ('Singaporean Pop', 'musik singapura'),
 
-    ## Xinyao (Singapur)
+    ## Xinyao (Singapore)
     'xinyao': ('Singaporean Pop', 'xinyao'),
     'singapore xinyao': ('Singaporean Pop', 'singapore xinyao'),
     'xin yao': ('Singaporean Pop', 'xin yao'),
@@ -5093,7 +5149,7 @@ GENRE_MAPPINGS = {
     'sg rock': ('Singaporean Pop', 'sg rock'),
     'rock singapurense': ('Singaporean Pop', 'rock singapurense'),
 
-    ### Subgéneros de Singaporean rock
+    ### Singaporean rock subgenres
     'singapore alternative rock': ('Singaporean Pop', 'singapore alternative rock'),
     'singapore indie rock': ('Singaporean Pop', 'singapore indie rock'),
     'singapore punk': ('Singaporean Pop', 'singapore punk'),
@@ -5145,7 +5201,7 @@ GENRE_MAPPINGS = {
     'singaporean indie': ('Singaporean Pop', 'singaporean indie'),
     'sg indie': ('Singaporean Pop', 'sg indie'),
 
-    ## Singaporean pop por épocas
+    ## Singaporean pop by era
     'sg pop 80s': ('Singaporean Pop', 'sg pop 80s'),
     'sg pop 90s': ('Singaporean Pop', 'sg pop 90s'),
     'sg pop 2000s': ('Singaporean Pop', 'sg pop 2000s'),
@@ -5162,9 +5218,9 @@ GENRE_MAPPINGS = {
     'sg acoustic': ('Singaporean Pop', 'sg acoustic'),
 
     ###############################################################################
-    # Bruneian Pop/Rock (Regional - Brunéi)
+    # Bruneian Pop/Rock
     ###############################################################################
-    ## Bruneian Pop General (English / Malay)
+    ## General Bruneian Pop (English / Malay)
     'bruneian pop': ('Bruneian Pop/Rock', 'bruneian pop'),
     'brunei pop': ('Bruneian Pop/Rock', 'brunei pop'),
     'pop bruneano': ('Bruneian Pop/Rock', 'pop bruneano'),
@@ -5176,7 +5232,7 @@ GENRE_MAPPINGS = {
     'brunei rock': ('Bruneian Pop/Rock', 'brunei rock'),
     'rock bruneano': ('Bruneian Pop/Rock', 'rock bruneano'),
 
-    ### Subgéneros de Bruneian rock
+    ### Bruneian rock subgenres
     'bruneian alternative rock': ('Bruneian Pop/Rock', 'bruneian alternative rock'),
     'bruneian indie rock': ('Bruneian Pop/Rock', 'bruneian indie rock'),
     'bruneian metal': ('Bruneian Pop/Rock', 'bruneian metal'),
@@ -5191,7 +5247,7 @@ GENRE_MAPPINGS = {
     'bruneian r&b': ('Bruneian Pop/Rock', 'bruneian r&b'),
     'bruneian rnb': ('Bruneian Pop/Rock', 'bruneian rnb'),
 
-    ## Bruneian folk / Tradicional
+    ## Bruneian folk / Traditional
     'bruneian folk': ('Bruneian Pop/Rock', 'bruneian folk'),
     'brunei traditional': ('Bruneian Pop/Rock', 'brunei traditional'),
     'jipin': ('Bruneian Pop/Rock', 'jipin'),
@@ -5201,15 +5257,15 @@ GENRE_MAPPINGS = {
     'bruneian fusion': ('Bruneian Pop/Rock', 'bruneian fusion'),
     'brunei fusion': ('Bruneian Pop/Rock', 'brunei fusion'),
 
-    ## Bruneian pop por región
+    ## Bruneian pop by region
     'bandar seri begawan pop': ('Bruneian Pop/Rock', 'bandar seri begawan pop'),
     'kuala belait pop': ('Bruneian Pop/Rock', 'kuala belait pop'),
     'tutong pop': ('Bruneian Pop/Rock', 'tutong pop'),
 
     ###############################################################################
-    # Indian Pop / Desi (Regional - India) [Expandida]
+    # Indian Pop / Desi
     ###############################################################################
-    ## Indian Pop General
+    ## General Indian Pop
     'indian pop': ('Indian Pop', 'indian pop'),
     'desi pop': ('Indian Pop', 'desi pop'),
     'indipop': ('Indian Pop', 'indipop'),
@@ -5253,13 +5309,13 @@ GENRE_MAPPINGS = {
     'sufi pop': ('Indian Pop', 'sufi pop'),
     'sufi fusion': ('Indian Pop', 'sufi fusion'),
 
-    ## Carnatic (clásico del sur)
+    ## Carnatic (south classical)
     'carnatic': ('Indian Pop', 'carnatic'),
     'carnatic music': ('Indian Pop', 'carnatic music'),
     'carnatic classical': ('Indian Pop', 'carnatic classical'),
     'south indian classical': ('Indian Pop', 'south indian classical'),
 
-    ## Hindustani (clásico del norte)
+    ## Hindustani (north classical)
     'hindustani': ('Indian Pop', 'hindustani'),
     'hindustani classical': ('Indian Pop', 'hindustani classical'),
     'north indian classical': ('Indian Pop', 'north indian classical'),
@@ -5337,7 +5393,7 @@ GENRE_MAPPINGS = {
     'desi fusion': ('Indian Pop', 'desi fusion'),
     'indo fusion': ('Indian Pop', 'indo fusion'),
 
-    ## Indian pop por épocas
+    ## Indian pop by era
     'indipop 80s': ('Indian Pop', 'indipop 80s'),
     'indipop 90s': ('Indian Pop', 'indipop 90s'),
     'indipop 2000s': ('Indian Pop', 'indipop 2000s'),
@@ -5347,9 +5403,9 @@ GENRE_MAPPINGS = {
     'golden era bollywood': ('Indian Pop', 'golden era bollywood'),
 
     ###############################################################################
-    # Pakistani Pop (Regional - Pakistán) [Mejorada]
+    # Pakistani Pop
     ###############################################################################
-    ## Pakistani Pop General
+    ## General Pakistani Pop
     'pakistani pop': ('Pakistani Pop', 'pakistani pop'),
     'pak pop': ('Pakistani Pop', 'pak pop'),
     'pop pakistaní': ('Pakistani Pop', 'pop pakistaní'),
@@ -5361,7 +5417,7 @@ GENRE_MAPPINGS = {
     'pakistani film music': ('Pakistani Pop', 'pakistani film music'),
     'lahore pop': ('Pakistani Pop', 'lahore pop'),
 
-    ## Pakistani pop / Desi pop pakistaní
+    ## Pakistani pop / Desi pop Pakistani
     'pakistani pop music': ('Pakistani Pop', 'pakistani pop music'),
     'pakistani mainstream': ('Pakistani Pop', 'pakistani mainstream'),
 
@@ -5373,7 +5429,7 @@ GENRE_MAPPINGS = {
     'pakistani qawwali': ('Pakistani Pop', 'pakistani qawwali'),
     'sufi qawwali pakistan': ('Pakistani Pop', 'sufi qawwali pakistan'),
 
-    ## Sufi rock / Sufi pop (Pakistán)
+    ## Sufi rock / Sufi pop (Pakistan)
     'pakistani sufi rock': ('Pakistani Pop', 'pakistani sufi rock'),
     'sufi rock pakistan': ('Pakistani Pop', 'sufi rock pakistan'),
     'sufi pop pakistan': ('Pakistani Pop', 'sufi pop pakistan'),
@@ -5382,7 +5438,7 @@ GENRE_MAPPINGS = {
     'pakistani rock': ('Pakistani Pop', 'pakistani rock'),
     'pak rock': ('Pakistani Pop', 'pak rock'),
 
-    ### Subgéneros de Pakistani rock
+    ### Pakistani rock subgenres
     'pakistani alternative rock': ('Pakistani Pop', 'pakistani alternative rock'),
     'pakistani indie rock': ('Pakistani Pop', 'pakistani indie rock'),
     'pakistani metal': ('Pakistani Pop', 'pakistani metal'),
@@ -5396,11 +5452,11 @@ GENRE_MAPPINGS = {
     ## Pakistani R&B
     'pakistani r&b': ('Pakistani Pop', 'pakistani r&b'),
 
-    ## Punjabi pop (Pakistán)
+    ## Punjabi pop (Pakistan)
     'pakistani punjabi pop': ('Pakistani Pop', 'pakistani punjabi pop'),
     'punjabi pop pakistan': ('Pakistani Pop', 'punjabi pop pakistan'),
 
-    ## Sindhi Pop (mejoras)
+    ## Sindhi Pop (improved)
     'sindhi pop': ('Pakistani Pop', 'sindhi pop'),
     'sindhi music': ('Pakistani Pop', 'sindhi music'),
     'sindhi rock': ('Pakistani Pop', 'sindhi rock'),
@@ -5408,7 +5464,7 @@ GENRE_MAPPINGS = {
     'sindhi sufí pop': ('Pakistani Pop', 'sindhi sufí pop'),
     'sindhi rap': ('Pakistani Pop', 'sindhi rap'),
 
-    ## Pashto Pop (mejoras)
+    ## Pashto Pop (improved)
     'pashto pop': ('Pakistani Pop', 'pashto pop'),
     'pashto music': ('Pakistani Pop', 'pashto music'),
     'pashto rock': ('Pakistani Pop', 'pashto rock'),
@@ -5429,7 +5485,7 @@ GENRE_MAPPINGS = {
     ## Pakistani indie
     'pakistani indie': ('Pakistani Pop', 'pakistani indie'),
 
-    ## Pakistani pop por épocas
+    ## Pakistani pop by era
     'pak pop 80s': ('Pakistani Pop', 'pak pop 80s'),
     'pak pop 90s': ('Pakistani Pop', 'pak pop 90s'),
     'pak pop 2000s': ('Pakistani Pop', 'pak pop 2000s'),
@@ -5437,7 +5493,7 @@ GENRE_MAPPINGS = {
     'pak pop 2020s': ('Pakistani Pop', 'pak pop 2020s'),
     'classic pakistani pop': ('Pakistani Pop', 'classic pakistani pop'),
 
-    ## Pakistani pop por región
+    ## Pakistani pop by region
     'karachi pop': ('Pakistani Pop', 'karachi pop'),
     'lahore pop': ('Pakistani Pop', 'lahore pop'),
     'islamabad pop': ('Pakistani Pop', 'islamabad pop'),
@@ -5445,9 +5501,9 @@ GENRE_MAPPINGS = {
     'peshawar pop': ('Pakistani Pop', 'peshawar pop'),
 
     ###############################################################################
-    # Bangladeshi Pop/Rock (Regional - Bangladesh) [Expandida]
+    # Bangladeshi Pop/Rock
     ###############################################################################
-    ## Bangladeshi Pop General (English / Bengali)
+    ## General Bangladeshi Pop (English / Bengali)
     'bangladeshi pop': ('Bangladeshi Pop/Rock', 'bangladeshi pop'),
     'bd pop': ('Bangladeshi Pop/Rock', 'bd pop'),
     'bangla pop': ('Bangladeshi Pop/Rock', 'bangla pop'),
@@ -5455,11 +5511,11 @@ GENRE_MAPPINGS = {
     'bangladesh music': ('Bangladeshi Pop/Rock', 'bangladesh music'),
             'বাংলাদেশী পপ': ('Bangladeshi Pop/Rock', 'বাংলাদেশী পপ'),
 
-    ## Bangladeshi pop moderno
+    ## Modern Bangladeshi pop
     'modern bangladeshi pop': ('Bangladeshi Pop/Rock', 'modern bangladeshi pop'),
     'contemporary bangla pop': ('Bangladeshi Pop/Rock', 'contemporary bangla pop'),
 
-    ## Dhallywood (cine bangladesí)
+    ## Dhallywood (Bangladeshi cinema)
     'dhallywood': ('Bangladeshi Pop/Rock', 'dhallywood'),
     'dhallywood music': ('Bangladeshi Pop/Rock', 'dhallywood music'),
     'bangladeshi film music': ('Bangladeshi Pop/Rock', 'bangladeshi film music'),
@@ -5471,7 +5527,7 @@ GENRE_MAPPINGS = {
     'rock bangladesí': ('Bangladeshi Pop/Rock', 'rock bangladesí'),
     'bangla rock': ('Bangladeshi Pop/Rock', 'bangla rock'),
 
-    ### Subgéneros de Bangladeshi rock
+    ### Bangladeshi rock subgenres
     'bangladeshi alternative rock': ('Bangladeshi Pop/Rock', 'bangladeshi alternative rock'),
     'bangladeshi indie rock': ('Bangladeshi Pop/Rock', 'bangladeshi indie rock'),
     'bangladeshi metal': ('Bangladeshi Pop/Rock', 'bangladeshi metal'),
@@ -5488,7 +5544,7 @@ GENRE_MAPPINGS = {
     'bangladeshi r&b': ('Bangladeshi Pop/Rock', 'bangladeshi r&b'),
     'bangladeshi rnb': ('Bangladeshi Pop/Rock', 'bangladeshi rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'bangladeshi folk': ('Bangladeshi Pop/Rock', 'bangladeshi folk'),
     'folk bangladesí': ('Bangladeshi Pop/Rock', 'folk bangladesí'),
     'baul': ('Bangladeshi Pop/Rock', 'baul'),
@@ -5514,7 +5570,7 @@ GENRE_MAPPINGS = {
     'bangladeshi indie': ('Bangladeshi Pop/Rock', 'bangladeshi indie'),
     'bd indie': ('Bangladeshi Pop/Rock', 'bd indie'),
 
-    ## Bangladeshi pop por región
+    ## Bangladeshi pop by region
     'dhaka pop': ('Bangladeshi Pop/Rock', 'dhaka pop'),
     'chittagong pop': ('Bangladeshi Pop/Rock', 'chittagong pop'),
     'khulna pop': ('Bangladeshi Pop/Rock', 'khulna pop'),
@@ -5525,7 +5581,7 @@ GENRE_MAPPINGS = {
     'bangladeshi ost': ('Bangladeshi Pop/Rock', 'bangladeshi ost'),
     'dhallywood songs': ('Bangladeshi Pop/Rock', 'dhallywood songs'),
 
-    ## Bangladeshi pop por épocas
+    ## Bangladeshi pop by era
     'bd pop 80s': ('Bangladeshi Pop/Rock', 'bd pop 80s'),
     'bd pop 90s': ('Bangladeshi Pop/Rock', 'bd pop 90s'),
     'bd pop 2000s': ('Bangladeshi Pop/Rock', 'bd pop 2000s'),
@@ -5534,9 +5590,9 @@ GENRE_MAPPINGS = {
     'classic bangladeshi pop': ('Bangladeshi Pop/Rock', 'classic bangladeshi pop'),
 
     ###############################################################################
-    # C-Pop/C-Rock (Regional - China)
+    # C-Pop/C-Rock (China)
     ###############################################################################
-    ## C-Pop General
+    ## General C-Pop
     'cpop': ('C-Pop/C-Rock', 'cpop'),
     'c-pop': ('C-Pop/C-Rock', 'c-pop'),
     'c pop': ('C-Pop/C-Rock', 'c pop'),
@@ -5544,7 +5600,7 @@ GENRE_MAPPINGS = {
     'pop chino continental': ('C-Pop/C-Rock', 'pop chino continental'),
     'música china continental': ('C-Pop/C-Rock', 'música china continental'),
 
-    ## Mandopop (chino mandarín)
+    ## Mandopop (Mandarin Chinese)
     'mandopop': ('C-Pop/C-Rock', 'mandopop'),
     'mando-pop': ('C-Pop/C-Rock', 'mando-pop'),
     'mandarin pop': ('C-Pop/C-Rock', 'mandarin pop'),
@@ -5586,7 +5642,7 @@ GENRE_MAPPINGS = {
     'cdrama ost': ('C-Pop/C-Rock', 'cdrama ost'),
 
     ###############################################################################
-    # TW-Pop/TW-Rock (Regional - Taiwán)
+    # TW-Pop/TW-Rock (Taiwán)
     ###############################################################################
     ## TW-Pop General
     'taiwanese pop': ('TW-Pop/TW-Rock', 'taiwanese pop'),
@@ -5607,7 +5663,7 @@ GENRE_MAPPINGS = {
     'trock': ('TW-Pop/TW-Rock', 'trock'),
     'rock taiwanés': ('TW-Pop/TW-Rock', 'rock taiwanés'),
 
-    ### Subgéneros de Taiwanese rock
+    ### Taiwanese rock subgenres
     'taiwanese alternative rock': ('TW-Pop/TW-Rock', 'taiwanese alternative rock'),
     'taiwanese indie rock': ('TW-Pop/TW-Rock', 'taiwanese indie rock'),
     'taiwanese punk': ('TW-Pop/TW-Rock', 'taiwanese punk'),
@@ -5642,7 +5698,7 @@ GENRE_MAPPINGS = {
     'taiwanese drama ost': ('TW-Pop/TW-Rock', 'taiwanese drama ost'),
     'taiwanese movie soundtrack': ('TW-Pop/TW-Rock', 'taiwanese movie soundtrack'),
 
-    ## Taiwanese pop por épocas
+    ## Taiwanese by era
     'taiwanese pop 80s': ('TW-Pop/TW-Rock', 'taiwanese pop 80s'),
     'taiwanese pop 90s': ('TW-Pop/TW-Rock', 'taiwanese pop 90s'),
     'taiwanese pop 2000s': ('TW-Pop/TW-Rock', 'taiwanese pop 2000s'),
@@ -5650,7 +5706,7 @@ GENRE_MAPPINGS = {
     'taiwanese pop 2020s': ('TW-Pop/TW-Rock', 'taiwanese pop 2020s'),
     'classic taiwanese pop': ('TW-Pop/TW-Rock', 'classic taiwanese pop'),
 
-    ## Taiwanese pop por región
+    ## Taiwanese pop by region
     'taipei pop': ('TW-Pop/TW-Rock', 'taipei pop'),
     'kaohsiung pop': ('TW-Pop/TW-Rock', 'kaohsiung pop'),
     'taichung pop': ('TW-Pop/TW-Rock', 'taichung pop'),
@@ -5661,15 +5717,15 @@ GENRE_MAPPINGS = {
     'taiwanese world music': ('TW-Pop/TW-Rock', 'taiwanese world music'),
 
     ###############################################################################
-    # HK-Pop/HK-Rock (Regional - Hong Kong)
+    # HK-Pop/HK-Rock (Hong Kong)
     ###############################################################################
-    ## HK-Pop General
+    ## General HK-Pop
     'hkpop': ('HK-Pop/HK-Rock', 'hkpop'),
     'hk-pop': ('HK-Pop/HK-Rock', 'hk-pop'),
     'hong kong pop': ('HK-Pop/HK-Rock', 'hong kong pop'),
     'pop hongkongues': ('HK-Pop/HK-Rock', 'pop hongkongues'),
 
-    ## Cantopop (cantonés - Hong Kong)
+    ## Cantopop (Cantonese - Hong Kong)
     'cantopop': ('HK-Pop/HK-Rock', 'cantopop'),
     'canto-pop': ('HK-Pop/HK-Rock', 'canto-pop'),
     'cantonese pop': ('HK-Pop/HK-Rock', 'cantonese pop'),
@@ -5703,16 +5759,16 @@ GENRE_MAPPINGS = {
     'hong kong movie soundtrack': ('HK-Pop/HK-Rock', 'hong kong movie soundtrack'),
 
     ###############################################################################
-    # Turkish Pop/Rock (Regional - Turquía)
+    # Turkish Pop/Rock
     ###############################################################################
-    ## Turkish Pop General
+    ## General Turkish Pop
     'turkish pop': ('Turkish Pop/Rock', 'turkish pop'),
     'turk pop': ('Turkish Pop/Rock', 'turk pop'),
     'pop turco': ('Turkish Pop/Rock', 'pop turco'),
     'türkçe pop': ('Turkish Pop/Rock', 'türkçe pop'),
     'turkish mainstream': ('Turkish Pop/Rock', 'turkish mainstream'),
 
-    ## Arabesk (género turco)
+    ## Arabesk (Turkish genre)
     'arabesk': ('Turkish Pop/Rock', 'arabesk'),
     'turkish arabesk': ('Turkish Pop/Rock', 'turkish arabesk'),
     'arabesque': ('Turkish Pop/Rock', 'arabesque'),
@@ -5723,7 +5779,7 @@ GENRE_MAPPINGS = {
     'rock turco': ('Turkish Pop/Rock', 'rock turco'),
     'türkçe rock': ('Turkish Pop/Rock', 'türkçe rock'),
 
-    ### Subgéneros de Turkish rock
+    ### Turkish rock subgenres
     'turkish alternative rock': ('Turkish Pop/Rock', 'turkish alternative rock'),
     'turkish indie rock': ('Turkish Pop/Rock', 'turkish indie rock'),
     'turkish punk': ('Turkish Pop/Rock', 'turkish punk'),
@@ -5747,22 +5803,22 @@ GENRE_MAPPINGS = {
     'türk sanat müziği': ('Turkish Pop/Rock', 'türk sanat müziği'),
     'turkish art music': ('Turkish Pop/Rock', 'turkish art music'),
 
-    ## Turkish pop por épocas
+    ## Turkish pop by era
     'turkish pop 80s': ('Turkish Pop/Rock', 'turkish pop 80s'),
     'turkish pop 90s': ('Turkish Pop/Rock', 'turkish pop 90s'),
     'turkish pop 2000s': ('Turkish Pop/Rock', 'turkish pop 2000s'),
     'turkish pop 2010s': ('Turkish Pop/Rock', 'turkish pop 2010s'),
     'turkish pop 2020s': ('Turkish Pop/Rock', 'turkish pop 2020s'),
 
-    ## Turkish pop por región
+    ## Turkish pop by region
     'istanbul pop': ('Turkish Pop/Rock', 'istanbul pop'),
     'ankara pop': ('Turkish Pop/Rock', 'ankara pop'),
     'izmir pop': ('Turkish Pop/Rock', 'izmir pop'),
 
     ###############################################################################
-    # Arabic Pop/Rock (Regional - Mundo Árabe)
+    # Arabic Pop/Rock (Arab World)
     ###############################################################################
-    ## Arabic Pop General
+    ## General Arabic Pop
     'arabic pop': ('Arabic Pop/Rock', 'arabic pop'),
     'arab pop': ('Arabic Pop/Rock', 'arab pop'),
     'pop árabe': ('Arabic Pop/Rock', 'pop árabe'),
@@ -5792,7 +5848,7 @@ GENRE_MAPPINGS = {
     'arab rock': ('Arabic Pop/Rock', 'arab rock'),
     'rock árabe': ('Arabic Pop/Rock', 'rock árabe'),
 
-    ### Subgéneros de Arabic rock
+    ### Arabic rock subgenres
     'arab alternative rock': ('Arabic Pop/Rock', 'arab alternative rock'),
     'arab indie rock': ('Arabic Pop/Rock', 'arab indie rock'),
     'arab metal': ('Arabic Pop/Rock', 'arab metal'),
@@ -5803,27 +5859,27 @@ GENRE_MAPPINGS = {
     'arab rap': ('Arabic Pop/Rock', 'arab rap'),
     'rap árabe': ('Arabic Pop/Rock', 'rap árabe'),
 
-    ## Raï (Argelia)
+    ## Raï (Algeria)
     'raï': ('Arabic Pop/Rock', 'raï'),
     'rai': ('Arabic Pop/Rock', 'rai'),
     'algerian rai': ('Arabic Pop/Rock', 'algerian rai'),
     'rai pop': ('Arabic Pop/Rock', 'rai pop'),
 
-    ## Shaabi (Egipto)
+    ## Shaabi (Egypt)
     'shaabi': ('Arabic Pop/Rock', 'shaabi'),
     'egyptian shaabi': ('Arabic Pop/Rock', 'egyptian shaabi'),
     'shaabi pop': ('Arabic Pop/Rock', 'shaabi pop'),
     'mahraganat': ('Arabic Pop/Rock', 'mahraganat'),
     'electro shaabi': ('Arabic Pop/Rock', 'electro shaabi'),
 
-    ## Arabic pop por épocas
+    ## Arabic pop by era
     'arabic pop 80s': ('Arabic Pop/Rock', 'arabic pop 80s'),
     'arabic pop 90s': ('Arabic Pop/Rock', 'arabic pop 90s'),
     'arabic pop 2000s': ('Arabic Pop/Rock', 'arabic pop 2000s'),
     'arabic pop 2010s': ('Arabic Pop/Rock', 'arabic pop 2010s'),
     'arabic pop 2020s': ('Arabic Pop/Rock', 'arabic pop 2020s'),
 
-    ## Arabic pop por región
+    ## Arabic pop by region
     'cairo pop': ('Arabic Pop/Rock', 'cairo pop'),
     'beirut pop': ('Arabic Pop/Rock', 'beirut pop'),
     'dubai pop': ('Arabic Pop/Rock', 'dubai pop'),
@@ -5834,9 +5890,9 @@ GENRE_MAPPINGS = {
     'damascus pop': ('Arabic Pop/Rock', 'damascus pop'),
 
     ###############################################################################
-    # Israeli Pop/Rock (Regional - Israel)
+    # Israeli Pop/Rock
     ###############################################################################
-    ## Israeli Pop General
+    ## General Israeli Pop
     'israeli pop': ('Israeli Pop/Rock', 'israeli pop'),
     'israel pop': ('Israeli Pop/Rock', 'israel pop'),
     'pop israelí': ('Israeli Pop/Rock', 'pop israelí'),
@@ -5853,7 +5909,7 @@ GENRE_MAPPINGS = {
     'israel rock': ('Israeli Pop/Rock', 'israel rock'),
     'rock israelí': ('Israeli Pop/Rock', 'rock israelí'),
 
-    ### Subgéneros de Israeli rock
+    ### Israeli rock subgenres
     'israeli alternative rock': ('Israeli Pop/Rock', 'israeli alternative rock'),
     'israeli indie rock': ('Israeli Pop/Rock', 'israeli indie rock'),
     'israeli punk': ('Israeli Pop/Rock', 'israeli punk'),
@@ -5873,20 +5929,20 @@ GENRE_MAPPINGS = {
     'israeli mediterranean': ('Israeli Pop/Rock', 'israeli mediterranean'),
     'yemenite pop': ('Israeli Pop/Rock', 'yemenite pop'),
 
-    ## Israeli pop por épocas
+    ## Israeli pop by era
     'israeli pop 80s': ('Israeli Pop/Rock', 'israeli pop 80s'),
     'israeli pop 90s': ('Israeli Pop/Rock', 'israeli pop 90s'),
     'israeli pop 2000s': ('Israeli Pop/Rock', 'israeli pop 2000s'),
     'israeli pop 2010s': ('Israeli Pop/Rock', 'israeli pop 2010s'),
     'israeli pop 2020s': ('Israeli Pop/Rock', 'israeli pop 2020s'),
 
-    ## Israeli pop por región
+    ## Israeli pop by region
     'tel aviv pop': ('Israeli Pop/Rock', 'tel aviv pop'),
     'jerusalem pop': ('Israeli Pop/Rock', 'jerusalem pop'),
     'haifa pop': ('Israeli Pop/Rock', 'haifa pop'),
 
     ###############################################################################
-    # Q-pop/Q-rock (Regional - Kazajistán)
+    # Q-pop/Q-rock (Kazakhstan)
     ###############################################################################
     ## Q-pop General (English / Kazakh)
     'qpop': ('Q-pop/Q-rock', 'qpop'),
@@ -5896,7 +5952,7 @@ GENRE_MAPPINGS = {
     'pop kazajo': ('Q-pop/Q-rock', 'pop kazajo'),
     'qazaq pop': ('Q-pop/Q-rock', 'qazaq pop'),
 
-    ## Q-pop idol (grupos)
+    ## Q-pop idol (groups)
     'qpop idol': ('Q-pop/Q-rock', 'qpop idol'),
     'q-pop idol': ('Q-pop/Q-rock', 'q-pop idol'),
     'qpop group': ('Q-pop/Q-rock', 'qpop group'),
@@ -5905,7 +5961,7 @@ GENRE_MAPPINGS = {
     'kazakh boy band': ('Q-pop/Q-rock', 'kazakh boy band'),
     'kazakh girl group': ('Q-pop/Q-rock', 'kazakh girl group'),
 
-    ## Q-pop solista
+    ## Q-pop soloist
     'qpop solo': ('Q-pop/Q-rock', 'qpop solo'),
     'q-pop solo': ('Q-pop/Q-rock', 'q-pop solo'),
     'solo qpop': ('Q-pop/Q-rock', 'solo qpop'),
@@ -5918,7 +5974,7 @@ GENRE_MAPPINGS = {
     'rock kazajo': ('Q-pop/Q-rock', 'rock kazajo'),
     'qazaq rock': ('Q-pop/Q-rock', 'qazaq rock'),
 
-    ### Subgéneros de Q-rock
+    ### Q-rock subgenres
     'kazakh alternative rock': ('Q-pop/Q-rock', 'kazakh alternative rock'),
     'kazakh indie rock': ('Q-pop/Q-rock', 'kazakh indie rock'),
     'kazakh metal': ('Q-pop/Q-rock', 'kazakh metal'),
@@ -5940,12 +5996,12 @@ GENRE_MAPPINGS = {
     'kazakh r&b': ('Q-pop/Q-rock', 'kazakh r&b'),
     'kazakh rnb': ('Q-pop/Q-rock', 'kazakh rnb'),
 
-    ## Q-pop balada
+    ## Q-pop ballad
     'qpop ballad': ('Q-pop/Q-rock', 'qpop ballad'),
     'kazakh ballad': ('Q-pop/Q-rock', 'kazakh ballad'),
     'balada kazaja': ('Q-pop/Q-rock', 'balada kazaja'),
 
-    ## Q-pop fusión / Tradicional
+    ## Q-pop fusion / Traditional
     'qpop fusion': ('Q-pop/Q-rock', 'qpop fusion'),
     'kazakh fusion': ('Q-pop/Q-rock', 'kazakh fusion'),
     'q-pop folk': ('Q-pop/Q-rock', 'q-pop folk'),
@@ -5953,14 +6009,14 @@ GENRE_MAPPINGS = {
     'dombra pop': ('Q-pop/Q-rock', 'dombra pop'),
     'qobyz pop': ('Q-pop/Q-rock', 'qobyz pop'),
 
-    ## Q-pop por épocas
+    ## Q-pop by era
     'qpop 2010s': ('Q-pop/Q-rock', 'qpop 2010s'),
     'qpop 2020s': ('Q-pop/Q-rock', 'qpop 2020s'),
     'modern qpop': ('Q-pop/Q-rock', 'modern qpop'),
     'contemporary qpop': ('Q-pop/Q-rock', 'contemporary qpop'),
     'classic qpop': ('Q-pop/Q-rock', 'classic qpop'),
 
-    ## Q-pop por región
+    ## Q-pop by region
     'almaty pop': ('Q-pop/Q-rock', 'almaty pop'),
     'astana pop': ('Q-pop/Q-rock', 'astana pop'),
     'nur-sultan pop': ('Q-pop/Q-rock', 'nur-sultan pop'),
@@ -5973,19 +6029,19 @@ GENRE_MAPPINGS = {
     'kazakh soundtrack': ('Q-pop/Q-rock', 'kazakh soundtrack'),
     'kazakh drama ost': ('Q-pop/Q-rock', 'kazakh drama ost'),
 
-    ## Q-pop electrónico
+    ## Q-pop electronic
     'qpop edm': ('Q-pop/Q-rock', 'qpop edm'),
     'qpop electronic': ('Q-pop/Q-rock', 'qpop electronic'),
     'kazakh edm': ('Q-pop/Q-rock', 'kazakh edm'),
     'qpop dance': ('Q-pop/Q-rock', 'qpop dance'),
 
-    ## Q-pop acústico
+    ## Q-pop acoustic
     'qpop acoustic': ('Q-pop/Q-rock', 'qpop acoustic'),
     'acoustic qpop': ('Q-pop/Q-rock', 'acoustic qpop'),
     'kazakh acoustic': ('Q-pop/Q-rock', 'kazakh acoustic'),
 
     ###############################################################################
-    # Nepali Pop/Rock (Regional - Nepal)
+    # Nepali Pop/Rock
     ###############################################################################
     ## Nepali Pop General (English / Nepali)
     'nepali pop': ('Nepali Pop/Rock', 'nepali pop'),
@@ -5995,7 +6051,7 @@ GENRE_MAPPINGS = {
     'nepali music': ('Nepali Pop/Rock', 'nepali music'),
     'nepali geet': ('Nepali Pop/Rock', 'nepali geet'),
 
-    ## Nepop moderno / Adhunik
+    ## Modern Nepop / Adhunik
     'nepop': ('Nepali Pop/Rock', 'nepop'),
     'modern nepop': ('Nepali Pop/Rock', 'modern nepop'),
     'contemporary nepali pop': ('Nepali Pop/Rock', 'contemporary nepali pop'),
@@ -6007,7 +6063,7 @@ GENRE_MAPPINGS = {
     'rock nepalí': ('Nepali Pop/Rock', 'rock nepalí'),
     'kathmandu rock': ('Nepali Pop/Rock', 'kathmandu rock'),
 
-    ### Subgéneros de Nepali rock
+    ### Nepali rock subgenres
     'nepali alternative rock': ('Nepali Pop/Rock', 'nepali alternative rock'),
     'nepali indie rock': ('Nepali Pop/Rock', 'nepali indie rock'),
     'nepali punk': ('Nepali Pop/Rock', 'nepali punk'),
@@ -6032,7 +6088,7 @@ GENRE_MAPPINGS = {
     'nepali lok': ('Nepali Pop/Rock', 'nepali lok'),
     'lok pop': ('Nepali Pop/Rock', 'lok pop'),
 
-    ### Variantes regionales del folk
+    ### Regional folk variants
     'tamang selo': ('Nepali Pop/Rock', 'tamang selo'),
     'dohori': ('Nepali Pop/Rock', 'dohori'),
     'dohori geet': ('Nepali Pop/Rock', 'dohori geet'),
@@ -6048,7 +6104,7 @@ GENRE_MAPPINGS = {
     'himalayan fusion': ('Nepali Pop/Rock', 'himalayan fusion'),
     'buddhist fusion': ('Nepali Pop/Rock', 'buddhist fusion'),
 
-    ## Nepali balada / Sugam geet
+    ## Nepali ballad / Sugam geet
     'nepali ballad': ('Nepali Pop/Rock', 'nepali ballad'),
     'sugam geet': ('Nepali Pop/Rock', 'sugam geet'),
     'balada nepalí': ('Nepali Pop/Rock', 'balada nepalí'),
@@ -6065,7 +6121,7 @@ GENRE_MAPPINGS = {
     'nepali film music': ('Nepali Pop/Rock', 'nepali film music'),
     'nepali cinema geet': ('Nepali Pop/Rock', 'nepali cinema geet'),
 
-    ## Nepali pop por épocas
+    ## Nepali pop by era
     'nepop 80s': ('Nepali Pop/Rock', 'nepop 80s'),
     'nepop 90s': ('Nepali Pop/Rock', 'nepop 90s'),
     'nepop 2000s': ('Nepali Pop/Rock', 'nepop 2000s'),
@@ -6074,7 +6130,7 @@ GENRE_MAPPINGS = {
     'classic nepop': ('Nepali Pop/Rock', 'classic nepop'),
     'golden era nepop': ('Nepali Pop/Rock', 'golden era nepop'),
 
-    ## Nepali pop por región
+    ## Nepali pop by region
     'kathmandu pop': ('Nepali Pop/Rock', 'kathmandu pop'),
     'pokhara pop': ('Nepali Pop/Rock', 'pokhara pop'),
     'lalitpur pop': ('Nepali Pop/Rock', 'lalitpur pop'),
@@ -6090,12 +6146,12 @@ GENRE_MAPPINGS = {
     'nepali acoustic': ('Nepali Pop/Rock', 'nepali acoustic'),
     'acoustic nepal': ('Nepali Pop/Rock', 'acoustic nepal'),
 
-    ## Música newar clásica
+    ## Newar classical music
     'newar classical': ('Nepali Pop/Rock', 'newar classical'),
     'newa dhimay': ('Nepali Pop/Rock', 'newa dhimay'),
 
     ###############################################################################
-    # Mongolian Pop/Rock/Metal (Regional - Mongolia)
+    # Mongolian Pop/Rock/Metal
     ###############################################################################
     ## Mongolian Pop General (English / Mongolian)
     'mongolian pop': ('Mongolian Pop/Rock/Metal', 'mongolian pop'),
@@ -6110,7 +6166,7 @@ GENRE_MAPPINGS = {
     'rock mongol': ('Mongolian Pop/Rock/Metal', 'rock mongol'),
     'ulaanbaatar rock': ('Mongolian Pop/Rock/Metal', 'ulaanbaatar rock'),
 
-    ### Subgéneros de Mongolian rock
+    ### Mongolian rock subgenres
     'mongolian alternative rock': ('Mongolian Pop/Rock/Metal', 'mongolian alternative rock'),
     'mongolian indie rock': ('Mongolian Pop/Rock/Metal', 'mongolian indie rock'),
     'mongolian punk': ('Mongolian Pop/Rock/Metal', 'mongolian punk'),
@@ -6122,7 +6178,7 @@ GENRE_MAPPINGS = {
     'hunnu rock': ('Mongolian Pop/Rock/Metal', 'hunnu rock'),
     'the hu style': ('Mongolian Pop/Rock/Metal', 'the hu style'),
 
-    ## Khoomei fusion (canto gutural)
+    ## Khoomei fusion (throat singing)
     'khoomei fusion': ('Mongolian Pop/Rock/Metal', 'khoomei fusion'),
     'throat singing fusion': ('Mongolian Pop/Rock/Metal', 'throat singing fusion'),
     'mongolian throat singing rock': ('Mongolian Pop/Rock/Metal', 'mongolian throat singing rock'),
@@ -6133,7 +6189,7 @@ GENRE_MAPPINGS = {
     'mongol rap': ('Mongolian Pop/Rock/Metal', 'mongol rap'),
     'ulaanbaatar rap': ('Mongolian Pop/Rock/Metal', 'ulaanbaatar rap'),
 
-    ## Mongolian folk / Tradicional
+    ## Mongolian folk / Traditional
     'mongolian folk': ('Mongolian Pop/Rock/Metal', 'mongolian folk'),
     'mongol folk': ('Mongolian Pop/Rock/Metal', 'mongol folk'),
     'morin khuur fusion': ('Mongolian Pop/Rock/Metal', 'morin khuur fusion'),
@@ -6142,13 +6198,13 @@ GENRE_MAPPINGS = {
     'mongolian fusion': ('Mongolian Pop/Rock/Metal', 'mongolian fusion'),
     'steppe fusion': ('Mongolian Pop/Rock/Metal', 'steppe fusion'),
 
-    ## Mongolian pop por región
+    ## Mongolian pop by region
     'ulaanbaatar pop': ('Mongolian Pop/Rock/Metal', 'ulaanbaatar pop'),
     'darkhan pop': ('Mongolian Pop/Rock/Metal', 'darkhan pop'),
     'erdent pop': ('Mongolian Pop/Rock/Metal', 'erdent pop'),
 
     ###############################################################################
-    # Afghan Pop/Rock (Regional - Afganistán)
+    # Afghan Pop/Rock
     ###############################################################################
     ## Afghan Pop General (English / Dari/Pashto)
     'afghan pop': ('Afghan Pop/Rock', 'afghan pop'),
@@ -6157,7 +6213,7 @@ GENRE_MAPPINGS = {
     'kabul pop': ('Afghan Pop/Rock', 'kabul pop'),
     'musica afgana': ('Afghan Pop/Rock', 'musica afgana'),
 
-    ## Afghan pop moderno / Diáspora
+    ## Modern Afghan pop / Diaspora
     'afghan diaspora pop': ('Afghan Pop/Rock', 'afghan diaspora pop'),
     'modern afghan pop': ('Afghan Pop/Rock', 'modern afghan pop'),
     'contemporary afghan music': ('Afghan Pop/Rock', 'contemporary afghan music'),
@@ -6167,7 +6223,7 @@ GENRE_MAPPINGS = {
     'kabul rock': ('Afghan Pop/Rock', 'kabul rock'),
     'rock afgano': ('Afghan Pop/Rock', 'rock afgano'),
 
-    ### Subgéneros de Afghan rock
+    ### Afghan rock subgenres
     'afghan alternative rock': ('Afghan Pop/Rock', 'afghan alternative rock'),
     'afghan indie rock': ('Afghan Pop/Rock', 'afghan indie rock'),
     'afghan metal': ('Afghan Pop/Rock', 'afghan metal'),
@@ -6178,12 +6234,12 @@ GENRE_MAPPINGS = {
     'kabul rap': ('Afghan Pop/Rock', 'kabul rap'),
     'afghan diaspora rap': ('Afghan Pop/Rock', 'afghan diaspora rap'),
 
-    ## Afghan folk / Clásico
+    ## Afghan folk / Classical
     'afghan folk': ('Afghan Pop/Rock', 'afghan folk'),
     'folk afgano': ('Afghan Pop/Rock', 'folk afgano'),
     'rubab fusion': ('Afghan Pop/Rock', 'rubab fusion'),
 
-    ## Ghazal afgano
+    ## Afghan ghazal
     'afghan ghazal': ('Afghan Pop/Rock', 'afghan ghazal'),
     'dari ghazal': ('Afghan Pop/Rock', 'dari ghazal'),
     'pashto ghazal': ('Afghan Pop/Rock', 'pashto ghazal'),
@@ -6192,7 +6248,7 @@ GENRE_MAPPINGS = {
     'afghan fusion': ('Afghan Pop/Rock', 'afghan fusion'),
     'kabul fusion': ('Afghan Pop/Rock', 'kabul fusion'),
 
-    ## Afghan pop por región / etnia
+    ## Afghan pop by region / ethnicity
     'kabul pop': ('Afghan Pop/Rock', 'kabul pop'),
     'herat pop': ('Afghan Pop/Rock', 'herat pop'),
     'mazar pop': ('Afghan Pop/Rock', 'mazar pop'),
@@ -6201,12 +6257,12 @@ GENRE_MAPPINGS = {
     'hazara pop': ('Afghan Pop/Rock', 'hazara pop'),
     'uzbek afghan pop': ('Afghan Pop/Rock', 'uzbek afghan pop'),
 
-    ## Afghan pop post-talibán
+    ## Post-Taliban Afghan pop
     'post taliban music': ('Afghan Pop/Rock', 'post taliban music'),
     'afghan revival': ('Afghan Pop/Rock', 'afghan revival'),
 
     ###############################################################################
-    # Tibetan Pop/Rock (Regional - Tíbet / Diáspora)
+    # Tibetan Pop/Rock (Tibet / Diaspora)
     ###############################################################################
     ## Tibetan Pop General (English / Tibetan)
     'tibetan pop': ('Tibetan Pop/Rock', 'tibetan pop'),
@@ -6215,7 +6271,7 @@ GENRE_MAPPINGS = {
     'lhasa pop': ('Tibetan Pop/Rock', 'lhasa pop'),
     'tibetan music': ('Tibetan Pop/Rock', 'tibetan music'),
 
-    ## Tibetan pop moderno / Diáspora
+    ## Modern Tibetan pop / Diaspora
     'tibetan diaspora pop': ('Tibetan Pop/Rock', 'tibetan diaspora pop'),
     'modern tibetan pop': ('Tibetan Pop/Rock', 'modern tibetan pop'),
     'contemporary tibetan music': ('Tibetan Pop/Rock', 'contemporary tibetan music'),
@@ -6227,7 +6283,7 @@ GENRE_MAPPINGS = {
     'rock tibetano': ('Tibetan Pop/Rock', 'rock tibetano'),
     'tibetan indie rock': ('Tibetan Pop/Rock', 'tibetan indie rock'),
 
-    ### Subgéneros de Tibetan rock
+    ### Tibetan rock subgenres
     'tibetan alternative rock': ('Tibetan Pop/Rock', 'tibetan alternative rock'),
     'tibetan metal': ('Tibetan Pop/Rock', 'tibetan metal'),
     'tibetan punk': ('Tibetan Pop/Rock', 'tibetan punk'),
@@ -6244,7 +6300,7 @@ GENRE_MAPPINGS = {
     'mantra pop': ('Tibetan Pop/Rock', 'mantra pop'),
     'buddhist electronic': ('Tibetan Pop/Rock', 'buddhist electronic'),
 
-    ## Tibetan folk / Tradicional
+    ## Tibetan folk / Traditional
     'tibetan folk': ('Tibetan Pop/Rock', 'tibetan folk'),
     'bod folk': ('Tibetan Pop/Rock', 'bod folk'),
     'tibetan traditional': ('Tibetan Pop/Rock', 'tibetan traditional'),
@@ -6258,7 +6314,7 @@ GENRE_MAPPINGS = {
     'tibetan fusion': ('Tibetan Pop/Rock', 'tibetan fusion'),
     'himalayan fusion': ('Tibetan Pop/Rock', 'himalayan fusion'),
 
-    ## Tibetan pop por región
+    ## Tibetan pop by region
     'lhasa pop': ('Tibetan Pop/Rock', 'lhasa pop'),
     'dharamshala pop': ('Tibetan Pop/Rock', 'dharamshala pop'),
     'kathmandu tibetan pop': ('Tibetan Pop/Rock', 'kathmandu tibetan pop'),
@@ -6268,7 +6324,7 @@ GENRE_MAPPINGS = {
     'tibetan ost': ('Tibetan Pop/Rock', 'tibetan ost'),
     'tibetan movie songs': ('Tibetan Pop/Rock', 'tibetan movie songs'),
 
-    ## Tibetan pop por épocas
+    ## Tibetan pop by era
     'tibetan pop 80s': ('Tibetan Pop/Rock', 'tibetan pop 80s'),
     'tibetan pop 90s': ('Tibetan Pop/Rock', 'tibetan pop 90s'),
     'tibetan pop 2000s': ('Tibetan Pop/Rock', 'tibetan pop 2000s'),
@@ -6277,7 +6333,7 @@ GENRE_MAPPINGS = {
     'classic tibetan pop': ('Tibetan Pop/Rock', 'classic tibetan pop'),
 
     ###############################################################################
-    # Uyghur Pop/Rock (Regional - Xinjiang / Diáspora)
+    # Uyghur Pop/Rock (Xinjiang / Diaspora)
     ###############################################################################
     ## Uyghur Pop General (English / Uyghur)
     'uyghur pop': ('Uyghur Pop/Rock', 'uyghur pop'),
@@ -6288,7 +6344,7 @@ GENRE_MAPPINGS = {
     'uyghur music': ('Uyghur Pop/Rock', 'uyghur music'),
     'uyghur nahxa': ('Uyghur Pop/Rock', 'uyghur nahxa'),
 
-    ## Uyghur pop moderno / Diáspora
+    ## Modern Uyghur pop / Diaspora
     'uyghur diaspora pop': ('Uyghur Pop/Rock', 'uyghur diaspora pop'),
     'modern uyghur pop': ('Uyghur Pop/Rock', 'modern uyghur pop'),
     'contemporary uyghur music': ('Uyghur Pop/Rock', 'contemporary uyghur music'),
@@ -6300,7 +6356,7 @@ GENRE_MAPPINGS = {
     'rock uigur': ('Uyghur Pop/Rock', 'rock uigur'),
     'kashgar rock': ('Uyghur Pop/Rock', 'kashgar rock'),
 
-    ### Subgéneros de Uyghur rock
+    ### Uyghur rock subgenres
     'uyghur alternative rock': ('Uyghur Pop/Rock', 'uyghur alternative rock'),
     'uyghur indie rock': ('Uyghur Pop/Rock', 'uyghur indie rock'),
     'uyghur metal': ('Uyghur Pop/Rock', 'uyghur metal'),
@@ -6317,13 +6373,13 @@ GENRE_MAPPINGS = {
     'uyghur r&b': ('Uyghur Pop/Rock', 'uyghur r&b'),
     'uyghur rnb': ('Uyghur Pop/Rock', 'uyghur rnb'),
 
-    ## Muqam fusion (clásico uyghur)
+    ## Muqam fusion (Uyghur classical)
     'muqam': ('Uyghur Pop/Rock', 'muqam'),
     'on ikki muqam': ('Uyghur Pop/Rock', 'on ikki muqam'),
     'muqam fusion': ('Uyghur Pop/Rock', 'muqam fusion'),
     'twelve muqam': ('Uyghur Pop/Rock', 'twelve muqam'),
 
-    ## Uyghur folk / Tradicional
+    ## Uyghur folk / Traditional
     'uyghur folk': ('Uyghur Pop/Rock', 'uyghur folk'),
     'uighur folk': ('Uyghur Pop/Rock', 'uighur folk'),
     'rawap fusion': ('Uyghur Pop/Rock', 'rawap fusion'),
@@ -6337,7 +6393,7 @@ GENRE_MAPPINGS = {
     'silk road fusion': ('Uyghur Pop/Rock', 'silk road fusion'),
     'uyghur world music': ('Uyghur Pop/Rock', 'uyghur world music'),
 
-    ## Uyghur pop por región
+    ## Uyghur pop by region
     'kashgar pop': ('Uyghur Pop/Rock', 'kashgar pop'),
     'urumqi pop': ('Uyghur Pop/Rock', 'urumqi pop'),
     'turpan pop': ('Uyghur Pop/Rock', 'turpan pop'),
@@ -6348,7 +6404,7 @@ GENRE_MAPPINGS = {
     'uyghur ost': ('Uyghur Pop/Rock', 'uyghur ost'),
     'uyghur film music': ('Uyghur Pop/Rock', 'uyghur film music'),
 
-    ## Uyghur pop por épocas
+    ## Uyghur pop by era
     'uyghur pop 80s': ('Uyghur Pop/Rock', 'uyghur pop 80s'),
     'uyghur pop 90s': ('Uyghur Pop/Rock', 'uyghur pop 90s'),
     'uyghur pop 2000s': ('Uyghur Pop/Rock', 'uyghur pop 2000s'),
@@ -6357,9 +6413,9 @@ GENRE_MAPPINGS = {
     'classic uyghur pop': ('Uyghur Pop/Rock', 'classic uyghur pop'),
 
     ###############################################################################
-    # Timorese Pop/Rock (Regional - Timor-Leste)
+    # Timorese Pop/Rock (Timor-Leste)
     ###############################################################################
-    ## Timorese Pop General (English / Tetum / Portugués)
+    ## Timorese Pop General (English / Tetum / Portuguese)
     'timorese pop': ('Timorese Pop/Rock', 'timorese pop'),
     'timor pop': ('Timorese Pop/Rock', 'timor pop'),
     'pop timorense': ('Timorese Pop/Rock', 'pop timorense'),
@@ -6373,7 +6429,7 @@ GENRE_MAPPINGS = {
     'rock timorense': ('Timorese Pop/Rock', 'rock timorense'),
     'dili rock': ('Timorese Pop/Rock', 'dili rock'),
 
-    ### Subgéneros de Timorese rock
+    ### Timorese rock subgenres
     'timorese alternative rock': ('Timorese Pop/Rock', 'timorese alternative rock'),
     'timorese indie rock': ('Timorese Pop/Rock', 'timorese indie rock'),
     'timorese punk': ('Timorese Pop/Rock', 'timorese punk'),
@@ -6385,37 +6441,37 @@ GENRE_MAPPINGS = {
     'dili rap': ('Timorese Pop/Rock', 'dili rap'),
     'rap timorense': ('Timorese Pop/Rock', 'rap timorense'),
 
-    ## Timorese folk / Tradicional
+    ## Timorese folk / Traditional
     'timorese folk': ('Timorese Pop/Rock', 'timorese folk'),
     'folk timorense': ('Timorese Pop/Rock', 'folk timorense'),
     'likurai': ('Timorese Pop/Rock', 'likurai'),
     'tebe': ('Timorese Pop/Rock', 'tebe'),
 
-    ## Fusión portuguesa / lusófona
+    ## Portuguese / Lusophone fusion
     'timorese portuguese fusion': ('Timorese Pop/Rock', 'timorese portuguese fusion'),
     'lusophone fusion': ('Timorese Pop/Rock', 'lusophone fusion'),
     'fado timorense': ('Timorese Pop/Rock', 'fado timorense'),
 
-    ## Fusión austronesia
+    ## Austronesian fusion
     'austronesian fusion': ('Timorese Pop/Rock', 'austronesian fusion'),
     'timorese island fusion': ('Timorese Pop/Rock', 'timorese island fusion'),
 
-    ## Timorese pop por región
+    ## Timorese pop by region
     'dili pop': ('Timorese Pop/Rock', 'dili pop'),
     'baucau pop': ('Timorese Pop/Rock', 'baucau pop'),
     'same pop': ('Timorese Pop/Rock', 'same pop'),
     'ocussi pop': ('Timorese Pop/Rock', 'ocussi pop'),
 
-    ## Timorese post-independencia
+    ## Post-independence Timorese music
     'post independence timor music': ('Timorese Pop/Rock', 'post independence timor music'),
     'timor leste contemporary': ('Timorese Pop/Rock', 'timor leste contemporary'),
 
-    ## Timorese resistencia / protesta
+    ## Timorese resistance / protest
     'timorese protest music': ('Timorese Pop/Rock', 'timorese protest music'),
     'resistencia music': ('Timorese Pop/Rock', 'resistencia music'),
 
     ###############################################################################
-    # Sri Lankan Pop/Rock (Regional - Sri Lanka)
+    # Sri Lankan Pop/Rock
     ###############################################################################
     ## Sri Lankan Pop General (English / Sinhala / Tamil)
     'sri lankan pop': ('Sri Lankan Pop/Rock', 'sri lankan pop'),
@@ -6426,7 +6482,7 @@ GENRE_MAPPINGS = {
     'tamil pop sri lanka': ('Sri Lankan Pop/Rock', 'tamil pop sri lanka'),
     'sri lanka baila': ('Sri Lankan Pop/Rock', 'sri lanka baila'),
 
-    ## Baila (género fundamental)
+    ## Baila (core genre)
     'baila': ('Sri Lankan Pop/Rock', 'baila'),
     'sri lankan baila': ('Sri Lankan Pop/Rock', 'sri lankan baila'),
     'baila music': ('Sri Lankan Pop/Rock', 'baila music'),
@@ -6438,7 +6494,7 @@ GENRE_MAPPINGS = {
     'colombo rock': ('Sri Lankan Pop/Rock', 'colombo rock'),
     'sinhala rock': ('Sri Lankan Pop/Rock', 'sinhala rock'),
 
-    ### Subgéneros de rock
+    ### Rock subgenres
     'sri lankan alternative rock': ('Sri Lankan Pop/Rock', 'sri lankan alternative rock'),
     'sri lankan indie rock': ('Sri Lankan Pop/Rock', 'sri lankan indie rock'),
     'sri lankan metal': ('Sri Lankan Pop/Rock', 'sri lankan metal'),
@@ -6455,7 +6511,7 @@ GENRE_MAPPINGS = {
     'sri lankan r&b': ('Sri Lankan Pop/Rock', 'sri lankan r&b'),
     'sri lankan rnb': ('Sri Lankan Pop/Rock', 'sri lankan rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fused music
     'sri lankan folk': ('Sri Lankan Pop/Rock', 'sri lankan folk'),
     'sinhala folk': ('Sri Lankan Pop/Rock', 'sinhala folk'),
     'vannam': ('Sri Lankan Pop/Rock', 'vannam'),
@@ -6466,7 +6522,7 @@ GENRE_MAPPINGS = {
     'sri lankan fusion': ('Sri Lankan Pop/Rock', 'sri lankan fusion'),
     'lanka fusion': ('Sri Lankan Pop/Rock', 'lanka fusion'),
 
-    ## Sri Lankan pop por región
+    ## Sri Lankan pop by region
     'colombo pop': ('Sri Lankan Pop/Rock', 'colombo pop'),
     'kandy pop': ('Sri Lankan Pop/Rock', 'kandy pop'),
     'galle pop': ('Sri Lankan Pop/Rock', 'galle pop'),
@@ -6476,7 +6532,7 @@ GENRE_MAPPINGS = {
     'sri lankan ost': ('Sri Lankan Pop/Rock', 'sri lankan ost'),
     'sri lankan cinema songs': ('Sri Lankan Pop/Rock', 'sri lankan cinema songs'),
 
-    ## Sri Lankan pop por épocas
+    ## Sri Lankan pop by era
     'sri lankan pop 80s': ('Sri Lankan Pop/Rock', 'sri lankan pop 80s'),
     'sri lankan pop 90s': ('Sri Lankan Pop/Rock', 'sri lankan pop 90s'),
     'sri lankan pop 2000s': ('Sri Lankan Pop/Rock', 'sri lankan pop 2000s'),
@@ -6484,7 +6540,7 @@ GENRE_MAPPINGS = {
     'classic sri lankan pop': ('Sri Lankan Pop/Rock', 'classic sri lankan pop'),
 
     ###############################################################################
-    # Burmese Pop/Rock (Regional - Myanmar)
+    # Burmese Pop/Rock (Myanmar)
     ###############################################################################
     ## Burmese Pop General (English / Burmese)
     'burmese pop': ('Burmese Pop/Rock', 'burmese pop'),
@@ -6493,7 +6549,7 @@ GENRE_MAPPINGS = {
     'yangon pop': ('Burmese Pop/Rock', 'yangon pop'),
     'myanma thachin': ('Burmese Pop/Rock', 'myanma thachin'),
 
-    ## Burmese pop moderno
+    ## Modern Burmese pop
     'modern burmese pop': ('Burmese Pop/Rock', 'modern burmese pop'),
     'contemporary myanmar pop': ('Burmese Pop/Rock', 'contemporary myanmar pop'),
     'myanmar pop post coup': ('Burmese Pop/Rock', 'myanmar pop post coup'),
@@ -6503,7 +6559,7 @@ GENRE_MAPPINGS = {
     'myanmar rock': ('Burmese Pop/Rock', 'myanmar rock'),
     'yangon rock': ('Burmese Pop/Rock', 'yangon rock'),
 
-    ### Subgéneros de Burmese rock
+    ### Burmese rock subgenres
     'burmese alternative rock': ('Burmese Pop/Rock', 'burmese alternative rock'),
     'burmese indie rock': ('Burmese Pop/Rock', 'burmese indie rock'),
     'burmese metal': ('Burmese Pop/Rock', 'burmese metal'),
@@ -6519,7 +6575,7 @@ GENRE_MAPPINGS = {
     'burmese r&b': ('Burmese Pop/Rock', 'burmese r&b'),
     'burmese rnb': ('Burmese Pop/Rock', 'burmese rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fused music
     'burmese folk': ('Burmese Pop/Rock', 'burmese folk'),
     'myanmar traditional': ('Burmese Pop/Rock', 'myanmar traditional'),
     'mahagita': ('Burmese Pop/Rock', 'mahagita'),
@@ -6530,7 +6586,7 @@ GENRE_MAPPINGS = {
     'burmese fusion': ('Burmese Pop/Rock', 'burmese fusion'),
     'myanmar fusion': ('Burmese Pop/Rock', 'myanmar fusion'),
 
-    ## Burmese pop por región
+    ## Burmese pop by region
     'yangon pop': ('Burmese Pop/Rock', 'yangon pop'),
     'mandalay pop': ('Burmese Pop/Rock', 'mandalay pop'),
     'naypyidaw pop': ('Burmese Pop/Rock', 'naypyidaw pop'),
@@ -6539,7 +6595,7 @@ GENRE_MAPPINGS = {
     'burmese ost': ('Burmese Pop/Rock', 'burmese ost'),
     'myanmar movie songs': ('Burmese Pop/Rock', 'myanmar movie songs'),
 
-    ## Burmese pop por épocas
+    ## Burmese pop by era
     'burmese pop 80s': ('Burmese Pop/Rock', 'burmese pop 80s'),
     'burmese pop 90s': ('Burmese Pop/Rock', 'burmese pop 90s'),
     'burmese pop 2000s': ('Burmese Pop/Rock', 'burmese pop 2000s'),
@@ -6547,7 +6603,7 @@ GENRE_MAPPINGS = {
     'classic burmese pop': ('Burmese Pop/Rock', 'classic burmese pop'),
 
     ###############################################################################
-    # Lao Pop/Rock (Regional - Laos)
+    # Lao Pop/Rock
     ###############################################################################
     ## Lao Pop General (English / Lao)
     'lao pop': ('Lao Pop/Rock', 'lao pop'),
@@ -6556,7 +6612,7 @@ GENRE_MAPPINGS = {
     'vientiane pop': ('Lao Pop/Rock', 'vientiane pop'),
     'phleng lao': ('Lao Pop/Rock', 'phleng lao'),
 
-    ## Mor Lam (género principal)
+    ## Mor Lam (main genre)
     'mor lam': ('Lao Pop/Rock', 'mor lam'),
     'molam': ('Lao Pop/Rock', 'molam'),
     'lam lao': ('Lao Pop/Rock', 'lam lao'),
@@ -6565,7 +6621,7 @@ GENRE_MAPPINGS = {
     'lam saravane': ('Lao Pop/Rock', 'lam saravane'),
     'lam luang': ('Lao Pop/Rock', 'lam luang'),
 
-    ## Lao pop moderno / Fusión
+    ## Modern Lao pop / Fusion
     'lao modern pop': ('Lao Pop/Rock', 'lao modern pop'),
     'contemporary lao pop': ('Lao Pop/Rock', 'contemporary lao pop'),
     'mor lam pop': ('Lao Pop/Rock', 'mor lam pop'),
@@ -6576,7 +6632,7 @@ GENRE_MAPPINGS = {
     'vientiane rock': ('Lao Pop/Rock', 'vientiane rock'),
     'rock laosiano': ('Lao Pop/Rock', 'rock laosiano'),
 
-    ### Subgéneros de Lao rock
+    ### Lao rock subgenres
     'lao alternative rock': ('Lao Pop/Rock', 'lao alternative rock'),
     'lao indie rock': ('Lao Pop/Rock', 'lao indie rock'),
     'lao metal': ('Lao Pop/Rock', 'lao metal'),
@@ -6587,7 +6643,7 @@ GENRE_MAPPINGS = {
     'lao rap': ('Lao Pop/Rock', 'lao rap'),
     'vientiane rap': ('Lao Pop/Rock', 'vientiane rap'),
 
-    ## Lao folk / Tradicional
+    ## Lao folk / Traditional
     'lao folk': ('Lao Pop/Rock', 'lao folk'),
     'lao traditional': ('Lao Pop/Rock', 'lao traditional'),
     'khene fusion': ('Lao Pop/Rock', 'khene fusion'),
@@ -6595,7 +6651,7 @@ GENRE_MAPPINGS = {
     ## Lao fusion
     'lao fusion': ('Lao Pop/Rock', 'lao fusion'),
 
-    ## Lao pop por región
+    ## Lao pop by region
     'vientiane pop': ('Lao Pop/Rock', 'vientiane pop'),
     'luang prabang pop': ('Lao Pop/Rock', 'luang prabang pop'),
     'pakse pop': ('Lao Pop/Rock', 'pakse pop'),
@@ -6605,7 +6661,7 @@ GENRE_MAPPINGS = {
     'lao ost': ('Lao Pop/Rock', 'lao ost'),
     'lao movie songs': ('Lao Pop/Rock', 'lao movie songs'),
 
-    ## Lao pop por épocas
+    ## Lao pop by era
     'lao pop 80s': ('Lao Pop/Rock', 'lao pop 80s'),
     'lao pop 90s': ('Lao Pop/Rock', 'lao pop 90s'),
     'lao pop 2000s': ('Lao Pop/Rock', 'lao pop 2000s'),
@@ -6613,7 +6669,7 @@ GENRE_MAPPINGS = {
     'lao pop 2020s': ('Lao Pop/Rock', 'lao pop 2020s'),
 
     ###############################################################################
-    # Cambodian Pop/Rock (Regional - Camboya)
+    # Cambodian Pop/Rock
     ###############################################################################
     ## Cambodian Pop General (English / Khmer)
     'cambodian pop': ('Cambodian Pop/Rock', 'cambodian pop'),
@@ -6622,7 +6678,7 @@ GENRE_MAPPINGS = {
     'phnom penh pop': ('Cambodian Pop/Rock', 'phnom penh pop'),
     'phleng khmer': ('Cambodian Pop/Rock', 'phleng khmer'),
 
-    ## Cambodian rock clásico (60s-70s)
+    ## Classic Cambodian rock (60s-70s)
     'khmer rock': ('Cambodian Pop/Rock', 'khmer rock'),
     'cambodian rock': ('Cambodian Pop/Rock', 'cambodian rock'),
     'khmer psychedelic': ('Cambodian Pop/Rock', 'khmer psychedelic'),
@@ -6630,16 +6686,16 @@ GENRE_MAPPINGS = {
     'khmer surf rock': ('Cambodian Pop/Rock', 'khmer surf rock'),
     'cambodian rock and roll': ('Cambodian Pop/Rock', 'cambodian rock and roll'),
 
-    ## Cambodian pop moderno
+    ## Modern Cambodian pop
     'modern cambodian pop': ('Cambodian Pop/Rock', 'modern cambodian pop'),
     'contemporary khmer pop': ('Cambodian Pop/Rock', 'contemporary khmer pop'),
     'khmer pop moderno': ('Cambodian Pop/Rock', 'khmer pop moderno'),
 
-    ## Cambodian rock contemporáneo
+    ## Contemporary Cambodian rock
     'cambodian modern rock': ('Cambodian Pop/Rock', 'cambodian modern rock'),
     'phnom penh rock': ('Cambodian Pop/Rock', 'phnom penh rock'),
 
-    ### Subgéneros de Cambodian rock
+    ### Cambodian rock subgenres
     'cambodian alternative rock': ('Cambodian Pop/Rock', 'cambodian alternative rock'),
     'cambodian indie rock': ('Cambodian Pop/Rock', 'cambodian indie rock'),
     'cambodian metal': ('Cambodian Pop/Rock', 'cambodian metal'),
@@ -6654,7 +6710,7 @@ GENRE_MAPPINGS = {
     'cambodian r&b': ('Cambodian Pop/Rock', 'cambodian r&b'),
     'khmer rnb': ('Cambodian Pop/Rock', 'khmer rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fused music
     'cambodian folk': ('Cambodian Pop/Rock', 'cambodian folk'),
     'khmer traditional': ('Cambodian Pop/Rock', 'khmer traditional'),
     'pin peat': ('Cambodian Pop/Rock', 'pin peat'),
@@ -6667,7 +6723,7 @@ GENRE_MAPPINGS = {
     'cambodian fusion': ('Cambodian Pop/Rock', 'cambodian fusion'),
     'khmer fusion': ('Cambodian Pop/Rock', 'khmer fusion'),
 
-    ## Cambodian pop por región
+    ## Cambodian pop by region
     'phnom penh pop': ('Cambodian Pop/Rock', 'phnom penh pop'),
     'siem reap pop': ('Cambodian Pop/Rock', 'siem reap pop'),
     'battambang pop': ('Cambodian Pop/Rock', 'battambang pop'),
@@ -6676,7 +6732,7 @@ GENRE_MAPPINGS = {
     'cambodian ost': ('Cambodian Pop/Rock', 'cambodian ost'),
     'khmer movie songs': ('Cambodian Pop/Rock', 'khmer movie songs'),
 
-    ## Cambodian pop por épocas
+    ## Cambodian pop by era
     'khmer pop 60s': ('Cambodian Pop/Rock', 'khmer pop 60s'),
     'khmer pop 70s': ('Cambodian Pop/Rock', 'khmer pop 70s'),
     'khmer pop 80s': ('Cambodian Pop/Rock', 'khmer pop 80s'),
@@ -6686,7 +6742,7 @@ GENRE_MAPPINGS = {
     'khmer pop 2020s': ('Cambodian Pop/Rock', 'khmer pop 2020s'),
 
     ###############################################################################
-    # Hmong Pop/Rock (Regional - Hmong / Diáspora)
+    # Hmong Pop/Rock (Hmong / Diaspora)
     ###############################################################################
     ## Hmong Pop General (English / Hmong)
     'hmong pop': ('Hmong Pop/Rock', 'hmong pop'),
@@ -6694,7 +6750,7 @@ GENRE_MAPPINGS = {
     'pop hmong': ('Hmong Pop/Rock', 'pop hmong'),
     'hmong nkauj': ('Hmong Pop/Rock', 'hmong nkauj'),
 
-    ## Hmong pop moderno / Diáspora
+    ## Modern Hmong pop / Diaspora
     'hmong diaspora pop': ('Hmong Pop/Rock', 'hmong diaspora pop'),
     'modern hmong pop': ('Hmong Pop/Rock', 'modern hmong pop'),
     'contemporary hmong music': ('Hmong Pop/Rock', 'contemporary hmong music'),
@@ -6708,7 +6764,7 @@ GENRE_MAPPINGS = {
     'hmong rock': ('Hmong Pop/Rock', 'hmong rock'),
     'hmong rock band': ('Hmong Pop/Rock', 'hmong rock band'),
 
-    ### Subgéneros de Hmong rock
+    ### Hmong rock subgenres
     'hmong alternative rock': ('Hmong Pop/Rock', 'hmong alternative rock'),
     'hmong indie rock': ('Hmong Pop/Rock', 'hmong indie rock'),
     'hmong metal': ('Hmong Pop/Rock', 'hmong metal'),
@@ -6727,7 +6783,7 @@ GENRE_MAPPINGS = {
     'hmong gospel': ('Hmong Pop/Rock', 'hmong gospel'),
     'hmong christian music': ('Hmong Pop/Rock', 'hmong christian music'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'hmong folk': ('Hmong Pop/Rock', 'hmong folk'),
     'hmong traditional': ('Hmong Pop/Rock', 'hmong traditional'),
     'kwv txhiaj': ('Hmong Pop/Rock', 'kwv txhiaj'),
@@ -6737,13 +6793,13 @@ GENRE_MAPPINGS = {
     ## Hmong fusion
     'hmong fusion': ('Hmong Pop/Rock', 'hmong fusion'),
 
-    ## Hmong pop por región (diáspora)
+    ## Hmong pop by region (diaspora)
     'minnesota hmong pop': ('Hmong Pop/Rock', 'minnesota hmong pop'),
     'california hmong pop': ('Hmong Pop/Rock', 'california hmong pop'),
     'wisconsin hmong pop': ('Hmong Pop/Rock', 'wisconsin hmong pop'),
     'fresno hmong pop': ('Hmong Pop/Rock', 'fresno hmong pop'),
 
-    ## Hmong pop por épocas
+    ## Hmong pop by era
     'hmong pop 80s': ('Hmong Pop/Rock', 'hmong pop 80s'),
     'hmong pop 90s': ('Hmong Pop/Rock', 'hmong pop 90s'),
     'hmong pop 2000s': ('Hmong Pop/Rock', 'hmong pop 2000s'),
@@ -6751,7 +6807,7 @@ GENRE_MAPPINGS = {
     'hmong pop 2020s': ('Hmong Pop/Rock', 'hmong pop 2020s'),
 
     ###############################################################################
-    # Kurdish Pop/Rock (Regional - Kurdistán / Diáspora)
+    # Kurdish Pop/Rock (Kurdistan / Diaspora)
     ###############################################################################
     ## Kurdish Pop General (English / Kurdish)
     'kurdish pop': ('Kurdish Pop/Rock', 'kurdish pop'),
@@ -6760,7 +6816,7 @@ GENRE_MAPPINGS = {
     'muzîka kurdî': ('Kurdish Pop/Rock', 'muzîka kurdî'),
     'strana kurdî': ('Kurdish Pop/Rock', 'strana kurdî'),
 
-    ## Kurdish pop moderno / Diáspora
+    ## Modern Kurdish pop / Diaspora
     'kurdish diaspora pop': ('Kurdish Pop/Rock', 'kurdish diaspora pop'),
     'modern kurdish pop': ('Kurdish Pop/Rock', 'modern kurdish pop'),
     'contemporary kurdish music': ('Kurdish Pop/Rock', 'contemporary kurdish music'),
@@ -6770,7 +6826,7 @@ GENRE_MAPPINGS = {
     'kurdî rock': ('Kurdish Pop/Rock', 'kurdî rock'),
     'rock kurdo': ('Kurdish Pop/Rock', 'rock kurdo'),
 
-    ### Subgéneros de Kurdish rock
+    ### Kurdish rock subgenres
     'kurdish alternative rock': ('Kurdish Pop/Rock', 'kurdish alternative rock'),
     'kurdish indie rock': ('Kurdish Pop/Rock', 'kurdish indie rock'),
     'kurdish metal': ('Kurdish Pop/Rock', 'kurdish metal'),
@@ -6785,7 +6841,7 @@ GENRE_MAPPINGS = {
     'kurdish r&b': ('Kurdish Pop/Rock', 'kurdish r&b'),
     'kurdish rnb': ('Kurdish Pop/Rock', 'kurdish rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'kurdish folk': ('Kurdish Pop/Rock', 'kurdish folk'),
     'folk kurdo': ('Kurdish Pop/Rock', 'folk kurdo'),
     'dengbêj fusion': ('Kurdish Pop/Rock', 'dengbêj fusion'),
@@ -6796,11 +6852,11 @@ GENRE_MAPPINGS = {
     ## Kurdish fusion
     'kurdish fusion': ('Kurdish Pop/Rock', 'kurdish fusion'),
 
-    ## Kurdish pop por región
-    'bakur pop': ('Kurdish Pop/Rock', 'bakur pop'),          # Norte (Turquía)
-    'bashur pop': ('Kurdish Pop/Rock', 'bashur pop'),        # Sur (Irak)
-    'rojhilat pop': ('Kurdish Pop/Rock', 'rojhilat pop'),    # Este (Irán)
-    'rojava pop': ('Kurdish Pop/Rock', 'rojava pop'),        # Oeste (Siria)
+    ## Kurdish pop by region
+    'bakur pop': ('Kurdish Pop/Rock', 'bakur pop'),          # North (Turkey)
+    'bashur pop': ('Kurdish Pop/Rock', 'bashur pop'),        # South (Iraq)
+    'rojhilat pop': ('Kurdish Pop/Rock', 'rojhilat pop'),    # East (Iran)
+    'rojava pop': ('Kurdish Pop/Rock', 'rojava pop'),        # West (Syria)
     'diyarbakir pop': ('Kurdish Pop/Rock', 'diyarbakir pop'),
     'sulaymaniyah pop': ('Kurdish Pop/Rock', 'sulaymaniyah pop'),
     'erbil pop': ('Kurdish Pop/Rock', 'erbil pop'),
@@ -6810,7 +6866,7 @@ GENRE_MAPPINGS = {
     'kurdish ost': ('Kurdish Pop/Rock', 'kurdish ost'),
     'kurdish film music': ('Kurdish Pop/Rock', 'kurdish film music'),
 
-    ## Kurdish pop por épocas
+    ## Kurdish pop by era
     'kurdish pop 80s': ('Kurdish Pop/Rock', 'kurdish pop 80s'),
     'kurdish pop 90s': ('Kurdish Pop/Rock', 'kurdish pop 90s'),
     'kurdish pop 2000s': ('Kurdish Pop/Rock', 'kurdish pop 2000s'),
@@ -6819,16 +6875,16 @@ GENRE_MAPPINGS = {
     'classic kurdish pop': ('Kurdish Pop/Rock', 'classic kurdish pop'),
 
     ###############################################################################
-    # Balochi Pop/Rock (Regional - Baluchistán / Pakistán/Irán/Omán)
+    # Balochi Pop/Rock (Balochistan / Pakistan/Iran/Oman)
     ###############################################################################
     ## Balochi Pop General (English / Balochi)
     'balochi pop': ('Balochi Pop/Rock', 'balochi pop'),
     'baluchi pop': ('Balochi Pop/Rock', 'baluchi pop'),
     'pop balochi': ('Balochi Pop/Rock', 'pop balochi'),
     'balochi music': ('Balochi Pop/Rock', 'balochi music'),
-    'بلوچی موسیقی': ('Balochi Pop/Rock', 'بلوچی موسیقی'),  # romanizado: 'balochi musiqi'
+    'بلوچی موسیقی': ('Balochi Pop/Rock', 'بلوچی موسیقی'),  # romanized: 'balochi musiqi'
 
-    ## Balochi pop moderno / Diáspora
+    ## Modern Balochi pop / Diaspora
     'balochi diaspora pop': ('Balochi Pop/Rock', 'balochi diaspora pop'),
     'modern balochi pop': ('Balochi Pop/Rock', 'modern balochi pop'),
     'contemporary balochi music': ('Balochi Pop/Rock', 'contemporary balochi music'),
@@ -6838,7 +6894,7 @@ GENRE_MAPPINGS = {
     'baluchi rock': ('Balochi Pop/Rock', 'baluchi rock'),
     'rock balochi': ('Balochi Pop/Rock', 'rock balochi'),
 
-    ### Subgéneros de Balochi rock
+    ### Balochi rock subgenres
     'balochi alternative rock': ('Balochi Pop/Rock', 'balochi alternative rock'),
     'balochi indie rock': ('Balochi Pop/Rock', 'balochi indie rock'),
     'balochi metal': ('Balochi Pop/Rock', 'balochi metal'),
@@ -6852,7 +6908,7 @@ GENRE_MAPPINGS = {
     'balochi r&b': ('Balochi Pop/Rock', 'balochi r&b'),
     'balochi rnb': ('Balochi Pop/Rock', 'balochi rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'balochi folk': ('Balochi Pop/Rock', 'balochi folk'),
     'folk balochi': ('Balochi Pop/Rock', 'folk balochi'),
     'suroz fusion': ('Balochi Pop/Rock', 'suroz fusion'),
@@ -6863,7 +6919,7 @@ GENRE_MAPPINGS = {
     ## Balochi fusion
     'balochi fusion': ('Balochi Pop/Rock', 'balochi fusion'),
 
-    ## Balochi pop por región
+    ## Balochi pop by region
     'makran pop': ('Balochi Pop/Rock', 'makran pop'),
     'sistan pop': ('Balochi Pop/Rock', 'sistan pop'),
     'turbat pop': ('Balochi Pop/Rock', 'turbat pop'),
@@ -6876,7 +6932,7 @@ GENRE_MAPPINGS = {
     'balochi ost': ('Balochi Pop/Rock', 'balochi ost'),
     'balochi film music': ('Balochi Pop/Rock', 'balochi film music'),
 
-    ## Balochi pop por épocas
+    ## Balochi pop by era
     'balochi pop 80s': ('Balochi Pop/Rock', 'balochi pop 80s'),
     'balochi pop 90s': ('Balochi Pop/Rock', 'balochi pop 90s'),
     'balochi pop 2000s': ('Balochi Pop/Rock', 'balochi pop 2000s'),
@@ -6885,7 +6941,7 @@ GENRE_MAPPINGS = {
     'classic balochi pop': ('Balochi Pop/Rock', 'classic balochi pop'),
 
     ###############################################################################
-    # Kashmiri Pop/Rock (Regional - Cachemira / India/Pakistán)
+    # Kashmiri Pop/Rock (Kashmir / India/Pakistan)
     ###############################################################################
     ## Kashmiri Pop General (English / Kashmiri)
     'kashmiri pop': ('Kashmiri Pop/Rock', 'kashmiri pop'),
@@ -6893,7 +6949,7 @@ GENRE_MAPPINGS = {
     'pop cachemiro': ('Kashmiri Pop/Rock', 'pop cachemiro'),
     'کٲشُر پاپ': ('Kashmiri Pop/Rock', 'کٲشُر پاپ'),
 
-    ## Kashmiri pop moderno / Diáspora
+    ## Modern Kashmiri pop / Diaspora
     'kashmiri diaspora pop': ('Kashmiri Pop/Rock', 'kashmiri diaspora pop'),
     'modern kashmiri pop': ('Kashmiri Pop/Rock', 'modern kashmiri pop'),
     'contemporary kashmiri music': ('Kashmiri Pop/Rock', 'contemporary kashmiri music'),
@@ -6903,7 +6959,7 @@ GENRE_MAPPINGS = {
     'koshur rock': ('Kashmiri Pop/Rock', 'koshur rock'),
     'rock cachemiro': ('Kashmiri Pop/Rock', 'rock cachemiro'),
 
-    ### Subgéneros de Kashmiri rock
+    ### Kashmiri rock subgenres
     'kashmiri alternative rock': ('Kashmiri Pop/Rock', 'kashmiri alternative rock'),
     'kashmiri indie rock': ('Kashmiri Pop/Rock', 'kashmiri indie rock'),
     'kashmiri metal': ('Kashmiri Pop/Rock', 'kashmiri metal'),
@@ -6916,7 +6972,7 @@ GENRE_MAPPINGS = {
     'kashmiri r&b': ('Kashmiri Pop/Rock', 'kashmiri r&b'),
     'kashmiri rnb': ('Kashmiri Pop/Rock', 'kashmiri rnb'),
 
-    ## Música tradicional fusionada (Sufí, Chakri, Rouf)
+    ## Traditional fusion music (Sufi, Chakri, Rouf)
     'kashmiri folk': ('Kashmiri Pop/Rock', 'kashmiri folk'),
     'kashmiri sufí pop': ('Kashmiri Pop/Rock', 'kashmiri sufí pop'),
     'sufi kashmir': ('Kashmiri Pop/Rock', 'sufi kashmir'),
@@ -6928,7 +6984,7 @@ GENRE_MAPPINGS = {
     'kashmiri fusion': ('Kashmiri Pop/Rock', 'kashmiri fusion'),
     'kashmir fusion': ('Kashmiri Pop/Rock', 'kashmir fusion'),
 
-    ## Kashmiri pop por región
+    ## Kashmiri pop by region
     'srinagar pop': ('Kashmiri Pop/Rock', 'srinagar pop'),
     'muzaffarabad pop': ('Kashmiri Pop/Rock', 'muzaffarabad pop'),
     'kashmir valley pop': ('Kashmiri Pop/Rock', 'kashmir valley pop'),
@@ -6938,7 +6994,7 @@ GENRE_MAPPINGS = {
     'kashmiri ost': ('Kashmiri Pop/Rock', 'kashmiri ost'),
     'kashmiri film music': ('Kashmiri Pop/Rock', 'kashmiri film music'),
 
-    ## Kashmiri pop por épocas
+    ## Kashmiri pop by era
     'kashmiri pop 80s': ('Kashmiri Pop/Rock', 'kashmiri pop 80s'),
     'kashmiri pop 90s': ('Kashmiri Pop/Rock', 'kashmiri pop 90s'),
     'kashmiri pop 2000s': ('Kashmiri Pop/Rock', 'kashmiri pop 2000s'),
@@ -6947,7 +7003,7 @@ GENRE_MAPPINGS = {
     'classic kashmiri pop': ('Kashmiri Pop/Rock', 'classic kashmiri pop'),
 
     ###############################################################################
-    # Northeast Indian Pop/Rock (Regional - Nagaland, Manipur, Mizoram, etc.)
+    # Northeast Indian Pop/Rock (Nagaland, Manipur, Mizoram, etc.)
     ###############################################################################
     ## Northeast Indian Pop General (English)
     'northeast indian pop': ('Northeast Indian Pop/Rock', 'northeast indian pop'),
@@ -6997,7 +7053,7 @@ GENRE_MAPPINGS = {
     ## Northeast Indian fusion
     'northeast indian fusion': ('Northeast Indian Pop/Rock', 'northeast indian fusion'),
 
-    ## Northeast Indian pop por región
+    ## Northeast Indian pop by region
     'kohima pop': ('Northeast Indian Pop/Rock', 'kohima pop'),
     'dimapur pop': ('Northeast Indian Pop/Rock', 'dimapur pop'),
     'aizawl pop': ('Northeast Indian Pop/Rock', 'aizawl pop'),
@@ -7010,7 +7066,7 @@ GENRE_MAPPINGS = {
     'northeast indian ost': ('Northeast Indian Pop/Rock', 'northeast indian ost'),
     'northeast indian film music': ('Northeast Indian Pop/Rock', 'northeast indian film music'),
 
-    ## Northeast Indian pop por épocas
+    ## Northeast Indian pop by era
     'northeast indian pop 80s': ('Northeast Indian Pop/Rock', 'northeast indian pop 80s'),
     'northeast indian pop 90s': ('Northeast Indian Pop/Rock', 'northeast indian pop 90s'),
     'northeast indian pop 2000s': ('Northeast Indian Pop/Rock', 'northeast indian pop 2000s'),
@@ -7019,15 +7075,14 @@ GENRE_MAPPINGS = {
     'classic northeast indian pop': ('Northeast Indian Pop/Rock', 'classic northeast indian pop'),
 
     ###############################################################################
-    # Maldivian Pop/Rock (Regional - Maldivas)
+    # Maldivian Pop/Rock
     ###############################################################################
     ## Maldivian Pop General (English / Dhivehi)
     'maldivian pop': ('Maldivian Pop/Rock', 'maldivian pop'),
     'dhivehi pop': ('Maldivian Pop/Rock', 'dhivehi pop'),
     'pop maldivo': ('Maldivian Pop/Rock', 'pop maldivo'),
     'ދިވެހި ޕޮޕް': ('Maldivian Pop/Rock', 'ދިވެހި ޕޮޕް'),
-
-    ## Maldivian pop moderno
+    ## Modern Maldivian pop
     'modern maldivian pop': ('Maldivian Pop/Rock', 'modern maldivian pop'),
     'contemporary dhivehi pop': ('Maldivian Pop/Rock', 'contemporary dhivehi pop'),
 
@@ -7035,7 +7090,7 @@ GENRE_MAPPINGS = {
     'maldivian rock': ('Maldivian Pop/Rock', 'maldivian rock'),
     'dhivehi rock': ('Maldivian Pop/Rock', 'dhivehi rock'),
 
-    ### Subgéneros de Maldivian rock
+    ### Maldivian rock subgenres
     'maldivian alternative rock': ('Maldivian Pop/Rock', 'maldivian alternative rock'),
     'maldivian indie rock': ('Maldivian Pop/Rock', 'maldivian indie rock'),
     'maldivian metal': ('Maldivian Pop/Rock', 'maldivian metal'),
@@ -7050,7 +7105,7 @@ GENRE_MAPPINGS = {
     'maldivian r&b': ('Maldivian Pop/Rock', 'maldivian r&b'),
     'maldivian rnb': ('Maldivian Pop/Rock', 'maldivian rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'maldivian folk': ('Maldivian Pop/Rock', 'maldivian folk'),
     'boduberu fusion': ('Maldivian Pop/Rock', 'boduberu fusion'),
     'raivaru pop': ('Maldivian Pop/Rock', 'raivaru pop'),
@@ -7060,7 +7115,7 @@ GENRE_MAPPINGS = {
     ## Maldivian fusion
     'maldivian fusion': ('Maldivian Pop/Rock', 'maldivian fusion'),
 
-    ## Maldivian pop por región
+    ## Maldivian pop by region
     'male pop': ('Maldivian Pop/Rock', 'male pop'),
     'addu pop': ('Maldivian Pop/Rock', 'addu pop'),
     'fuvahmulah pop': ('Maldivian Pop/Rock', 'fuvahmulah pop'),
@@ -7069,7 +7124,7 @@ GENRE_MAPPINGS = {
     'maldivian ost': ('Maldivian Pop/Rock', 'maldivian ost'),
     'dhivehi film music': ('Maldivian Pop/Rock', 'dhivehi film music'),
 
-    ## Maldivian pop por épocas
+    ## Maldivian pop by era
     'maldivian pop 80s': ('Maldivian Pop/Rock', 'maldivian pop 80s'),
     'maldivian pop 90s': ('Maldivian Pop/Rock', 'maldivian pop 90s'),
     'maldivian pop 2000s': ('Maldivian Pop/Rock', 'maldivian pop 2000s'),
@@ -7078,7 +7133,7 @@ GENRE_MAPPINGS = {
     'classic maldivian pop': ('Maldivian Pop/Rock', 'classic maldivian pop'),
 
     ###############################################################################
-    # Bhutanese Pop/Rock (Regional - Bután)
+    # Bhutanese Pop/Rock
     ###############################################################################
     ## Bhutanese Pop General (English / Dzongkha)
     'bhutanese pop': ('Bhutanese Pop/Rock', 'bhutanese pop'),
@@ -7087,7 +7142,7 @@ GENRE_MAPPINGS = {
     'rigsar': ('Bhutanese Pop/Rock', 'rigsar'),
     'རིགས་གསར།': ('Bhutanese Pop/Rock', 'རིགས་གསར།'),
 
-    ## Rigsar (género principal)
+    ## Rigsar (main genre)
     'rigsar pop': ('Bhutanese Pop/Rock', 'rigsar pop'),
     'rigsar rock': ('Bhutanese Pop/Rock', 'rigsar rock'),
     'modern rigsar': ('Bhutanese Pop/Rock', 'modern rigsar'),
@@ -7096,7 +7151,7 @@ GENRE_MAPPINGS = {
     'bhutanese rock': ('Bhutanese Pop/Rock', 'bhutanese rock'),
     'rigsar rock': ('Bhutanese Pop/Rock', 'rigsar rock'),
 
-    ### Subgéneros de Bhutanese rock
+    ### Bhutanese rock subgenres
     'bhutanese alternative rock': ('Bhutanese Pop/Rock', 'bhutanese alternative rock'),
     'bhutanese indie rock': ('Bhutanese Pop/Rock', 'bhutanese indie rock'),
     'bhutanese metal': ('Bhutanese Pop/Rock', 'bhutanese metal'),
@@ -7110,7 +7165,7 @@ GENRE_MAPPINGS = {
     'bhutanese r&b': ('Bhutanese Pop/Rock', 'bhutanese r&b'),
     'bhutanese rnb': ('Bhutanese Pop/Rock', 'bhutanese rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'bhutanese folk': ('Bhutanese Pop/Rock', 'bhutanese folk'),
     'zhungdra fusion': ('Bhutanese Pop/Rock', 'zhungdra fusion'),
     'boedra fusion': ('Bhutanese Pop/Rock', 'boedra fusion'),
@@ -7120,7 +7175,7 @@ GENRE_MAPPINGS = {
     ## Bhutanese fusion
     'bhutanese fusion': ('Bhutanese Pop/Rock', 'bhutanese fusion'),
 
-    ## Bhutanese pop por región
+    ## Bhutanese pop by region
     'thimphu pop': ('Bhutanese Pop/Rock', 'thimphu pop'),
     'phuentsholing pop': ('Bhutanese Pop/Rock', 'phuentsholing pop'),
     'paro pop': ('Bhutanese Pop/Rock', 'paro pop'),
@@ -7129,7 +7184,7 @@ GENRE_MAPPINGS = {
     'bhutanese ost': ('Bhutanese Pop/Rock', 'bhutanese ost'),
     'bhutanese film music': ('Bhutanese Pop/Rock', 'bhutanese film music'),
 
-    ## Bhutanese pop por épocas
+    ## Bhutanese pop by era
     'bhutanese pop 80s': ('Bhutanese Pop/Rock', 'bhutanese pop 80s'),
     'bhutanese pop 90s': ('Bhutanese Pop/Rock', 'bhutanese pop 90s'),
     'bhutanese pop 2000s': ('Bhutanese Pop/Rock', 'bhutanese pop 2000s'),
@@ -7138,7 +7193,7 @@ GENRE_MAPPINGS = {
     'classic bhutanese pop': ('Bhutanese Pop/Rock', 'classic bhutanese pop'),
 
     ###############################################################################
-    # Siberian Indigenous Pop/Rock (Regional - Yakutia, Tuvá, Buriatia, Jakasia)
+    # Siberian Indigenous Pop/Rock (Yakutia, Tuva, Buryatia, Khakassia)
     ###############################################################################
     ## Siberian Indigenous Pop General (English / Indigenous languages)
     'siberian indigenous pop': ('Siberian Indigenous Pop/Rock', 'siberian indigenous pop'),
@@ -7174,7 +7229,7 @@ GENRE_MAPPINGS = {
     'khakass rock': ('Siberian Indigenous Pop/Rock', 'khakass rock'),
     'khakass fusion': ('Siberian Indigenous Pop/Rock', 'khakass fusion'),
 
-    ## Otros grupos indígenas (Evenki, Chukchi, etc.)
+    ## Other indigenous groups (Evenki, Chukchi, etc.)
     'evenki pop': ('Siberian Indigenous Pop/Rock', 'evenki pop'),
     'chukchi pop': ('Siberian Indigenous Pop/Rock', 'chukchi pop'),
     'nanai pop': ('Siberian Indigenous Pop/Rock', 'nanai pop'),
@@ -7192,7 +7247,7 @@ GENRE_MAPPINGS = {
     'arctic fusion': ('Siberian Indigenous Pop/Rock', 'arctic fusion'),
     'taiga fusion': ('Siberian Indigenous Pop/Rock', 'taiga fusion'),
 
-    ## Siberian Indigenous pop por región
+    ## Siberian Indigenous pop by region
     'yakutsk pop': ('Siberian Indigenous Pop/Rock', 'yakutsk pop'),
     'kyzyl pop': ('Siberian Indigenous Pop/Rock', 'kyzyl pop'),
     'ulan-ude pop': ('Siberian Indigenous Pop/Rock', 'ulan-ude pop'),
@@ -7202,7 +7257,7 @@ GENRE_MAPPINGS = {
     'siberian indigenous ost': ('Siberian Indigenous Pop/Rock', 'siberian indigenous ost'),
     'siberian indigenous film music': ('Siberian Indigenous Pop/Rock', 'siberian indigenous film music'),
 
-    ## Siberian Indigenous pop por épocas
+    ## Siberian Indigenous pop by era
     'siberian indigenous pop 80s': ('Siberian Indigenous Pop/Rock', 'siberian indigenous pop 80s'),
     'siberian indigenous pop 90s': ('Siberian Indigenous Pop/Rock', 'siberian indigenous pop 90s'),
     'siberian indigenous pop 2000s': ('Siberian Indigenous Pop/Rock', 'siberian indigenous pop 2000s'),
@@ -7211,7 +7266,7 @@ GENRE_MAPPINGS = {
     'classic siberian indigenous pop': ('Siberian Indigenous Pop/Rock', 'classic siberian indigenous pop'),
 
     ###############################################################################
-    # Papuan Pop/Rock (Regional - Papúa / Indonesia / PNG)
+    # Papuan Pop/Rock (Papua / Indonesia / PNG)
     ###############################################################################
     ## Papuan Pop General (English / Indonesian / Tok Pisin)
     'papuan pop': ('Papuan Pop/Rock', 'papuan pop'),
@@ -7220,7 +7275,7 @@ GENRE_MAPPINGS = {
     'musik papua': ('Papuan Pop/Rock', 'musik papua'),
     'pasin musik': ('Papuan Pop/Rock', 'pasin musik'),
 
-    ## Papuan pop moderno
+    ## Modern Papuan pop
     'modern papuan pop': ('Papuan Pop/Rock', 'modern papuan pop'),
     'contemporary papuan music': ('Papuan Pop/Rock', 'contemporary papuan music'),
 
@@ -7228,13 +7283,13 @@ GENRE_MAPPINGS = {
     'papuan rock': ('Papuan Pop/Rock', 'papuan rock'),
     'rock papuano': ('Papuan Pop/Rock', 'rock papuano'),
 
-    ### Subgéneros de Papuan rock
+    ### Papuan rock subgenres
     'papuan alternative rock': ('Papuan Pop/Rock', 'papuan alternative rock'),
     'papuan indie rock': ('Papuan Pop/Rock', 'papuan indie rock'),
     'papuan metal': ('Papuan Pop/Rock', 'papuan metal'),
     'papuan punk': ('Papuan Pop/Rock', 'papuan punk'),
 
-    ## Papuan reggae (muy importante)
+    ## Papuan reggae (very important)
     'papuan reggae': ('Papuan Pop/Rock', 'papuan reggae'),
     'reggae papua': ('Papuan Pop/Rock', 'reggae papua'),
     'papuan roots reggae': ('Papuan Pop/Rock', 'papuan roots reggae'),
@@ -7249,7 +7304,7 @@ GENRE_MAPPINGS = {
     'papuan r&b': ('Papuan Pop/Rock', 'papuan r&b'),
     'papuan rnb': ('Papuan Pop/Rock', 'papuan rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'papuan folk': ('Papuan Pop/Rock', 'papuan folk'),
     'tifa fusion': ('Papuan Pop/Rock', 'tifa fusion'),
     'pikon fusion': ('Papuan Pop/Rock', 'pikon fusion'),
@@ -7259,7 +7314,7 @@ GENRE_MAPPINGS = {
     'papuan fusion': ('Papuan Pop/Rock', 'papuan fusion'),
     'melanesian fusion': ('Papuan Pop/Rock', 'melanesian fusion'),
 
-    ## Papuan pop por región
+    ## Papuan pop by region
     'jayapura pop': ('Papuan Pop/Rock', 'jayapura pop'),
     'port moresby pop': ('Papuan Pop/Rock', 'port moresby pop'),
     'wamena pop': ('Papuan Pop/Rock', 'wamena pop'),
@@ -7270,7 +7325,7 @@ GENRE_MAPPINGS = {
     'papuan ost': ('Papuan Pop/Rock', 'papuan ost'),
     'papuan film music': ('Papuan Pop/Rock', 'papuan film music'),
 
-    ## Papuan pop por épocas
+    ## Papuan pop by era
     'papuan pop 80s': ('Papuan Pop/Rock', 'papuan pop 80s'),
     'papuan pop 90s': ('Papuan Pop/Rock', 'papuan pop 90s'),
     'papuan pop 2000s': ('Papuan Pop/Rock', 'papuan pop 2000s'),
@@ -7279,7 +7334,7 @@ GENRE_MAPPINGS = {
     'classic papuan pop': ('Papuan Pop/Rock', 'classic papuan pop'),
 
     ###############################################################################
-    # Karen Pop/Rock (Regional - Karen / Myanmar/Tailandia / Diáspora)
+    # Karen Pop/Rock (Karen / Myanmar/Thailand / Diaspora)
     ###############################################################################
     ## Karen Pop General (English / Karen)
     'karen pop': ('Karen Pop/Rock', 'karen pop'),
@@ -7288,7 +7343,7 @@ GENRE_MAPPINGS = {
     'karen music': ('Karen Pop/Rock', 'karen music'),
     'ကညီကျိာ်': ('Karen Pop/Rock', 'ကညီကျိာ်'),
 
-    ## Karen pop moderno / Diáspora
+    ## Modern Karen pop / Diaspora
     'karen diaspora pop': ('Karen Pop/Rock', 'karen diaspora pop'),
     'modern karen pop': ('Karen Pop/Rock', 'modern karen pop'),
     'contemporary karen music': ('Karen Pop/Rock', 'contemporary karen music'),
@@ -7298,7 +7353,7 @@ GENRE_MAPPINGS = {
     'kayin rock': ('Karen Pop/Rock', 'kayin rock'),
     'rock karen': ('Karen Pop/Rock', 'rock karen'),
 
-    ### Subgéneros de Karen rock
+    ### Karen rock subgenres
     'karen alternative rock': ('Karen Pop/Rock', 'karen alternative rock'),
     'karen indie rock': ('Karen Pop/Rock', 'karen indie rock'),
     'karen metal': ('Karen Pop/Rock', 'karen metal'),
@@ -7311,7 +7366,7 @@ GENRE_MAPPINGS = {
     'karen r&b': ('Karen Pop/Rock', 'karen r&b'),
     'karen rnb': ('Karen Pop/Rock', 'karen rnb'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'karen folk': ('Karen Pop/Rock', 'karen folk'),
     'hsa fusion': ('Karen Pop/Rock', 'hsa fusion'),
     'pweh fusion': ('Karen Pop/Rock', 'pweh fusion'),
@@ -7319,7 +7374,7 @@ GENRE_MAPPINGS = {
     ## Karen fusion
     'karen fusion': ('Karen Pop/Rock', 'karen fusion'),
 
-    ## Karen pop por región
+    ## Karen pop by region
     'karen state pop': ('Karen Pop/Rock', 'karen state pop'),
     'mae sot pop': ('Karen Pop/Rock', 'mae sot pop'),
     'karen diaspora pop': ('Karen Pop/Rock', 'karen diaspora pop'),
@@ -7328,7 +7383,7 @@ GENRE_MAPPINGS = {
     'karen ost': ('Karen Pop/Rock', 'karen ost'),
     'karen film music': ('Karen Pop/Rock', 'karen film music'),
 
-    ## Karen pop por épocas
+    ## Karen pop by era
     'karen pop 80s': ('Karen Pop/Rock', 'karen pop 80s'),
     'karen pop 90s': ('Karen Pop/Rock', 'karen pop 90s'),
     'karen pop 2000s': ('Karen Pop/Rock', 'karen pop 2000s'),
@@ -7337,7 +7392,7 @@ GENRE_MAPPINGS = {
     'classic karen pop': ('Karen Pop/Rock', 'classic karen pop'),
 
     ###############################################################################
-    # Macanese Pop/Rock (Regional - Macao)
+    # Macanese Pop/Rock
     ###############################################################################
     ## Macanese Pop General (English / Portuguese / Cantonese)
     'macanese pop': ('Macanese Pop/Rock', 'macanese pop'),
@@ -7346,7 +7401,7 @@ GENRE_MAPPINGS = {
     'pop de macau': ('Macanese Pop/Rock', 'pop de macau'),
     'música macaense': ('Macanese Pop/Rock', 'música macaense'),
 
-    ## Macanese pop moderno
+    ## Modern Macanese pop
     'modern macanese pop': ('Macanese Pop/Rock', 'modern macanese pop'),
     'contemporary macau music': ('Macanese Pop/Rock', 'contemporary macau music'),
 
@@ -7354,7 +7409,7 @@ GENRE_MAPPINGS = {
     'macanese rock': ('Macanese Pop/Rock', 'macanese rock'),
     'macau rock': ('Macanese Pop/Rock', 'macau rock'),
 
-    ### Subgéneros de Macanese rock
+    ### Macanese rock subgenres
     'macanese alternative rock': ('Macanese Pop/Rock', 'macanese alternative rock'),
     'macanese indie rock': ('Macanese Pop/Rock', 'macanese indie rock'),
     'macanese metal': ('Macanese Pop/Rock', 'macanese metal'),
@@ -7368,20 +7423,20 @@ GENRE_MAPPINGS = {
     'macanese r&b': ('Macanese Pop/Rock', 'macanese r&b'),
     'macanese rnb': ('Macanese Pop/Rock', 'macanese rnb'),
 
-    ## Fusión luso-china (Fado macaense, etc.)
+    ## Luso-Chinese fusion (Macanese Fado, etc.)
     'fado macaense': ('Macanese Pop/Rock', 'fado macaense'),
     'música luso-chinesa': ('Macanese Pop/Rock', 'música luso-chinesa'),
     'cantonese fado': ('Macanese Pop/Rock', 'cantonese fado'),
     'patuá fusion': ('Macanese Pop/Rock', 'patuá fusion'),
 
-    ## Música tradicional fusionada
+    ## Traditional fusion music
     'macanese folk': ('Macanese Pop/Rock', 'macanese folk'),
     'música tradicional macaense': ('Macanese Pop/Rock', 'música tradicional macaense'),
 
     ## Macanese fusion
     'macanese fusion': ('Macanese Pop/Rock', 'macanese fusion'),
 
-    ## Macanese pop por región
+    ## Macanese pop by region
     'macau peninsula pop': ('Macanese Pop/Rock', 'macau peninsula pop'),
     'taipa pop': ('Macanese Pop/Rock', 'taipa pop'),
     'coloane pop': ('Macanese Pop/Rock', 'coloane pop'),
@@ -7390,7 +7445,7 @@ GENRE_MAPPINGS = {
     'macanese ost': ('Macanese Pop/Rock', 'macanese ost'),
     'macau film music': ('Macanese Pop/Rock', 'macau film music'),
 
-    ## Macanese pop por épocas
+    ## Macanese pop by era
     'macanese pop 80s': ('Macanese Pop/Rock', 'macanese pop 80s'),
     'macanese pop 90s': ('Macanese Pop/Rock', 'macanese pop 90s'),
     'macanese pop 2000s': ('Macanese Pop/Rock', 'macanese pop 2000s'),
@@ -7399,7 +7454,11 @@ GENRE_MAPPINGS = {
     'classic macanese pop': ('Macanese Pop/Rock', 'classic macanese pop'),
 
     ###############################################################################
-    # AFROBEATS (Regional - África Occidental)
+    # AFRICA
+    ###############################################################################
+
+    ###############################################################################
+    # AFROBEATS (West Africa)
     ###############################################################################
     ## Afrobeats General (English / Yoruba / Pidgin)
     'afrobeats': ('Afrobeats', 'afrobeats'),
@@ -7411,9 +7470,9 @@ GENRE_MAPPINGS = {
     'afro r&b': ('Afrobeats', 'afro r&b'),
     'afro rnb': ('Afrobeats', 'afro rnb'),
     'afro trap': ('Afrobeats', 'afro trap'),
-    'afro trap latino': ('Afrobeats', 'afro trap latino'), # Fusión con latino
+    'afro trap latino': ('Afrobeats', 'afro trap latino'), # Fusion with Latin
 
-    ## Escenas nacionales
+    ## National scenes
     'naija pop': ('Afrobeats', 'naija pop'),
     'nigerian pop': ('Afrobeats', 'nigerian pop'),
     'ghanaian pop': ('Afrobeats', 'ghanaian pop'),
@@ -7422,7 +7481,7 @@ GENRE_MAPPINGS = {
     'banku music': ('Afrobeats', 'banku music'),
     'azonto': ('Afrobeats', 'azonto'),
 
-    ## Subgéneros y estilos
+    ## Subgenres and styles
     'afrohouse': ('Afrobeats', 'afrohouse'),
     'afro house': ('Afrobeats', 'afro house'),
     'afro soul': ('Afrobeats', 'afro soul'),
@@ -7430,24 +7489,24 @@ GENRE_MAPPINGS = {
     'afro dancehall': ('Afrobeats', 'afro dancehall'),
     'afro pop dance': ('Afrobeats', 'afro pop dance'),
 
-    ## Fusiones
+    ## Fusions
     'afrobeats pop': ('Afrobeats', 'afrobeats pop'),
     'afrobeats r&b': ('Afrobeats', 'afrobeats r&b'),
     'afrobeats hip hop': ('Afrobeats', 'afrobeats hip hop'),
     'afrobeats reggae': ('Afrobeats', 'afrobeats reggae'),
 
-    ## Por región
+    ## By region
     'lagos pop': ('Afrobeats', 'lagos pop'),
     'accra pop': ('Afrobeats', 'accra pop'),
     'west african pop': ('Afrobeats', 'west african pop'),
 
-    ## En idiomas locales
+    ## In local languages
     'musiqa naija': ('Afrobeats', 'musiqa naija'), # Pidgin
     'afrobeats yoruba': ('Afrobeats', 'afrobeats yoruba'),
     'afrobeats pidgin': ('Afrobeats', 'afrobeats pidgin'),
 
     ###############################################################################
-    # AMAPIANO (Regional - Sudáfrica)
+    # AMAPIANO (South Africa)
     ###############################################################################
     ## Amapiano General (English / Zulu / Xhosa / Sotho)
     'amapiano': ('Amapiano', 'amapiano'),
@@ -7456,7 +7515,7 @@ GENRE_MAPPINGS = {
     'sa house': ('Amapiano', 'sa house'),
     'piano music sa': ('Amapiano', 'piano music sa'),
 
-    ## Subgéneros principales
+    ## Main subgenres
     'amapiano clásico': ('Amapiano', 'amapiano clásico'),
     'amapiano classic': ('Amapiano', 'amapiano classic'),
     'amapiano log drum': ('Amapiano', 'amapiano log drum'),
@@ -7467,34 +7526,34 @@ GENRE_MAPPINGS = {
     'amapiano soul': ('Amapiano', 'amapiano soul'),
     'amapiano deep': ('Amapiano', 'amapiano deep'),
 
-    ## Estilos relacionados
-    'gqom': ('Amapiano', 'gqom'),  # Variante más dura, pero a veces separada
+    ## Related styles
+    'gqom': ('Amapiano', 'gqom'),  # Harder variant, but sometimes separate
     'gqom music': ('Amapiano', 'gqom music'),
     'durban sound': ('Amapiano', 'durban sound'),
     'durban house': ('Amapiano', 'durban house'),
     'bacardi house': ('Amapiano', 'bacardi house'),
 
-    ## Fusiones
+    ## Fusions
     'amapiano rap': ('Amapiano', 'amapiano rap'),
     'amapiano hip hop': ('Amapiano', 'amapiano hip hop'),
     'amapiano pop': ('Amapiano', 'amapiano pop'),
     'amapiano afrobeat': ('Amapiano', 'amapiano afrobeat'),
     'amapiano r&b': ('Amapiano', 'amapiano r&b'),
 
-    ## Por región
+    ## By region
     'johannesburg amapiano': ('Amapiano', 'johannesburg amapiano'),
     'pretoria amapiano': ('Amapiano', 'pretoria amapiano'),
     'durban amapiano': ('Amapiano', 'durban amapiano'),
     'cape town amapiano': ('Amapiano', 'cape town amapiano'),
     'soweto amapiano': ('Amapiano', 'soweto amapiano'),
 
-    ## En idiomas locales
+    ## In local languages
     'umculo we amapiano': ('Amapiano', 'umculo we amapiano'), # Zulu
     'amapiano yase gauteng': ('Amapiano', 'amapiano yase gauteng'),
     'amapiano kasi': ('Amapiano', 'amapiano kasi'), # Township
 
     ###############################################################################
-    # BONGO FLAVA (Regional - Tanzania)
+    # BONGO FLAVA (Tanzania)
     ###############################################################################
     ## Bongo Flava General (English / Swahili)
     'bongo flava': ('Bongo Flava', 'bongo flava'),
@@ -7503,7 +7562,7 @@ GENRE_MAPPINGS = {
     'bongo fleva': ('Bongo Flava', 'bongo fleva'),
     'muziki wa bongo': ('Bongo Flava', 'muziki wa bongo'),
 
-    ## Subgéneros
+    ## Subgenres
     'bongo flava clásico': ('Bongo Flava', 'bongo flava clásico'),
     'bongo flava classic': ('Bongo Flava', 'bongo flava classic'),
     'bongo r&b': ('Bongo Flava', 'bongo r&b'),
@@ -7513,30 +7572,30 @@ GENRE_MAPPINGS = {
     'bongo flava romántico': ('Bongo Flava', 'bongo flava romántico'),
     'bongo love': ('Bongo Flava', 'bongo love'),
 
-    ## Estilos relacionados
+    ## Related styles
     'singeli': ('Bongo Flava', 'singeli'),
     'singeli music': ('Bongo Flava', 'singeli music'),
     'zouk love': ('Bongo Flava', 'zouk love'),
     'tanzanian zouk': ('Bongo Flava', 'tanzanian zouk'),
     'afrobeat tanzano': ('Bongo Flava', 'afrobeat tanzano'),
 
-    ## Fusiones
+    ## Fusions
     'bongo flava pop': ('Bongo Flava', 'bongo flava pop'),
     'bongo flava dance': ('Bongo Flava', 'bongo flava dance'),
     'bongo flava reggae': ('Bongo Flava', 'bongo flava reggae'),
 
-    ## Por región
+    ## By region
     'dar es salaam pop': ('Bongo Flava', 'dar es salaam pop'),
     'arusha pop': ('Bongo Flava', 'arusha pop'),
     'mwanza pop': ('Bongo Flava', 'mwanza pop'),
     'zanzibar pop': ('Bongo Flava', 'zanzibar pop'),
 
-    ## En swahili
+    ## In Swahili
     'bongo flava kiswahili': ('Bongo Flava', 'bongo flava kiswahili'),
     'muziki wa kisasa tanzania': ('Bongo Flava', 'muziki wa kisasa tanzania'),
 
     ###############################################################################
-    # ZIM DANCEHALL (Regional - Zimbabue)
+    # ZIM DANCEHALL (Zimbabwe)
     ###############################################################################
     ## Zim Dancehall General (English / Shona / Ndebele)
     'zim dancehall': ('Zim Dancehall', 'zim dancehall'),
@@ -7544,7 +7603,7 @@ GENRE_MAPPINGS = {
     'zimdancehall': ('Zim Dancehall', 'zimdancehall'),
     'dancehall zimbabwe': ('Zim Dancehall', 'dancehall zimbabwe'),
 
-    ## Subgéneros
+    ## Subgenres
     'zim dancehall clásico': ('Zim Dancehall', 'zim dancehall clásico'),
     'zim dancehall classic': ('Zim Dancehall', 'zim dancehall classic'),
     'urban grooves': ('Zim Dancehall', 'urban grooves'),
@@ -7553,29 +7612,29 @@ GENRE_MAPPINGS = {
     'zim reggae': ('Zim Dancehall', 'zim reggae'),
     'zim r&b': ('Zim Dancehall', 'zim r&b'),
 
-    ## Estilos tradicionales influyentes
+    ## Influential traditional styles
     'sungura': ('Zim Dancehall', 'sungura'),
     'sungura music': ('Zim Dancehall', 'sungura music'),
-    'chimurenga': ('Zim Dancehall', 'chimurenga'), # Influencia, aunque es género aparte
+    'chimurenga': ('Zim Dancehall', 'chimurenga'), # Influence, although it's a separate genre
     'jit': ('Zim Dancehall', 'jit'),
 
-    ## Fusiones
+    ## Fusions
     'zim dancehall pop': ('Zim Dancehall', 'zim dancehall pop'),
     'zim dancehall afrobeat': ('Zim Dancehall', 'zim dancehall afrobeat'),
     'zim dancehall reggae': ('Zim Dancehall', 'zim dancehall reggae'),
 
-    ## Por región
+    ## By region
     'harare dancehall': ('Zim Dancehall', 'harare dancehall'),
     'bulawayo dancehall': ('Zim Dancehall', 'bulawayo dancehall'),
     'mutare dancehall': ('Zim Dancehall', 'mutare dancehall'),
 
-    ## En idiomas locales
-    'dancehall yemuZimbabwe': ('Zim Dancehall', 'dancehall yemuZimbabwe'), # Shona/Inglés
+    ## In local languages
+    'dancehall yemuZimbabwe': ('Zim Dancehall', 'dancehall yemuZimbabwe'), # Shona/English
     'mimhanzi yeZimbabwe': ('Zim Dancehall', 'mimhanzi yeZimbabwe'), # Shona
     'umculo weZimbabwe': ('Zim Dancehall', 'umculo weZimbabwe'), # Ndebele
 
     ###############################################################################
-    # KUDURO (Regional - Angola)
+    # KUDURO (Angola)
     ###############################################################################
     ## Kuduro General (English / Portuguese)
     'kuduro': ('Kuduro', 'kuduro'),
@@ -7583,29 +7642,29 @@ GENRE_MAPPINGS = {
     'angolan kuduro': ('Kuduro', 'angolan kuduro'),
     'música kuduro': ('Kuduro', 'música kuduro'),
 
-    ## Subgéneros y estilos
+    ## Subgenres and styles
     'kuduro clássico': ('Kuduro', 'kuduro clássico'),
     'kuduro moderno': ('Kuduro', 'kuduro moderno'),
     'kuduro batidão': ('Kuduro', 'kuduro batidão'),
     'kuduro progressivo': ('Kuduro', 'kuduro progressivo'),
 
-    ## Fusiones
+    ## Fusions
     'kuduro pop': ('Kuduro', 'kuduro pop'),
     'kuduro house': ('Kuduro', 'kuduro house'),
     'kuduro eletrônico': ('Kuduro', 'kuduro eletrônico'),
     'kuduro hip hop': ('Kuduro', 'kuduro hip hop'),
 
-    ## Por región
+    ## By region
     'luanda kuduro': ('Kuduro', 'luanda kuduro'),
     'benguela kuduro': ('Kuduro', 'benguela kuduro'),
     'huambo kuduro': ('Kuduro', 'huambo kuduro'),
 
-    ## En portugués
+    ## In Portuguese
     'batida angolana': ('Kuduro', 'batida angolana'),
     'musica de luanda': ('Kuduro', 'musica de luanda'),
 
     ###############################################################################
-    # KIZOMBA / ZOUK (Regional - Angola / Cabo Verde)
+    # KIZOMBA / ZOUK (Angola / Cape Verde)
     ###############################################################################
     ## Kizomba General
     'kizomba': ('Kizomba/Zouk', 'kizomba'),
@@ -7619,41 +7678,41 @@ GENRE_MAPPINGS = {
     'zouk antilhês': ('Kizomba/Zouk', 'zouk antilhês'),  # Antillean zouk
     'zouk brasileiro': ('Kizomba/Zouk', 'zouk brasileiro'),
 
-    ## Subgéneros de Kizomba
+    ## Kizomba subgenres
     'kizomba clássica': ('Kizomba/Zouk', 'kizomba clássica'),
     'kizomba moderna': ('Kizomba/Zouk', 'kizomba moderna'),
     'kizomba romântica': ('Kizomba/Zouk', 'kizomba romântica'),
     'kizomba sensual': ('Kizomba/Zouk', 'kizomba sensual'),
     'kizomba fusion': ('Kizomba/Zouk', 'kizomba fusion'),
-    'ghetto kizomba': ('Kizomba/Zouk', 'ghetto kizomba'),  # Variante urbana
+    'ghetto kizomba': ('Kizomba/Zouk', 'ghetto kizomba'),  # Urban variant
 
-    ## Cabo Verde
+    ## Cape Verde
     'coladeira': ('Kizomba/Zouk', 'coladeira'),
     'colá': ('Kizomba/Zouk', 'colá'),
     'cabo love': ('Kizomba/Zouk', 'cabo love'),
-    'funaná': ('Kizomba/Zouk', 'funaná'),  # Aunque tiene sección propia, también relacionado
+    'funaná': ('Kizomba/Zouk', 'funaná'),  # Although it has its own section, also related
     'funaná fusion': ('Kizomba/Zouk', 'funaná fusion'),
 
-    ## Fusiones
+    ## Fusions
     'kizomba pop': ('Kizomba/Zouk', 'kizomba pop'),
     'kizomba house': ('Kizomba/Zouk', 'kizomba house'),
     'kizomba r&b': ('Kizomba/Zouk', 'kizomba r&b'),
     'zouk r&b': ('Kizomba/Zouk', 'zouk r&b'),
     'zouk pop': ('Kizomba/Zouk', 'zouk pop'),
 
-    ## Por región
+    ## By region
     'luanda kizomba': ('Kizomba/Zouk', 'luanda kizomba'),
     'praia kizomba': ('Kizomba/Zouk', 'praia kizomba'),
-    'lisboa kizomba': ('Kizomba/Zouk', 'lisboa kizomba'),  # Importante en diáspora
+    'lisboa kizomba': ('Kizomba/Zouk', 'lisboa kizomba'),  # Important in diaspora
     'paris kizomba': ('Kizomba/Zouk', 'paris kizomba'),
 
-    ## En portugués / crioulo
-    'morna': ('Kizomba/Zouk', 'morna'),  # Cabo Verde, relacionado pero más tradicional
+    ## In Portuguese / Creole
+    'morna': ('Kizomba/Zouk', 'morna'),  # Cape Verde, related but more traditional
     'coladera': ('Kizomba/Zouk', 'coladera'),
     'batuku': ('Kizomba/Zouk', 'batuku'),
 
     ###############################################################################
-    # MBALAX (Regional - Senegal)
+    # MBALAX (Senegal)
     ###############################################################################
     ## Mbalax General (English / Wolof / French)
     'mbalax': ('Mbalax', 'mbalax'),
@@ -7661,30 +7720,30 @@ GENRE_MAPPINGS = {
     'senegalese pop': ('Mbalax', 'senegalese pop'),
     'mbalax senegal': ('Mbalax', 'mbalax senegal'),
 
-    ## Subgéneros
+    ## Subgenres
     'mbalax classique': ('Mbalax', 'mbalax classique'),
     'mbalax moderne': ('Mbalax', 'mbalax moderne'),
     'mbalax dance': ('Mbalax', 'mbalax dance'),
-    'mbalax sabar': ('Mbalax', 'mbalax sabar'),  # Basado en ritmo sabar
+    'mbalax sabar': ('Mbalax', 'mbalax sabar'),  # Based on sabar rhythm
 
-    ## Fusiones
+    ## Fusions
     'mbalax pop': ('Mbalax', 'mbalax pop'),
     'mbalax hip hop': ('Mbalax', 'mbalax hip hop'),
     'mbalax r&b': ('Mbalax', 'mbalax r&b'),
     'mbalax reggae': ('Mbalax', 'mbalax reggae'),
 
-    ## Por región
+    ## By region
     'dakar mbalax': ('Mbalax', 'dakar mbalax'),
     'thiès mbalax': ('Mbalax', 'thiès mbalax'),
     'saint louis mbalax': ('Mbalax', 'saint louis mbalax'),
 
-    ## En wolof / francés
+    ## In Wolof / French
     'mbalax wolof': ('Mbalax', 'mbalax wolof'),
     'musique sénégalaise': ('Mbalax', 'musique sénégalaise'),
     'tassou': ('Mbalax', 'tassou'),
 
     ###############################################################################
-    # COUPÉ-DÉCALÉ (Regional - Costa de Marfil)
+    # COUPÉ-DÉCALÉ (Ivory Coast)
     ###############################################################################
     ## Coupé-Décalé General (English / French)
     'coupé décalé': ('Coupé-Décalé', 'coupé décalé'),
@@ -7693,31 +7752,31 @@ GENRE_MAPPINGS = {
     'ivoirian pop': ('Coupé-Décalé', 'ivoirian pop'),
     'musique ivoirienne': ('Coupé-Décalé', 'musique ivoirienne'),
 
-    ## Subgéneros
+    ## Subgenres
     'coupé décalé classique': ('Coupé-Décalé', 'coupé décalé classique'),
     'coupé décalé moderne': ('Coupé-Décalé', 'coupé décalé moderne'),
     'coupé décalé dance': ('Coupé-Décalé', 'coupé décalé dance'),
 
-    ## Estilos relacionados
+    ## Related styles
     'zouglou': ('Coupé-Décalé', 'zouglou'),  # Precursor
     'mapouka': ('Coupé-Décalé', 'mapouka'),
 
-    ## Fusiones
+    ## Fusions
     'coupé décalé pop': ('Coupé-Décalé', 'coupé décalé pop'),
     'coupé décalé hip hop': ('Coupé-Décalé', 'coupé décalé hip hop'),
     'coupé décalé r&b': ('Coupé-Décalé', 'coupé décalé r&b'),
 
-    ## Por región
+    ## By region
     'abidjan coupé décalé': ('Coupé-Décalé', 'abidjan coupé décalé'),
     'bouaké coupé décalé': ('Coupé-Décalé', 'bouaké coupé décalé'),
     'yamoussoukro coupé décalé': ('Coupé-Décalé', 'yamoussoukro coupé décalé'),
 
-    ## En francés / nouchi
-    'coupé décalé nouchi': ('Coupé-Décalé', 'coupé décalé nouchi'),  # Argot de Abidjan
+    ## In French / Nouchi
+    'coupé décalé nouchi': ('Coupé-Décalé', 'coupé décalé nouchi'),  # Abidjan slang
     'débrouillard music': ('Coupé-Décalé', 'débrouillard music'),
 
     ###############################################################################
-    # SOUKOUS / NDOMBOLO (Regional - RDC / Congo)
+    # SOUKOUS / NDOMBOLO (DRC / Congo)
     ###############################################################################
     ## Soukous General (English / Lingala / French)
     'soukous': ('Soukous/Ndombolo', 'soukous'),
@@ -7731,25 +7790,25 @@ GENRE_MAPPINGS = {
     'ndombolo dance': ('Soukous/Ndombolo', 'ndombolo dance'),
     'ndombolo moderne': ('Soukous/Ndombolo', 'ndombolo moderne'),
 
-    ## Subgéneros
+    ## Subgenres
     'soukous classique': ('Soukous/Ndombolo', 'soukous classique'),
     'soukous moderne': ('Soukous/Ndombolo', 'soukous moderne'),
     'soukous rumba': ('Soukous/Ndombolo', 'soukous rumba'),
     'soukous pop': ('Soukous/Ndombolo', 'soukous pop'),
     'soukous rock': ('Soukous/Ndombolo', 'soukous rock'),
 
-    ## Por región
+    ## By region
     'kinshasa soukous': ('Soukous/Ndombolo', 'kinshasa soukous'),
     'brazzaville soukous': ('Soukous/Ndombolo', 'brazzaville soukous'),
     'lubumbashi soukous': ('Soukous/Ndombolo', 'lubumbashi soukous'),
 
-    ## En lingala / francés
+    ## In Lingala / French
     'mboka lingala': ('Soukous/Ndombolo', 'mboka lingala'),
     'congo rumba': ('Soukous/Ndombolo', 'congo rumba'),
     'musique congolaise': ('Soukous/Ndombolo', 'musique congolaise'),
 
     ###############################################################################
-    # ETHIO-JAZZ (Regional - Etiopía)
+    # ETHIO-JAZZ (Ethiopia)
     ###############################################################################
     ## Ethio-jazz General (English / Amharic)
     'ethio jazz': ('Ethio-jazz', 'ethio jazz'),
@@ -7757,27 +7816,27 @@ GENRE_MAPPINGS = {
     'ethiopian jazz': ('Ethio-jazz', 'ethiopian jazz'),
     'éthio-jazz': ('Ethio-jazz', 'éthio-jazz'),
 
-    ## Subgéneros
+    ## Subgenres
     'ethio-jazz classique': ('Ethio-jazz', 'ethio-jazz classique'),
     'ethio-jazz moderne': ('Ethio-jazz', 'ethio-jazz moderne'),
     'ethio-funk': ('Ethio-jazz', 'ethio-funk'),
     'ethio-groove': ('Ethio-jazz', 'ethio-groove'),
     'ethio-soul': ('Ethio-jazz', 'ethio-soul'),
 
-    ## Fusión
+    ## Fusion
     'ethio-jazz fusion': ('Ethio-jazz', 'ethio-jazz fusion'),
     'ethio-jazz hip hop': ('Ethio-jazz', 'ethio-jazz hip hop'),
     'ethio-jazz electronic': ('Ethio-jazz', 'ethio-jazz electronic'),
 
-    ## Por región
+    ## By region
     'addis ababa jazz': ('Ethio-jazz', 'addis ababa jazz'),
     'gondar jazz': ('Ethio-jazz', 'gondar jazz'),
 
-    ## En amhárico
+    ## In Amharic
     'yä ityopya jazz': ('Ethio-jazz', 'yä ityopya jazz'),
 
     ###############################################################################
-    # GNAWA (Regional - Marruecos)
+    # GNAWA (Morocco)
     ###############################################################################
     ## Gnawa General (English / Arabic / French)
     'gnawa': ('Gnawa', 'gnawa'),
@@ -7786,7 +7845,7 @@ GENRE_MAPPINGS = {
     'musique gnawa': ('Gnawa', 'musique gnawa'),
     'الݣناوة': ('Gnawa', 'الݣناوة'),
 
-    ## Subgéneros
+    ## Subgenres
     'gnawa traditionnel': ('Gnawa', 'gnawa traditionnel'),
     'gnawa moderne': ('Gnawa', 'gnawa moderne'),
     'gnawa fusion': ('Gnawa', 'gnawa fusion'),
@@ -7794,19 +7853,19 @@ GENRE_MAPPINGS = {
     'gnawa rock': ('Gnawa', 'gnawa rock'),
     'gnawa electro': ('Gnawa', 'gnawa electro'),
 
-    ## Por región
+    ## By region
     'marrakech gnawa': ('Gnawa', 'marrakech gnawa'),
     'essaouira gnawa': ('Gnawa', 'essaouira gnawa'),
     'fes gnawa': ('Gnawa', 'fes gnawa'),
     'casablanca gnawa': ('Gnawa', 'casablanca gnawa'),
 
-    ## En árabe / francés
+    ## In Arabic / French
     'gnawa diwan': ('Gnawa', 'gnawa diwan'),
     'lila gnawa': ('Gnawa', 'lila gnawa'),
-    'krakeb music': ('Gnawa', 'krakeb music'),  # Instrumento
+    'krakeb music': ('Gnawa', 'krakeb music'),  # Instrument
 
     ###############################################################################
-    # TAARAB (Regional - Tanzania / Zanzíbar / Kenia)
+    # TAARAB (Tanzania / Zanzibar / Kenya)
     ###############################################################################
     ## Taarab General (English / Swahili / Arabic)
     'taarab': ('Taarab', 'taarab'),
@@ -7814,14 +7873,14 @@ GENRE_MAPPINGS = {
     'taarab music': ('Taarab', 'taarab music'),
     'muziki wa taarab': ('Taarab', 'muziki wa taarab'),
 
-    ## Subgéneros
+    ## Subgenres
     'taarab classique': ('Taarab', 'taarab classique'),
     'taarab moderne': ('Taarab', 'taarab moderne'),
     'taarab ya kisasa': ('Taarab', 'taarab ya kisasa'),
     'taarab fusion': ('Taarab', 'taarab fusion'),
     'taarab pop': ('Taarab', 'taarab pop'),
 
-    ## Por región
+    ## By region
     'zanzibar taarab': ('Taarab', 'zanzibar taarab'),
     'dar es salaam taarab': ('Taarab', 'dar es salaam taarab'),
     'mombasa taarab': ('Taarab', 'mombasa taarab'),
@@ -7829,70 +7888,70 @@ GENRE_MAPPINGS = {
     'kenyan taarab': ('Taarab', 'kenyan taarab'),
     'tanzanian taarab': ('Taarab', 'tanzanian taarab'),
 
-    ## En swahili / árabe
-    'kidumbak': ('Taarab', 'kidumbak'),  # Estilo relacionado
+    ## In Swahili / Arabic
+    'kidumbak': ('Taarab', 'kidumbak'),  # Related style
     'taarab ya zamani': ('Taarab', 'taarab ya zamani'),
     'ngoma ya taarab': ('Taarab', 'ngoma ya taarab'),
 
     ###############################################################################
-    # KAPUKA (Regional - Kenia)
+    # KAPUKA (Kenya)
     ###############################################################################
     ## Kapuka General (English / Swahili / Sheng)
     'kapuka': ('Kapuka', 'kapuka'),
     'kenyan kapuka': ('Kapuka', 'kenyan kapuka'),
     'kapuka music': ('Kapuka', 'kapuka music'),
 
-    ## Subgéneros
+    ## Subgenres
     'kapuka classic': ('Kapuka', 'kapuka classic'),
     'kapuka modern': ('Kapuka', 'kapuka modern'),
     'kapuka dance': ('Kapuka', 'kapuka dance'),
     'kapuka pop': ('Kapuka', 'kapuka pop'),
 
-    ## Fusión
+    ## Fusion
     'kapuka hip hop': ('Kapuka', 'kapuka hip hop'),
     'kapuka r&b': ('Kapuka', 'kapuka r&b'),
     'kapuka reggae': ('Kapuka', 'kapuka reggae'),
 
-    ## Por región
+    ## By region
     'nairobi kapuka': ('Kapuka', 'nairobi kapuka'),
     'mombasa kapuka': ('Kapuka', 'mombasa kapuka'),
     'kisumu kapuka': ('Kapuka', 'kisumu kapuka'),
 
-    ## En sheng / swahili
+    ## In Sheng / Swahili
     'kapuka sheng': ('Kapuka', 'kapuka sheng'),
     'muziki wa kapuka': ('Kapuka', 'muziki wa kapuka'),
 
     ###############################################################################
-    # GENGETONE (Regional - Kenia)
+    # GENGETONE (Kenya)
     ###############################################################################
     ## Gengetone General (English / Swahili / Sheng)
     'gengetone': ('Gengetone', 'gengetone'),
     'genge tone': ('Gengetone', 'genge tone'),
     'kenyan gengetone': ('Gengetone', 'kenyan gengetone'),
 
-    ## Subgéneros
+    ## Subgenres
     'gengetone classic': ('Gengetone', 'gengetone classic'),
     'gengetone modern': ('Gengetone', 'gengetone modern'),
     'gengetone dance': ('Gengetone', 'gengetone dance'),
     'gengetone rap': ('Gengetone', 'gengetone rap'),
 
-    ## Fusión
+    ## Fusion
     'gengetone pop': ('Gengetone', 'gengetone pop'),
     'gengetone afrobeat': ('Gengetone', 'gengetone afrobeat'),
     'gengetone r&b': ('Gengetone', 'gengetone r&b'),
     'gengetone bongo': ('Gengetone', 'gengetone bongo'),
 
-    ## Por región
+    ## By region
     'nairobi gengetone': ('Gengetone', 'nairobi gengetone'),
     'kiambu gengetone': ('Gengetone', 'kiambu gengetone'),
     'mathare gengetone': ('Gengetone', 'mathare gengetone'),
 
-    ## En sheng
+    ## In Sheng
     'gengetone sheng': ('Gengetone', 'gengetone sheng'),
     'sheng rap': ('Gengetone', 'sheng rap'),
 
     ###############################################################################
-    # SHANGAAN ELECTRO (Regional - Sudáfrica / Mozambique)
+    # SHANGAAN ELECTRO (South Africa / Mozambique)
     ###############################################################################
     ## Shangaan Electro General (English / Tsonga)
     'shangaan electro': ('Shangaan Electro', 'shangaan electro'),
@@ -7900,107 +7959,107 @@ GENRE_MAPPINGS = {
     'shangaan beats': ('Shangaan Electro', 'shangaan beats'),
     'tsonga electro': ('Shangaan Electro', 'tsonga electro'),
 
-    ## Subgéneros
+    ## Subgenres
     'shangaan electro classic': ('Shangaan Electro', 'shangaan electro classic'),
     'shangaan electro modern': ('Shangaan Electro', 'shangaan electro modern'),
     'shangaan dance': ('Shangaan Electro', 'shangaan dance'),
 
-    ## Fusión
+    ## Fusion
     'shangaan electro pop': ('Shangaan Electro', 'shangaan electro pop'),
     'shangaan electro house': ('Shangaan Electro', 'shangaan electro house'),
 
-    ## Por región
+    ## By region
     'johannesburg shangaan': ('Shangaan Electro', 'johannesburg shangaan'),
     'maputo shangaan': ('Shangaan Electro', 'maputo shangaan'),
     'limpopo shangaan': ('Shangaan Electro', 'limpopo shangaan'),
 
-    ## En tsonga
+    ## In Tsonga
     'mintirho ya shangaan': ('Shangaan Electro', 'mintirho ya shangaan'),
     'xibelani dance music': ('Shangaan Electro', 'xibelani dance music'),
 
     ###############################################################################
-    # MARRABENTA (Regional - Mozambique)
+    # MARRABENTA (Mozambique)
     ###############################################################################
     ## Marrabenta General (English / Portuguese)
     'marrabenta': ('Marrabenta', 'marrabenta'),
     'mozambican marrabenta': ('Marrabenta', 'mozambican marrabenta'),
     'música marrabenta': ('Marrabenta', 'música marrabenta'),
 
-    ## Subgéneros
+    ## Subgenres
     'marrabenta clássica': ('Marrabenta', 'marrabenta clássica'),
     'marrabenta moderna': ('Marrabenta', 'marrabenta moderna'),
     'marrabenta dance': ('Marrabenta', 'marrabenta dance'),
     'marrabenta pop': ('Marrabenta', 'marrabenta pop'),
 
-    ## Fusión
+    ## Fusion
     'marrabenta fusion': ('Marrabenta', 'marrabenta fusion'),
     'marrabenta rock': ('Marrabenta', 'marrabenta rock'),
     'marrabenta hip hop': ('Marrabenta', 'marrabenta hip hop'),
 
-    ## Por región
+    ## By region
     'maputo marrabenta': ('Marrabenta', 'maputo marrabenta'),
     'beira marrabenta': ('Marrabenta', 'beira marrabenta'),
     'nampula marrabenta': ('Marrabenta', 'nampula marrabenta'),
 
-    ## En português
+    ## In Portuguese
     'ritmo marrabenta': ('Marrabenta', 'ritmo marrabenta'),
     'musica de moçambique': ('Marrabenta', 'musica de moçambique'),
 
     ###############################################################################
-    # COLADEIRA (Regional - Cabo Verde) [ya incluida en Kizomba/Zouk, pero se amplía]
+    # COLADEIRA (Cape Verde)
     ###############################################################################
-    ## Coladeira General (English / Crioulo)
+    ## Coladeira General (English / Creole)
     'coladeira': ('Coladeira', 'coladeira'),
     'koladera': ('Coladeira', 'koladera'),
     'cabo verde coladeira': ('Coladeira', 'cabo verde coladeira'),
 
-    ## Subgéneros
+    ## Subgenres
     'coladeira clássica': ('Coladeira', 'coladeira clássica'),
     'coladeira moderna': ('Coladeira', 'coladeira moderna'),
     'coladeira dance': ('Coladeira', 'coladeira dance'),
 
-    ## Fusión
+    ## Fusion
     'coladeira pop': ('Coladeira', 'coladeira pop'),
     'coladeira zouk': ('Coladeira', 'coladeira zouk'),
     'coladeira funaná': ('Coladeira', 'coladeira funaná'),
 
-    ## Por región
+    ## By region
     'praia coladeira': ('Coladeira', 'praia coladeira'),
     'mindelo coladeira': ('Coladeira', 'mindelo coladeira'),
 
-    ## En crioulo
+    ## In Creole
     'morna coladeira': ('Coladeira', 'morna coladeira'),
     'musika di koladera': ('Coladeira', 'musika di koladera'),
 
     ###############################################################################
-    # FUNANÁ (Regional - Cabo Verde)
+    # FUNANÁ (Cape Verde)
     ###############################################################################
-    ## Funaná General (English / Crioulo)
+    ## Funaná General (English / Creole)
     'funaná': ('Funaná', 'funaná'),
     'funana': ('Funaná', 'funana'),
     'cabo verde funaná': ('Funaná', 'cabo verde funaná'),
 
-    ## Subgéneros
+    ## Subgenres
     'funaná tradicional': ('Funaná', 'funaná tradicional'),
     'funaná moderno': ('Funaná', 'funaná moderno'),
     'funaná dance': ('Funaná', 'funaná dance'),
     'funaná fusion': ('Funaná', 'funaná fusion'),
 
-    ## Fusión
+    ## Fusion
     'funaná pop': ('Funaná', 'funaná pop'),
     'funaná eletrônico': ('Funaná', 'funaná eletrônico'),
     'funaná hip hop': ('Funaná', 'funaná hip hop'),
 
-    ## Por región
+    ## By region
     'santiago funaná': ('Funaná', 'santiago funaná'),
     'são vicente funaná': ('Funaná', 'são vicente funaná'),
 
-    ## En crioulo
+    ## In Creole
     'batuku funaná': ('Funaná', 'batuku funaná'),
     'musika di funaná': ('Funaná', 'musika di funaná'),
 
     ###############################################################################
-    # BENGA (Regional - Kenia)
+    # BENGA (Kenya)
     ###############################################################################
     ## Benga General (English / Swahili / Luo)
     'benga': ('Benga', 'benga'),
@@ -8008,28 +8067,28 @@ GENRE_MAPPINGS = {
     'benga music': ('Benga', 'benga music'),
     'muziki wa benga': ('Benga', 'muziki wa benga'),
 
-    ## Subgéneros
+    ## Subgenres
     'benga classic': ('Benga', 'benga classic'),
     'benga modern': ('Benga', 'benga modern'),
     'benga pop': ('Benga', 'benga pop'),
     'benga dance': ('Benga', 'benga dance'),
 
-    ## Fusión
+    ## Fusion
     'benga fusion': ('Benga', 'benga fusion'),
     'benga rock': ('Benga', 'benga rock'),
     'benga r&b': ('Benga', 'benga r&b'),
 
-    ## Por región
+    ## By region
     'kisumu benga': ('Benga', 'kisumu benga'),
     'nairobi benga': ('Benga', 'nairobi benga'),
     'western kenya benga': ('Benga', 'western kenya benga'),
 
-    ## En luo / swahili
-    'ohangla benga': ('Benga', 'ohangla benga'),  # Estilo relacionado
+    ## In Luo / Swahili
+    'ohangla benga': ('Benga', 'ohangla benga'),  # Related style
     'benga luo': ('Benga', 'benga luo'),
 
     ###############################################################################
-    # HIGHLIFE (Regional - Ghana / Nigeria)
+    # HIGHLIFE (Ghana / Nigeria)
     ###############################################################################
     ## Highlife General (English / Twi / Yoruba)
     'highlife': ('Highlife', 'highlife'),
@@ -8037,7 +8096,7 @@ GENRE_MAPPINGS = {
     'nigerian highlife': ('Highlife', 'nigerian highlife'),
     'west african highlife': ('Highlife', 'west african highlife'),
 
-    ## Subgéneros
+    ## Subgenres
     'highlife classic': ('Highlife', 'highlife classic'),
     'highlife modern': ('Highlife', 'highlife modern'),
     'highlife pop': ('Highlife', 'highlife pop'),
@@ -8045,29 +8104,29 @@ GENRE_MAPPINGS = {
     'highlife guitar': ('Highlife', 'highlife guitar'),
     'highlife brass': ('Highlife', 'highlife brass'),
 
-    ## Estilos relacionados
+    ## Related styles
     'palm wine music': ('Highlife', 'palm wine music'),
     'palm wine highlife': ('Highlife', 'palm wine highlife'),
     'west african guitar music': ('Highlife', 'west african guitar music'),
 
-    ## Fusión
+    ## Fusion
     'highlife fusion': ('Highlife', 'highlife fusion'),
     'highlife afrobeat': ('Highlife', 'highlife afrobeat'),
     'highlife jazz': ('Highlife', 'highlife jazz'),
 
-    ## Por región
+    ## By region
     'accra highlife': ('Highlife', 'accra highlife'),
     'lagos highlife': ('Highlife', 'lagos highlife'),
     'kumasi highlife': ('Highlife', 'kumasi highlife'),
     'ibadan highlife': ('Highlife', 'ibadan highlife'),
 
-    ## En twi / yoruba / ga
+    ## In Twi / Yoruba / Ga
     'highlife twi': ('Highlife', 'highlife twi'),
     'highlife yoruba': ('Highlife', 'highlife yoruba'),
-    'osibisa style': ('Highlife', 'osibisa style'),  # Banda icónica
+    'osibisa style': ('Highlife', 'osibisa style'),  # Iconic band
 
     ###############################################################################
-    # JÙJÚ (Regional - Nigeria)
+    # JÙJÚ (Nigeria)
     ###############################################################################
     ## Jùjú General (English / Yoruba)
     'jùjú': ('Jùjú', 'jùjú'),
@@ -8076,29 +8135,29 @@ GENRE_MAPPINGS = {
     'yoruba jùjú': ('Jùjú', 'yoruba jùjú'),
     'music jùjú': ('Jùjú', 'music jùjú'),
 
-    ## Subgéneros
+    ## Subgenres
     'jùjú classic': ('Jùjú', 'jùjú classic'),
     'jùjú modern': ('Jùjú', 'jùjú modern'),
     'jùjú pop': ('Jùjú', 'jùjú pop'),
     'jùjú dance': ('Jùjú', 'jùjú dance'),
     'jùjú gospel': ('Jùjú', 'jùjú gospel'),
 
-    ## Fusión
+    ## Fusion
     'jùjú fusion': ('Jùjú', 'jùjú fusion'),
     'jùjú afrobeat': ('Jùjú', 'jùjú afrobeat'),
     'jùjú highlife': ('Jùjú', 'jùjú highlife'),
 
-    ## Por región
+    ## By region
     'lagos jùjú': ('Jùjú', 'lagos jùjú'),
     'ibadan jùjú': ('Jùjú', 'ibadan jùjú'),
     'abeokuta jùjú': ('Jùjú', 'abeokuta jùjú'),
 
-    ## En yoruba
+    ## In Yoruba
     'orin jùjú': ('Jùjú', 'orin jùjú'),
     'àdúrà jùjú': ('Jùjú', 'àdúrà jùjú'),
 
     ###############################################################################
-    # FUJI (Regional - Nigeria)
+    # FUJI (Nigeria)
     ###############################################################################
     ## Fuji General (English / Yoruba)
     'fuji': ('Fuji', 'fuji'),
@@ -8106,7 +8165,7 @@ GENRE_MAPPINGS = {
     'yoruba fuji': ('Fuji', 'yoruba fuji'),
     'fuji music': ('Fuji', 'fuji music'),
 
-    ## Subgéneros
+    ## Subgenres
     'fuji classic': ('Fuji', 'fuji classic'),
     'fuji modern': ('Fuji', 'fuji modern'),
     'fuji pop': ('Fuji', 'fuji pop'),
@@ -8114,22 +8173,22 @@ GENRE_MAPPINGS = {
     'fuji gospel': ('Fuji', 'fuji gospel'),
     'bọn fuji': ('Fuji', 'bọn fuji'),
 
-    ## Fusión
+    ## Fusion
     'fuji fusion': ('Fuji', 'fuji fusion'),
     'fuji afrobeat': ('Fuji', 'fuji afrobeat'),
     'fuji hip hop': ('Fuji', 'fuji hip hop'),
 
-    ## Por región
+    ## By region
     'lagos fuji': ('Fuji', 'lagos fuji'),
     'ibadan fuji': ('Fuji', 'ibadan fuji'),
     'oyo fuji': ('Fuji', 'oyo fuji'),
 
-    ## En yoruba
+    ## In Yoruba
     'orin fuji': ('Fuji', 'orin fuji'),
-    'àpàlà fuji': ('Fuji', 'àpàlà fuji'),  # Relación con apala
+    'àpàlà fuji': ('Fuji', 'àpàlà fuji'),  # Relationship with apala
 
     ###############################################################################
-    # APALA (Regional - Nigeria)
+    # APALA (Nigeria)
     ###############################################################################
     ## Apala General (English / Yoruba)
     'apala': ('Apala', 'apala'),
@@ -8138,20 +8197,20 @@ GENRE_MAPPINGS = {
     'yoruba apala': ('Apala', 'yoruba apala'),
     'apala music': ('Apala', 'apala music'),
 
-    ## Subgéneros
+    ## Subgenres
     'apala classic': ('Apala', 'apala classic'),
     'apala modern': ('Apala', 'apala modern'),
     'apala fusion': ('Apala', 'apala fusion'),
 
-    ## Por región
+    ## By region
     'lagos apala': ('Apala', 'lagos apala'),
     'abeokuta apala': ('Apala', 'abeokuta apala'),
 
-    ## En yoruba
+    ## In Yoruba
     'orin àpàlà': ('Apala', 'orin àpàlà'),
 
     ###############################################################################
-    # SAKARA (Regional - Nigeria)
+    # SAKARA (Nigeria)
     ###############################################################################
     ## Sakara General (English / Yoruba)
     'sakara': ('Sakara', 'sakara'),
@@ -8159,20 +8218,20 @@ GENRE_MAPPINGS = {
     'yoruba sakara': ('Sakara', 'yoruba sakara'),
     'sakara music': ('Sakara', 'sakara music'),
 
-    ## Subgéneros
+    ## Subgenres
     'sakara classic': ('Sakara', 'sakara classic'),
     'sakara modern': ('Sakara', 'sakara modern'),
     'sakara fusion': ('Sakara', 'sakara fusion'),
 
-    ## Por región
+    ## By region
     'lagos sakara': ('Sakara', 'lagos sakara'),
     'ibadan sakara': ('Sakara', 'ibadan sakara'),
 
-    ## En yoruba
+    ## In Yoruba
     'orin sakara': ('Sakara', 'orin sakara'),
 
     ###############################################################################
-    # OGENE (Regional - Nigeria)
+    # OGENE (Nigeria)
     ###############################################################################
     ## Ogene General (English / Igbo)
     'ogene': ('Ogene', 'ogene'),
@@ -8180,23 +8239,23 @@ GENRE_MAPPINGS = {
     'nigerian ogene': ('Ogene', 'nigerian ogene'),
     'ogene music': ('Ogene', 'ogene music'),
 
-    ## Subgéneros
+    ## Subgenres
     'ogene classic': ('Ogene', 'ogene classic'),
     'ogene modern': ('Ogene', 'ogene modern'),
     'ogene pop': ('Ogene', 'ogene pop'),
     'ogene fusion': ('Ogene', 'ogene fusion'),
 
-    ## Por región
+    ## By region
     'enugu ogene': ('Ogene', 'enugu ogene'),
     'onitsha ogene': ('Ogene', 'onitsha ogene'),
     'aba ogene': ('Ogene', 'aba ogene'),
 
-    ## En igbo
+    ## In Igbo
     'ogene igbo': ('Ogene', 'ogene igbo'),
     'egwu ogene': ('Ogene', 'egwu ogene'),
 
     ###############################################################################
-    # ISICATHAMIYA (Regional - Sudáfrica)
+    # ISICATHAMIYA (South Africa)
     ###############################################################################
     ## Isicathamiya General (English / Zulu)
     'isicathamiya': ('Isicathamiya', 'isicathamiya'),
@@ -8205,23 +8264,23 @@ GENRE_MAPPINGS = {
     'isicathamiya music': ('Isicathamiya', 'isicathamiya music'),
     'cothoza music': ('Isicathamiya', 'cothoza music'),
 
-    ## Subgéneros
+    ## Subgenres
     'isicathamiya classic': ('Isicathamiya', 'isicathamiya classic'),
     'isicathamiya modern': ('Isicathamiya', 'isicathamiya modern'),
     'isicathamiya pop': ('Isicathamiya', 'isicathamiya pop'),
     'isicathamiya gospel': ('Isicathamiya', 'isicathamiya gospel'),
 
-    ## Por región
+    ## By region
     'durban isicathamiya': ('Isicathamiya', 'durban isicathamiya'),
     'johannesburg isicathamiya': ('Isicathamiya', 'johannesburg isicathamiya'),
     'kzn isicathamiya': ('Isicathamiya', 'kzn isicathamiya'),
 
-    ## En zulu
+    ## In Zulu
     'ingoma yesicathamiya': ('Isicathamiya', 'ingoma yesicathamiya'),
     'umculo wesizulu': ('Isicathamiya', 'umculo wesizulu'),
 
     ###############################################################################
-    # MBUBE (Regional - Sudáfrica)
+    # MBUBE (South Africa)
     ###############################################################################
     ## Mbube General (English / Zulu)
     'mbube': ('Mbube', 'mbube'),
@@ -8230,23 +8289,23 @@ GENRE_MAPPINGS = {
     'mbube music': ('Mbube', 'mbube music'),
     'mbube choral': ('Mbube', 'mbube choral'),
 
-    ## Subgéneros
+    ## Subgenres
     'mbube classic': ('Mbube', 'mbube classic'),
     'mbube modern': ('Mbube', 'mbube modern'),
     'mbube pop': ('Mbube', 'mbube pop'),
     'mbube gospel': ('Mbube', 'mbube gospel'),
 
-    ## Por región
+    ## By region
     'johannesburg mbube': ('Mbube', 'johannesburg mbube'),
     'durban mbube': ('Mbube', 'durban mbube'),
     'kzn mbube': ('Mbube', 'kzn mbube'),
 
-    ## En zulu
+    ## In Zulu
     'ingoma yombube': ('Mbube', 'ingoma yombube'),
     'umculo wesiZulu': ('Mbube', 'umculo wesiZulu'),
 
     ###############################################################################
-    # MASKANDI (Regional - Sudáfrica)
+    # MASKANDI (South Africa)
     ###############################################################################
     ## Maskandi General (English / Zulu)
     'maskandi': ('Maskandi', 'maskandi'),
@@ -8255,29 +8314,29 @@ GENRE_MAPPINGS = {
     'maskandi music': ('Maskandi', 'maskandi music'),
     'izihlabo': ('Maskandi', 'izihlabo'),
 
-    ## Subgéneros
+    ## Subgenres
     'maskandi classic': ('Maskandi', 'maskandi classic'),
     'maskandi modern': ('Maskandi', 'maskandi modern'),
     'maskandi pop': ('Maskandi', 'maskandi pop'),
     'maskandi dance': ('Maskandi', 'maskandi dance'),
     'maskandi guitar': ('Maskandi', 'maskandi guitar'),
 
-    ## Fusión
+    ## Fusion
     'maskandi fusion': ('Maskandi', 'maskandi fusion'),
     'maskandi hip hop': ('Maskandi', 'maskandi hip hop'),
     'maskandi maskandi': ('Maskandi', 'maskandi maskandi'),
 
-    ## Por región
+    ## By region
     'durban maskandi': ('Maskandi', 'durban maskandi'),
     'johannesburg maskandi': ('Maskandi', 'johannesburg maskandi'),
     'kzn maskandi': ('Maskandi', 'kzn maskandi'),
 
-    ## En zulu
+    ## In Zulu
     'umculo wamaskandi': ('Maskandi', 'umculo wamaskandi'),
     'isishameni': ('Maskandi', 'isishameni'),
 
     ###############################################################################
-    # MBAQANGA (Regional - Sudáfrica)
+    # MBAQANGA (South Africa)
     ###############################################################################
     ## Mbaqanga General (English / Zulu)
     'mbaqanga': ('Mbaqanga', 'mbaqanga'),
@@ -8285,29 +8344,29 @@ GENRE_MAPPINGS = {
     'zulu mbaqanga': ('Mbaqanga', 'zulu mbaqanga'),
     'mbaqanga music': ('Mbaqanga', 'mbaqanga music'),
 
-    ## Subgéneros
+    ## Subgenres
     'mbaqanga classic': ('Mbaqanga', 'mbaqanga classic'),
     'mbaqanga modern': ('Mbaqanga', 'mbaqanga modern'),
     'mbaqanga pop': ('Mbaqanga', 'mbaqanga pop'),
     'mbaqanga dance': ('Mbaqanga', 'mbaqanga dance'),
     'mbaqanga soul': ('Mbaqanga', 'mbaqanga soul'),
 
-    ## Fusión
+    ## Fusion
     'mbaqanga fusion': ('Mbaqanga', 'mbaqanga fusion'),
     'mbaqanga jazz': ('Mbaqanga', 'mbaqanga jazz'),
     'mbaqanga mbaqanga': ('Mbaqanga', 'mbaqanga mbaqanga'),
 
-    ## Por región
+    ## By region
     'soweto mbaqanga': ('Mbaqanga', 'soweto mbaqanga'),
     'johannesburg mbaqanga': ('Mbaqanga', 'johannesburg mbaqanga'),
     'durban mbaqanga': ('Mbaqanga', 'durban mbaqanga'),
 
-    ## En zulu
+    ## In Zulu
     'umculo womqangala': ('Mbaqanga', 'umculo womqangala'),
     'isicathulo': ('Mbaqanga', 'isicathulo'),
 
     ###############################################################################
-    # KWAITO (Regional - Sudáfrica)
+    # KWAITO (South Africa)
     ###############################################################################
     ## Kwaito General (English / Zulu / Sotho)
     'kwaito': ('Kwaito', 'kwaito'),
@@ -8315,7 +8374,7 @@ GENRE_MAPPINGS = {
     'kwaito music': ('Kwaito', 'kwaito music'),
     'umculo wekwaito': ('Kwaito', 'umculo wekwaito'),
 
-    ## Subgéneros
+    ## Subgenres
     'kwaito classic': ('Kwaito', 'kwaito classic'),
     'kwaito modern': ('Kwaito', 'kwaito modern'),
     'kwaito house': ('Kwaito', 'kwaito house'),
@@ -8323,25 +8382,25 @@ GENRE_MAPPINGS = {
     'kwaito dance': ('Kwaito', 'kwaito dance'),
     'kwaito gospel': ('Kwaito', 'kwaito gospel'),
 
-    ## Fusión
+    ## Fusion
     'kwaito fusion': ('Kwaito', 'kwaito fusion'),
     'kwaito hip hop': ('Kwaito', 'kwaito hip hop'),
     'kwaito amapiano': ('Kwaito', 'kwaito amapiano'),
 
-    ## Por región
+    ## By region
     'soweto kwaito': ('Kwaito', 'soweto kwaito'),
     'johannesburg kwaito': ('Kwaito', 'johannesburg kwaito'),
     'pretoria kwaito': ('Kwaito', 'pretoria kwaito'),
     'durban kwaito': ('Kwaito', 'durban kwaito'),
     'cape town kwaito': ('Kwaito', 'cape town kwaito'),
 
-    ## En zulu / sotho / tsotsitaal
+    ## In Zulu / Sotho / Tsotsitaal
     'kwaito tsotsitaal': ('Kwaito', 'kwaito tsotsitaal'),
     'kwaito kasi': ('Kwaito', 'kwaito kasi'),
     'mmino wa kwaito': ('Kwaito', 'mmino wa kwaito'),
 
     ###############################################################################
-    # AFRO-SOUL (Regional - Sudáfrica)
+    # AFRO-SOUL (South Africa)
     ###############################################################################
     ## Afro-soul General (English / Zulu / Xhosa)
     'afro soul': ('Afro-soul', 'afro soul'),
@@ -8349,28 +8408,28 @@ GENRE_MAPPINGS = {
     'south african afro soul': ('Afro-soul', 'south african afro soul'),
     'afro soul music': ('Afro-soul', 'afro soul music'),
 
-    ## Subgéneros
+    ## Subgenres
     'afro soul classic': ('Afro-soul', 'afro soul classic'),
     'afro soul modern': ('Afro-soul', 'afro soul modern'),
     'afro soul pop': ('Afro-soul', 'afro soul pop'),
     'afro soul r&b': ('Afro-soul', 'afro soul r&b'),
 
-    ## Fusión
+    ## Fusion
     'afro soul fusion': ('Afro-soul', 'afro soul fusion'),
     'afro soul jazz': ('Afro-soul', 'afro soul jazz'),
     'afro soul gospel': ('Afro-soul', 'afro soul gospel'),
 
-    ## Por región
+    ## By region
     'johannesburg afro soul': ('Afro-soul', 'johannesburg afro soul'),
     'cape town afro soul': ('Afro-soul', 'cape town afro soul'),
     'durban afro soul': ('Afro-soul', 'durban afro soul'),
 
-    ## En zulu / xhosa
+    ## In Zulu / Xhosa
     'umculo we afro soul': ('Afro-soul', 'umculo we afro soul'),
     'afro soul yaseMzantsi': ('Afro-soul', 'afro soul yaseMzantsi'),
 
     ###############################################################################
-    # BONGO (Regional - Tanzania) [Precursor de Bongo Flava]
+    # BONGO (Tanzania) [Precursor of Bongo Flava]
     ###############################################################################
     ## Bongo General (English / Swahili)
     'bongo': ('Bongo', 'bongo'),
@@ -8378,7 +8437,7 @@ GENRE_MAPPINGS = {
     'bongo music': ('Bongo', 'bongo music'),
     'muziki wa bongo': ('Bongo', 'muziki wa bongo'),
 
-    ## Subgéneros
+    ## Subgenres
     'bongo classic': ('Bongo', 'bongo classic'),
     'bongo modern': ('Bongo', 'bongo modern'),
     'bongo pop': ('Bongo', 'bongo pop'),
@@ -8386,27 +8445,27 @@ GENRE_MAPPINGS = {
     'bongo r&b': ('Bongo', 'bongo r&b'),
     'bongo hip hop': ('Bongo', 'bongo hip hop'),
 
-    ## Por región
+    ## By region
     'dar es salaam bongo': ('Bongo', 'dar es salaam bongo'),
     'arusha bongo': ('Bongo', 'arusha bongo'),
     'mwanza bongo': ('Bongo', 'mwanza bongo'),
     'zanzibar bongo': ('Bongo', 'zanzibar bongo'),
 
-    ## En swahili
+    ## In Swahili
     'bongo flava ya zamani': ('Bongo', 'bongo flava ya zamani'),
     'muziki wa bongo': ('Bongo', 'muziki wa bongo'),
     'bongo beats': ('Bongo', 'bongo beats'),
 
     ###############################################################################
-    # OCEANÍA - Escenas regionales (indígenas y del Pacífico)
+    # OCEANIA - Regional scenes (Indigenous and Pacific)
     ###############################################################################
 
-    # NOTA: Australia y Nueva Zelanda como países occidentales tienen pop/rock genérico
-    # ya cubierto en las secciones globales. Aquí nos enfocamos en las escenas
-    # indígenas y de las islas del Pacífico con identidad propia.
+    # NOTE: Australia and New Zealand as Western countries have generic pop/rock
+    # already covered in the global sections. Here we focus on indigenous
+    # and Pacific island scenes with their own identity.
 
     ###############################################################################
-    # Māori Pop/Rock (Regional - Nueva Zelanda / Aotearoa)
+    # Māori Pop/Rock (New Zealand / Aotearoa)
     ###############################################################################
     ## Māori Pop General (English / Māori)
     'maori pop': ('Māori Pop/Rock', 'maori pop'),
@@ -8424,7 +8483,7 @@ GENRE_MAPPINGS = {
     'rock māori': ('Māori Pop/Rock', 'rock māori'),
     'aotearoa rock': ('Māori Pop/Rock', 'aotearoa rock'),
 
-    ### Subgéneros de rock
+    ### Rock subgenres
     'maori alternative rock': ('Māori Pop/Rock', 'maori alternative rock'),
     'maori indie rock': ('Māori Pop/Rock', 'maori indie rock'),
     'maori metal': ('Māori Pop/Rock', 'maori metal'),
@@ -8440,7 +8499,7 @@ GENRE_MAPPINGS = {
     'maori soul': ('Māori Pop/Rock', 'maori soul'),
     'waiata soul': ('Māori Pop/Rock', 'waiata soul'),
 
-    ## Fusión tradicional
+    ## Traditional fusion
     'maori fusion': ('Māori Pop/Rock', 'maori fusion'),
     'taonga puoro fusion': ('Māori Pop/Rock', 'taonga puoro fusion'),
     'haka fusion': ('Māori Pop/Rock', 'haka fusion'),
@@ -8450,19 +8509,19 @@ GENRE_MAPPINGS = {
     'pacific reggae nz': ('Māori Pop/Rock', 'pacific reggae nz'),
     'new zealand reggae': ('Māori Pop/Rock', 'new zealand reggae'),
 
-    ## Por región (Aotearoa)
+    ## By region (Aotearoa)
     'auckland maori pop': ('Māori Pop/Rock', 'auckland maori pop'),
     'wellington maori pop': ('Māori Pop/Rock', 'wellington maori pop'),
     'rotorua maori pop': ('Māori Pop/Rock', 'rotorua maori pop'),
     'gisborne maori pop': ('Māori Pop/Rock', 'gisborne maori pop'),
 
-    ## En maorí
+    ## In Māori
     'waiata Māori': ('Māori Pop/Rock', 'waiata Māori'),
     'puoro Māori': ('Māori Pop/Rock', 'puoro Māori'),
     'waiata taketake': ('Māori Pop/Rock', 'waiata taketake'),
 
     ###############################################################################
-    # Pasifika Pop/Rock (Regional - Islas del Pacífico: Samoa, Tonga, Fiji, etc.)
+    # Pasifika Pop/Rock (Pacific Islands: Samoa, Tonga, Fiji, etc.)
     ###############################################################################
     ## Pasifika Pop General (English / Pacific languages)
     'pasifika pop': ('Pasifika Pop/Rock', 'pasifika pop'),
@@ -8525,7 +8584,7 @@ GENRE_MAPPINGS = {
     'island house': ('Pasifika Pop/Rock', 'island house'),
     'tropical house pacific': ('Pasifika Pop/Rock', 'tropical house pacific'),
 
-    ## En idiomas del Pacífico
+    ## In Pacific languages
     'musika fiji': ('Pasifika Pop/Rock', 'musika fiji'),
     'pehe fiji': ('Pasifika Pop/Rock', 'pehe fiji'),
     'pese samoa': ('Pasifika Pop/Rock', 'pese samoa'),
@@ -8534,7 +8593,7 @@ GENRE_MAPPINGS = {
     'himene tahiti': ('Pasifika Pop/Rock', 'himene tahiti'),
 
     ###############################################################################
-    # Papua New Guinea Pop/Rock (Regional - PNG)
+    # Papua New Guinea Pop/Rock
     ###############################################################################
     ## PNG Pop General (English / Tok Pisin)
     'png pop': ('PNG Pop/Rock', 'png pop'),
@@ -8547,7 +8606,7 @@ GENRE_MAPPINGS = {
     'papua new guinea rock': ('PNG Pop/Rock', 'papua new guinea rock'),
     'rock bilong PNG': ('PNG Pop/Rock', 'rock bilong PNG'),
 
-    ### Subgéneros de PNG rock
+    ### PNG rock subgenres
     'png alternative rock': ('PNG Pop/Rock', 'png alternative rock'),
     'png indie rock': ('PNG Pop/Rock', 'png indie rock'),
     'png metal': ('PNG Pop/Rock', 'png metal'),
@@ -8572,25 +8631,25 @@ GENRE_MAPPINGS = {
     'stringband music': ('PNG Pop/Rock', 'stringband music'),
     'png acoustic': ('PNG Pop/Rock', 'png acoustic'),
 
-    ## Fusión tradicional
+    ## Traditional fusion
     'png fusion': ('PNG Pop/Rock', 'png fusion'),
     'singsing fusion': ('PNG Pop/Rock', 'singsing fusion'),
     'garamut fusion': ('PNG Pop/Rock', 'garamut fusion'),
 
-    ## Por región
+    ## By region
     'port moresby pop': ('PNG Pop/Rock', 'port moresby pop'),
     'lae pop': ('PNG Pop/Rock', 'lae pop'),
     'mount hagen pop': ('PNG Pop/Rock', 'mount hagen pop'),
     'goroka pop': ('PNG Pop/Rock', 'goroka pop'),
     'rabaul pop': ('PNG Pop/Rock', 'rabaul pop'),
 
-    ## En tok pisin
+    ## In Tok Pisin
     'musik bilong PNG': ('PNG Pop/Rock', 'musik bilong PNG'),
     'singsing bilong tumbuna': ('PNG Pop/Rock', 'singsing bilong tumbuna'),
     'kundu drums': ('PNG Pop/Rock', 'kundu drums'),
 
     ###############################################################################
-    # Hawaiian Pop/Rock (Regional - Hawái)
+    # Hawaiian Pop/Rock
     ###############################################################################
     ## Hawaiian Pop General (English / Hawaiian)
     'hawaiian pop': ('Hawaiian Pop/Rock', 'hawaiian pop'),
@@ -8609,7 +8668,7 @@ GENRE_MAPPINGS = {
     'rock hawaiiano': ('Hawaiian Pop/Rock', 'rock hawaiiano'),
     'hawaii rock': ('Hawaiian Pop/Rock', 'hawaii rock'),
 
-    ### Subgéneros de Hawaiian rock
+    ### Hawaiian rock subgenres
     'hawaiian alternative rock': ('Hawaiian Pop/Rock', 'hawaiian alternative rock'),
     'hawaiian indie rock': ('Hawaiian Pop/Rock', 'hawaiian indie rock'),
     'hawaiian metal': ('Hawaiian Pop/Rock', 'hawaiian metal'),
@@ -8634,24 +8693,24 @@ GENRE_MAPPINGS = {
     'mele hula': ('Hawaiian Pop/Rock', 'mele hula'),
     'oli fusion': ('Hawaiian Pop/Rock', 'oli fusion'),
 
-    ## Fusión contemporánea
+    ## Contemporary fusion
     'hawaiian fusion': ('Hawaiian Pop/Rock', 'hawaiian fusion'),
     'pacific fusion hawaii': ('Hawaiian Pop/Rock', 'pacific fusion hawaii'),
 
-    ## Por región
+    ## By region
     'honolulu pop': ('Hawaiian Pop/Rock', 'honolulu pop'),
     'hilo pop': ('Hawaiian Pop/Rock', 'hilo pop'),
     'maui pop': ('Hawaiian Pop/Rock', 'maui pop'),
     'kauai pop': ('Hawaiian Pop/Rock', 'kauai pop'),
     'kona pop': ('Hawaiian Pop/Rock', 'kona pop'),
 
-    ## En hawaiano
+    ## In Hawaiian
     'mele Hawaiʻi': ('Hawaiian Pop/Rock', 'mele Hawaiʻi'),
     'leo Hawaiʻi': ('Hawaiian Pop/Rock', 'leo Hawaiʻi'),
     'pila kī': ('Hawaiian Pop/Rock', 'pila kī'),
 
     ###############################################################################
-    # Aboriginal Australian Pop/Rock (Regional - Australia indígena)
+    # Aboriginal Australian Pop/Rock
     ###############################################################################
     ## Aboriginal Pop General (English / Indigenous Australian languages)
     'indigenous australian pop': ('Aboriginal Australian Pop/Rock', 'indigenous australian pop'),
@@ -8665,7 +8724,7 @@ GENRE_MAPPINGS = {
     'rock aborigen australiano': ('Aboriginal Australian Pop/Rock', 'rock aborigen australiano'),
     'blak rock': ('Aboriginal Australian Pop/Rock', 'blak rock'),
 
-    ### Subgéneros de Aboriginal rock
+    ### Aboriginal rock subgenres
     'indigenous alternative rock': ('Aboriginal Australian Pop/Rock', 'indigenous alternative rock'),
     'indigenous indie rock': ('Aboriginal Australian Pop/Rock', 'indigenous indie rock'),
     'indigenous metal': ('Aboriginal Australian Pop/Rock', 'indigenous metal'),
@@ -8697,7 +8756,7 @@ GENRE_MAPPINGS = {
     'indigenous reggae': ('Aboriginal Australian Pop/Rock', 'indigenous reggae'),
     'aboriginal reggae': ('Aboriginal Australian Pop/Rock', 'aboriginal reggae'),
 
-    ## Por región / nación
+    ## By region / nation
     'yolngu pop': ('Aboriginal Australian Pop/Rock', 'yolngu pop'),
     'pitjantjatjara pop': ('Aboriginal Australian Pop/Rock', 'pitjantjatjara pop'),
     'arnhem land pop': ('Aboriginal Australian Pop/Rock', 'arnhem land pop'),
@@ -8707,13 +8766,13 @@ GENRE_MAPPINGS = {
     'noongar pop': ('Aboriginal Australian Pop/Rock', 'noongar pop'),
     'palawa pop': ('Aboriginal Australian Pop/Rock', 'palawa pop'),
 
-    ## En lenguas aborígenes
+    ## In Aboriginal languages
     'inma': ('Aboriginal Australian Pop/Rock', 'inma'),
     'wangga': ('Aboriginal Australian Pop/Rock', 'wangga'),
     'djunga': ('Aboriginal Australian Pop/Rock', 'djunga'),
 
     ###############################################################################
-    # Pacific Electronica / Island EDM (Regional - toda Oceanía)
+    # Pacific Electronica / Island EDM (all Oceania)
     ###############################################################################
     ## Pacific Electronica General
     'pacific electronica': ('Pacific Electronica', 'pacific electronica'),
@@ -8722,20 +8781,20 @@ GENRE_MAPPINGS = {
     'oceania electronica': ('Pacific Electronica', 'oceania electronica'),
     'tropical house pacific': ('Pacific Electronica', 'tropical house pacific'),
 
-    ## Subgéneros
+    ## Subgenres
     'pacific house': ('Pacific Electronica', 'pacific house'),
     'pacific techno': ('Pacific Electronica', 'pacific techno'),
     'pacific trance': ('Pacific Electronica', 'pacific trance'),
     'pacific ambient': ('Pacific Electronica', 'pacific ambient'),
     'pacific chill': ('Pacific Electronica', 'pacific chill'),
 
-    ## Fusión con elementos tradicionales
+    ## Fusion with traditional elements
     'pacific tribal house': ('Pacific Electronica', 'pacific tribal house'),
     'pacific ethno electronica': ('Pacific Electronica', 'pacific ethno electronica'),
     'didgeridoo electronica': ('Pacific Electronica', 'didgeridoo electronica'),
     'pacific drum and bass': ('Pacific Electronica', 'pacific drum and bass'),
 
-    ## Por región
+    ## By region
     'hawaiian electronica': ('Pacific Electronica', 'hawaiian electronica'),
     'maori electronica': ('Pacific Electronica', 'maori electronica'),
     'fiji electronica': ('Pacific Electronica', 'fiji electronica'),
@@ -8749,7 +8808,7 @@ GENRE_MAPPINGS = {
     'pacific beach house': ('Pacific Electronica', 'pacific beach house'),
 
     ###############################################################################
-    # Torres Strait Islander Pop/Rock (Regional - Islas del Estrecho de Torres)
+    # Torres Strait Islander Pop/Rock
     ###############################################################################
     ## Torres Strait Islander General
     'torres strait pop': ('Torres Strait Islander Pop/Rock', 'torres strait pop'),
@@ -8765,17 +8824,18 @@ GENRE_MAPPINGS = {
     'torres strait hip hop': ('Torres Strait Islander Pop/Rock', 'torres strait hip hop'),
     'tsi rap': ('Torres Strait Islander Pop/Rock', 'tsi rap'),
 
-    ## Fusión con danza tradicional
+    ## Fusion with traditional dance
     'warup fusion': ('Torres Strait Islander Pop/Rock', 'warup fusion'),
     'kaber fusion': ('Torres Strait Islander Pop/Rock', 'kaber fusion'),
 
-    ## En lengua del estrecho de Torres
+    ## In Torres Strait language
     'ailan pop': ('Torres Strait Islander Pop/Rock', 'ailan pop'),
     'yumi musik': ('Torres Strait Islander Pop/Rock', 'yumi musik'),
-}
+
+    }
 
 # ============================================================================
-# STOPWORDS PARA GÉNEROS (OK)
+# # STOPWORDS FOR GENRES
 # ============================================================================
 
 GENRE_STOPWORDS = {
@@ -8793,10 +8853,10 @@ GENRE_STOPWORDS = {
 }
 
 # ============================================================================
-# DICCIONARIO DE PRIORIDAD DE GÉNERO POR PAÍS
+# GENRE PRIORITY DICTIONARY BY COUNTRY
 # ============================================================================
 COUNTRY_GENRE_PRIORITY = {
-    # América del Norte
+    # North America
     "United States": [
         "Pop", "Hip-Hop/Rap", "R&B/Soul", "Country", "Rock",
         "Alternative", "Electrónica/Dance", "Reggaetón/Trap Latino",
@@ -8813,7 +8873,7 @@ COUNTRY_GENRE_PRIORITY = {
         "Classical"
     ],
 
-    # Centroamérica
+    # Central America
     "Guatemala": ["Reggaetón/Trap Latino", "Bachata", "Cumbia", "Dancehall/Reggae", "Tropical/Salsa/Merengue/Bolero"],
     "Honduras": ["Reggaetón/Trap Latino", "Bachata", "Cumbia", "Dancehall/Reggae", "Tropical/Salsa/Merengue/Bolero"],
     "El Salvador": ["Reggaetón/Trap Latino", "Bachata", "Cumbia", "Dancehall/Reggae"],
@@ -8825,7 +8885,7 @@ COUNTRY_GENRE_PRIORITY = {
     ],
     "Belize": ["Dancehall/Reggae", "Reggaetón/Trap Latino", "Pop", "Cumbia"],
 
-    # Caribe
+    # Caribbean
     "Jamaica": ["Dancehall/Reggae"],
     "Puerto Rico": ["Reggaetón/Trap Latino", "Pop"],
     "Dominican Republic": [
@@ -8849,7 +8909,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Dominica": ["Pop", "Dancehall/Reggae", "Reggaetón/Trap Latino"],
     "Saint Kitts and Nevis": ["Pop", "Dancehall/Reggae", "Reggaetón/Trap Latino"],
 
-    # Sudamérica
+    # South America
     "Colombia": [
         "Reggaetón/Trap Latino", "Cumbia", "Vallenato",
         "Tropical/Salsa/Merengue/Bolero", "Pop", "Rock"
@@ -8877,7 +8937,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Suriname": ["Dancehall/Reggae", "Reggaetón/Trap Latino", "Pop"],
     "French Guiana": ["Dancehall/Reggae", "Reggaetón/Trap Latino", "Pop", "Kizomba/Zouk"],
 
-    # Europa Occidental
+    # Western Europe
     "Spain": [
         "Reggaetón/Trap Latino", "Pop", "Hip-Hop/Rap",
         "Flamenco / Copla", "Rock", "Electrónica/Dance",
@@ -8926,7 +8986,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Finland": ["Pop", "Metal", "Hip-Hop/Rap", "Rock", "Iskelmä", "Electrónica/Dance", "Classical"],
     "Iceland": ["Pop", "Alternative", "Rock", "Hip-Hop/Rap", "Electrónica/Dance", "Classical"],
 
-    # Pequeños estados europeos
+    # Small European States
     "Luxembourg": ["Pop", "Hip-Hop/Rap", "Rock", "Electrónica/Dance", "Chanson"],
     "Monaco": ["Pop", "Hip-Hop/Rap", "Chanson", "Electrónica/Dance"],
     "Liechtenstein": ["Pop", "Rock", "Alpine Folk", "Schlager"],
@@ -8935,7 +8995,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Malta": ["Pop", "Rock", "Hip-Hop/Rap", "Electrónica/Dance"],
     "Cyprus": ["Pop", "Rock", "Hip-Hop/Rap", "Laïko", "Electrónica/Dance"],
 
-    # Europa Oriental y Balcanes
+    # Eastern Europe and Balkans
     "Russia": [
         "Pop", "Hip-Hop/Rap", "Rock", "Electrónica/Dance", "Classical",
         "Folk"
@@ -8961,7 +9021,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Belarus": ["Pop", "Rock", "Hip-Hop/Rap"],
     "Moldova": ["Pop", "Rock", "Hip-Hop/Rap", "Manele"],
 
-    # Oriente Medio y Norte de África
+    # Middle East and North Africa
     "Turkey": ["Turkish Pop/Rock", "Pop", "Hip-Hop/Rap", "Rock", "Arabesk", "Classical"],
     "Israel": ["Israeli Pop/Rock", "Pop", "Hip-Hop/Rap", "Rock", "Mizrahi", "Classical"],
     "Lebanon": ["Arabic Pop/Rock", "Pop", "Hip-Hop/Rap"],
@@ -8982,7 +9042,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Oman": ["Arabic Pop/Rock", "Khaliji"],
     "Yemen": ["Arabic Pop/Rock"],
 
-    # África Subsahariana
+    # Sub-Saharan Africa
     "Nigeria": ["Afrobeats", "Hip-Hop/Rap", "Gospel", "Jùjú", "Fuji"],
     "Ghana": ["Afrobeats", "Highlife", "Hip-Hop/Rap", "Gospel"],
     "South Africa": [
@@ -9034,7 +9094,7 @@ COUNTRY_GENRE_PRIORITY = {
     "India": [
         "Indian Pop", "Hip-Hop/Rap", "Bollywood", "Indian Classical",
         "Rock", "Electrónica/Dance"
-    ],  # 'Indian Classical' ya cubre la tradición clásica india, no se añade 'Classical'
+    ],  # 'Indian Classical' already covers the Indian classical tradition, 'Classical' is not added.
     "Pakistan": ["Pakistani Pop", "Hip-Hop/Rap", "Qawwali", "Rock"],
     "Bangladesh": ["Bangladeshi Pop/Rock", "Hip-Hop/Rap", "Folk"],
     "Sri Lanka": ["Sri Lankan Pop/Rock", "Baila", "Hip-Hop/Rap"],
@@ -9087,7 +9147,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Brunei": ["Bruneian Pop/Rock", "Malaysian Pop", "K-Pop/K-Rock"],
     "Timor-Leste": ["Timorese Pop/Rock", "Dancehall/Reggae", "Folk"],
 
-    # Asia Central y Cáucaso
+    # Central Asia and Caucasus
     "Kazakhstan": ["Q-pop/Q-rock", "Pop", "Hip-Hop/Rap", "Folk"],
     "Uzbekistan": ["Pop", "Hip-Hop/Rap", "Folk", "Rock"],
     "Turkmenistan": ["Pop", "Folk"],
@@ -9097,7 +9157,7 @@ COUNTRY_GENRE_PRIORITY = {
     "Georgia": ["Pop", "Hip-Hop/Rap", "Folk", "Rock"],
     "Armenia": ["Pop", "Hip-Hop/Rap", "Folk", "Rock", "Classical"],
 
-    # Oceanía
+    # Oceania
     "Australia": [
         "Pop", "Hip-Hop/Rap", "Rock", "Alternative",
         "Electrónica/Dance", "Country", "Aboriginal Australian Pop/Rock",
@@ -9125,8 +9185,9 @@ COUNTRY_GENRE_PRIORITY = {
 
 DEFAULT_GENRE_PRIORITY = ["Pop", "Hip-Hop/Rap", "Rock", "Electrónica/Dance", "Alternative"]
 
+
 # ============================================================================
-# REGLAS ESPECÍFICAS POR PAÍS
+# COUNTRY-SPECIFIC RULES
 # ============================================================================
 
 COUNTRY_SPECIFIC_RULES = {
@@ -9374,26 +9435,25 @@ COUNTRY_SPECIFIC_RULES = {
 }
 
 # ============================================================================
-# LISTA DE MACROGÉNEROS GENÉRICOS (PARA MAPEO REGIONAL)
+# LIST OF GENERIC MACRO-GENRES
 # ============================================================================
 GENERIC_MACROS = {
     "Pop", "Rock", "Hip-Hop/Rap", "R&B/Soul", "Electrónica/Dance",
     "Alternative", "Metal", "Punk", "Country", "Jazz/Blues", "Folklore/Raíces", "Classical" }
 
-
 # ============================================================================
-# FUNCIÓN DE DETECCIÓN DE ESCRITURA MEJORADA
+# ENHANCED SCRIPT DETECTION FUNCTION
 # ============================================================================
 
 def detect_script_from_name(name: str) -> Optional[str]:
     """
-    Detecta el sistema de escritura y, si es posible, el idioma específico.
-    Retorna código ISO 639-1 (ej. 'ru', 'uk', 'bg', 'hi', 'ur', etc.) o None.
+    Detect the writing system from an artist name and, if possible,
+    return an ISO 639-1 language code (e.g., 'ru', 'uk', 'bg', 'hi', 'ur').
+    Returns None if no specific script is identified.
     """
-    # Primero identificar el rango Unicode principal
+    # First identify the main Unicode range
     if re.search(r'[\u0900-\u097F]', name):      # Devanagari
-        # Podríamos intentar distinguir hindi, marathi, nepalí, pero por ahora asumimos hindi
-        # y en la búsqueda se probarán otros si es necesario
+        # Could try to distinguish Hindi, Marathi, Nepali, but default to Hindi
         return 'hi'
     elif re.search(r'[\u0A80-\u0AFF]', name):    # Gujarati
         return 'gu'
@@ -9409,57 +9469,61 @@ def detect_script_from_name(name: str) -> Optional[str]:
         return 'ml'
     elif re.search(r'[\u0D80-\u0DFF]', name):    # Sinhala
         return 'si'
-    elif re.search(r'[\u0E00-\u0E7F]', name):    # Tailandés
+    elif re.search(r'[\u0E00-\u0E7F]', name):    # Thai
         return 'th'
-    elif re.search(r'[\u0F00-\u0FFF]', name):    # Tibetano
+    elif re.search(r'[\u0F00-\u0FFF]', name):    # Tibetan
         return 'bo'
-    elif re.search(r'[\u1000-\u109F]', name):    # Birmano
+    elif re.search(r'[\u1000-\u109F]', name):    # Burmese
         return 'my'
-    elif re.search(r'[\u1780-\u17FF]', name):    # Jemer
+    elif re.search(r'[\u1780-\u17FF]', name):    # Khmer
         return 'km'
-    elif re.search(r'[\u3040-\u309F\u30A0-\u30FF]', name):  # Japonés
+    elif re.search(r'[\u3040-\u309F\u30A0-\u30FF]', name):  # Japanese (Hiragana/Katakana)
         return 'ja'
-    elif re.search(r'[\u4E00-\u9FFF]', name):    # Chino (Han)
+    elif re.search(r'[\u4E00-\u9FFF]', name):    # Chinese (Han)
         if re.search(r'[\uAC00-\uD7AF]', name):
-            return 'ko'  # Coreano (hangul + hanja)
+            return 'ko'  # Korean (Hangul + Hanja)
         return 'zh'
-    elif re.search(r'[\uAC00-\uD7AF]', name):    # Hangul (coreano)
+    elif re.search(r'[\uAC00-\uD7AF]', name):    # Hangul (Korean)
         return 'ko'
-    elif re.search(r'[\u0600-\u06FF]', name) or re.search(r'[\u0750-\u077F]', name):  # Árabe/Urdu
-        # Detectar urdu por caracteres específicos: گ چ پ ژ
+    elif re.search(r'[\u0600-\u06FF]', name) or re.search(r'[\u0750-\u077F]', name):  # Arabic/Urdu
+        # Detect Urdu by specific characters: گ چ پ ژ
         if re.search(r'[گچپژ]', name):
             return 'ur'
         else:
             return 'ar'
-    elif re.search(r'[\u0400-\u04FF]', name):    # Cirílico
-        # Heurísticas simples para distinguir idiomas
-        # Ucraniano: і, ї, є, ґ
+    elif re.search(r'[\u0400-\u04FF]', name):    # Cyrillic
+        # Simple heuristics to distinguish languages
+        # Ukrainian: і, ї, є, ґ
         if re.search(r'[іїєґ]', name, re.IGNORECASE):
             return 'uk'
-        # Búlgaro: ъ (al final de palabra es común)
+        # Bulgarian: ъ (common at end of words)
         if re.search(r'ъ', name, re.IGNORECASE):
             return 'bg'
-        # Serbio: ћ, ђ, џ, љ, њ (aunque también usa cirílico)
+        # Serbian: ћ, ђ, џ, љ, њ (though also uses Cyrillic)
         if re.search(r'[ћђџљњ]', name, re.IGNORECASE):
-            return 'sr'  # o 'sh' para serbocroata, pero usamos 'sr'
-        # Por defecto ruso
+            return 'sr'  # or 'sh' for Serbo-Croatian, but we use 'sr'
+        # Default to Russian
         return 'ru'
-    elif re.search(r'[\u0370-\u03FF]', name):    # Griego
+    elif re.search(r'[\u0370-\u03FF]', name):    # Greek
         return 'el'
-    elif re.search(r'ñ', name, re.IGNORECASE):   # Ñ española
+    elif re.search(r'ñ', name, re.IGNORECASE):   # Spanish ñ
         return 'es'
-    elif re.search(r'[çãõáéíóúâêôàèìòùäëïöü]', name, re.IGNORECASE):  # Acentos latinos
-        # Podríamos intentar distinguir portugués (ç, ã, õ) del español, pero por simplicidad
+    elif re.search(r'[çãõáéíóúâêôàèìòùäëïöü]', name, re.IGNORECASE):  # Latin accents
+        # Try to distinguish Portuguese (ç, ã, õ) from Spanish
         if re.search(r'[çãõ]', name, re.IGNORECASE):
             return 'pt'
         return 'es'
     return None
 
 # ============================================================================
-# FUNCIONES DE NORMALIZACIÓN DE GÉNERO
+# GENRE NORMALIZATION FUNCTIONS
 # ============================================================================
 
 def normalize_genre(genre_text: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Normalize a genre string to (macro_genre, subgenre).
+    Returns (None, None) if no mapping is found.
+    """
     if not genre_text:
         return None, None
     text_norm = normalize_text(genre_text)
@@ -9484,10 +9548,14 @@ def normalize_genre(genre_text: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 # ============================================================================
-# FUNCIONES DE EXTRACCIÓN DE GÉNERO
+# GENRE EXTRACTION FUNCTIONS
 # ============================================================================
 
 def extract_genre_from_musicbrainz(mb_data: dict) -> List[Tuple[str, int, str]]:
+    """
+    Extract genre tags from a MusicBrainz artist record.
+    Returns list of (genre_name, count, source) tuples.
+    """
     candidates = []
     if 'genres' in mb_data:
         for genre in mb_data['genres'][:5]:
@@ -9504,7 +9572,7 @@ def extract_genre_from_musicbrainz(mb_data: dict) -> List[Tuple[str, int, str]]:
     return candidates
 
 def search_musicbrainz_genre_cached(artist: str) -> List[Tuple[str, int, str]]:
-    """Busca en MusicBrainz con caché."""
+    """Search MusicBrainz for genre tags, with caching."""
     if artist in _CACHE['musicbrainz_genre']:
         return _CACHE['musicbrainz_genre'][artist]
     candidates = []
@@ -9519,12 +9587,12 @@ def search_musicbrainz_genre_cached(artist: str) -> List[Tuple[str, int, str]]:
                 mb_data = data['artists'][0]
                 candidates = extract_genre_from_musicbrainz(mb_data)
     except Exception as e:
-        logger.debug(f"Error en MusicBrainz para {artist}: {e}")
+        logger.debug(f"Error in MusicBrainz for {artist}: {e}")
     _CACHE['musicbrainz_genre'][artist] = candidates
     return candidates
 
 def search_wikidata_genre_cached(artist: str) -> List[Tuple[str, int, str]]:
-    """Busca en Wikidata con caché."""
+    """Search Wikidata for genre claims, with caching."""
     if artist in _CACHE['wikidata_genre']:
         return _CACHE['wikidata_genre'][artist]
     candidates = []
@@ -9582,14 +9650,14 @@ def search_wikidata_genre_cached(artist: str) -> List[Tuple[str, int, str]]:
                                     if genre_name:
                                         candidates.append((genre_name.lower(), 3, 'wikidata'))
                     except Exception as e:
-                        logger.debug(f"Error procesando claim de género: {e}")
+                        logger.debug(f"Error processing genre claim: {e}")
     except Exception as e:
-        logger.debug(f"Error en Wikidata genre search: {e}")
+        logger.debug(f"Error in Wikidata genre search: {e}")
     _CACHE['wikidata_genre'][artist] = candidates
     return candidates
 
 def search_wikipedia_infobox_genre_cached(artist: str, lang: str = 'en') -> List[Tuple[str, int, str]]:
-    """Busca en infobox de Wikipedia con caché."""
+    """Search Wikipedia infobox for genre, with caching."""
     key = (artist, lang)
     if key in _CACHE['wikipedia_genre']:
         return _CACHE['wikipedia_genre'][key]
@@ -9642,12 +9710,12 @@ def search_wikipedia_infobox_genre_cached(artist: str, lang: str = 'en') -> List
                     if g and len(g) > 2 and g not in GENRE_STOPWORDS:
                         candidates.append((g, 2, f'wikipedia_{lang}_infobox'))
     except Exception as e:
-        logger.debug(f"Error en Wikipedia infobox genre: {e}")
+        logger.debug(f"Error in Wikipedia infobox genre: {e}")
     _CACHE['wikipedia_genre'][key] = candidates
     return candidates
 
 def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List[Tuple[str, int, str]]:
-    """Busca en resumen de Wikipedia con caché."""
+    """Search Wikipedia summary (first paragraph) for genre hints, with caching."""
     key = (artist, lang)
     if key in _CACHE['wikipedia_genre']:
         return _CACHE['wikipedia_genre'][key]
@@ -9665,7 +9733,7 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
             _CACHE['wikipedia_genre'][key] = candidates
             return candidates
 
-        # Patrones de extracción
+        # Pattern: "is a [genre] singer/rapper/musician..."
         pattern1 = r'is\s+(?:a|an)\s+([a-z\s\-]+?)\s+(?:singer|rapper|musician|artist|songwriter|producer|dj|band|group|duo|trio)'
         matches = re.findall(pattern1, extract)
         for match in matches:
@@ -9676,6 +9744,7 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
                 if sub and len(sub) > 2 and sub not in GENRE_STOPWORDS:
                     candidates.append((sub, 1, f'wikipedia_{lang}_summary'))
 
+        # Pattern: "[nationality] [genre] singer..."
         pattern2 = r'(?:american|british|canadian|australian|indian|korean|japanese|mexican|spanish|french|german|italian|brazilian|argentine|colombian|chilean|peruvian|venezuelan|puerto rican|cuban|dominican|african|nigerian|south african|kenyan|egyptian|moroccan|israeli|turkish|russian|ukrainian|polish|swedish|norwegian|danish|finnish|dutch|belgian|swiss|austrian|portuguese|greek|irish|scottish|welsh|english)\s+([a-z\s\-]+?)\s+(?:singer|rapper|musician|artist|songwriter|producer|dj|band|group|duo)'
         matches = re.findall(pattern2, extract)
         for match in matches:
@@ -9686,6 +9755,7 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
                 if sub and len(sub) > 2 and sub not in GENRE_STOPWORDS:
                     candidates.append((sub, 1, f'wikipedia_{lang}_summary'))
 
+        # Pattern: "are a [genre] band/group"
         pattern3 = r'are\s+(?:a|an)\s+([a-z\s\-]+?)\s+(?:band|group|duo)'
         matches = re.findall(pattern3, extract)
         for match in matches:
@@ -9696,6 +9766,7 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
                 if sub and len(sub) > 2 and sub not in GENRE_STOPWORDS:
                     candidates.append((sub, 1, f'wikipedia_{lang}_summary'))
 
+        # Pattern: "playing [genre] music"
         pattern4 = r'playing\s+([a-z\s\-]+?)\s+music'
         matches = re.findall(pattern4, extract)
         for match in matches:
@@ -9703,6 +9774,7 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
             if candidate and len(candidate) > 2 and candidate not in GENRE_STOPWORDS:
                 candidates.append((candidate, 1, f'wikipedia_{lang}_summary'))
 
+        # Pattern: "known for their [genre] music"
         pattern5 = r'known\s+for\s+their\s+([a-z\s\-]+?)\s+music'
         matches = re.findall(pattern5, extract)
         for match in matches:
@@ -9710,6 +9782,7 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
             if candidate and len(candidate) > 2 and candidate not in GENRE_STOPWORDS:
                 candidates.append((candidate, 1, f'wikipedia_{lang}_summary'))
 
+        # Pattern: "genre is [genre]"
         pattern6 = r'genre\s+is\s+([a-z\s\-]+?)(?:\.|,|$)'
         matches = re.findall(pattern6, extract)
         for match in matches:
@@ -9717,7 +9790,7 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
             if candidate and len(candidate) > 2 and candidate not in GENRE_STOPWORDS:
                 candidates.append((candidate, 1, f'wikipedia_{lang}_summary'))
 
-        # Lista de palabras clave ampliada
+        # Keyword matching (low weight)
         genre_keywords = ['pop', 'rock', 'hip hop', 'rap', 'trap', 'reggaeton',
                          'reggaetón', 'cumbia', 'bachata', 'salsa', 'metal',
                          'punk', 'indie', 'alternative', 'electrónica', 'dance',
@@ -9731,26 +9804,26 @@ def search_wikipedia_summary_genre_cached(artist: str, lang: str = 'en') -> List
                 if re.search(pattern, extract):
                     candidates.append((keyword, 0.5, f'wikipedia_{lang}_keyword'))
     except Exception as e:
-        logger.debug(f"Error en Wikipedia summary genre: {e}")
+        logger.debug(f"Error in Wikipedia summary genre: {e}")
     _CACHE['wikipedia_genre'][key] = candidates
     return candidates
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL DE BÚSQUEDA DE GÉNERO (con mejoras)
+# MAIN GENRE SEARCH FUNCTION
 # ============================================================================
 
 def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Optional[str], str]:
     """
-    Busca el género principal con un flujo optimizado:
-    1. MusicBrainz (siempre, con caché)
-    2. Wikidata (siempre, con caché)
-    3. Wikipedia en idiomas prioritarios según país y escritura, con parada temprana
+    Search for the artist's primary genre using an optimized flow:
+    1. MusicBrainz (always, cached)
+    2. Wikidata (always, cached)
+    3. Wikipedia in priority languages based on country and detected script, with early stop.
     """
     all_candidates = []
     variations = generate_all_variations(artist)
     detected_lang = detect_script_from_name(artist)
 
-    # --- MusicBrainz (siempre) ---
+    # --- MusicBrainz (always) ---
     for var in variations[:2]:
         candidates = search_musicbrainz_genre_cached(var)
         all_candidates.extend(candidates)
@@ -9758,7 +9831,7 @@ def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Opt
             break
         time.sleep(0.5)
 
-    # --- Wikidata (siempre) ---
+    # --- Wikidata (always) ---
     if not all_candidates:
         for var in variations[:2]:
             candidates = search_wikidata_genre_cached(var)
@@ -9769,7 +9842,7 @@ def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Opt
 
     MIN_CANDIDATES = 3
 
-    # --- Wikipedia en idiomas prioritarios ---
+    # --- Wikipedia in priority languages ---
     priority_langs = []
     if country:
         country_lang_map = {
@@ -9838,29 +9911,28 @@ def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Opt
             if len(all_candidates) >= MIN_CANDIDATES:
                 break
 
-    # --- Fallback si no hay candidatos pero conocemos el país ---
+    # --- Fallback: use country priority if no candidates but we have a country ---
     if not all_candidates and country:
         priority = COUNTRY_GENRE_PRIORITY.get(country, DEFAULT_GENRE_PRIORITY)
         if priority:
-            return priority[0], f"Género: fallback por país ({country})"
-        # <-- MEJORA
+            return priority[0], f"Genre: country fallback ({country})"
 
     if all_candidates:
         primary_genre = select_primary_genre(artist, all_candidates, country, detected_lang)
         sources = set(s for _, _, s in all_candidates)
-        return primary_genre, f"Género: {', '.join(sources)}"
+        return primary_genre, f"Genre: {', '.join(sources)}"
 
-    return None, "Género no encontrado"
+    return None, "Genre not found"
 
 def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str]],
                          country: Optional[str] = None, detected_lang: Optional[str] = None) -> Optional[str]:
     """
-    Selecciona el género principal con sistema de pesos mejorado y mapeo regional.
+    Select the primary genre using a weighted voting system and regional mapping.
     """
     if not genre_candidates:
         return None
 
-    # Mapear cada candidato a su macro-género
+    # Map each candidate to its macro-genre
     macro_votes = defaultdict(float)
     detailed_info = []
 
@@ -9869,7 +9941,7 @@ def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str
         if macro:
             final_weight = weight
 
-            # Bonus por fuente
+            # Source-based bonuses
             if 'musicbrainz' in source:
                 final_weight *= 1.5
             if 'infobox' in source:
@@ -9877,63 +9949,60 @@ def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str
             if 'wikidata' in source:
                 final_weight *= 1.3
 
-            # Bonus específicos por términos (ayudan a identificar subgéneros)
+            # Specific term bonuses (help identify subgenres)
             sub_lower = subgenre.lower()
             # Latino
             if any(term in sub_lower for term in ['reggaeton', 'reggaetón', 'regueton', 'reguetón', 'trap latino', 'urbano', 'dembow', 'perreo']):
                 final_weight *= 1.4
                 if macro != 'Reggaetón/Trap Latino':
                     macro = 'Reggaetón/Trap Latino'
-            # Corea
+            # Korea
             if any(term in sub_lower for term in ['k-pop', 'kpop', 'korean pop', 'k-rap', 'k-r&b']):
                 final_weight *= 1.4
                 if macro != 'K-Pop/K-Rock':
                     macro = 'K-Pop/K-Rock'
-            # Japón
+            # Japan
             if any(term in sub_lower for term in ['j-pop', 'jpop', 'japanese pop']):
                 final_weight *= 1.4
                 if macro != 'J-Pop/J-Rock':
                     macro = 'J-Pop/J-Rock'
-            # India / Sur de Asia
+            # India / South Asia
             if any(term in sub_lower for term in ['indian', 'bollywood', 'punjabi', 'bhangra']):
                 final_weight *= 1.3
             if any(term in sub_lower for term in ['pakistani pop', 'urdu', 'lollywood']):
                 final_weight *= 1.3
             if any(term in sub_lower for term in ['bangladeshi pop', 'bengali']):
                 final_weight *= 1.3
-            # Brasil
-            if any(term in sub_lower for term in ['sertanejo', 'funk brasileiro', 'funk carioca', 'funk']):  # <-- MEJORA (añadido 'funk')
+            # Brazil
+            if any(term in sub_lower for term in ['sertanejo', 'funk brasileiro', 'funk carioca', 'funk']):
                 final_weight *= 1.4
-                # No forzamos, las reglas de país harán su trabajo
-            # África
+            # Africa
             if any(term in sub_lower for term in ['afrobeats', 'naija', 'amapiano']):
                 final_weight *= 1.4
 
             macro_votes[macro] += final_weight
             detailed_info.append(f"{subgenre}→{macro} ({source}:{final_weight:.1f})")
         else:
-            # Si no se pudo mapear, ver si es un macro conocido
+            # If not mapped, check if it's a known macro
             for known_macro in MACRO_GENRES:
                 if subgenre.lower() == known_macro.lower():
                     macro_votes[known_macro] += weight
                     detailed_info.append(f"{subgenre}→{known_macro} ({source})")
                     break
 
-    # --- MAPEO DE GÉNEROS GENÉRICOS A REGIONALES ---
-    # Si el país tiene map_generic_to, añadimos votos extra para cada candidato genérico
+    # --- MAP GENERIC GENRES TO REGIONAL ONES ---
+    # If the country has a map_generic_to rule, add extra votes for each generic candidate
     if country and country in COUNTRY_SPECIFIC_RULES:
         rule = COUNTRY_SPECIFIC_RULES[country]
         map_to = rule.get("map_generic_to")
         if map_to:
-            # Recorremos los candidatos originales (sin normalizar) para detectar genéricos
             for subgenre, weight, source in genre_candidates:
                 macro, _ = normalize_genre(subgenre)
                 if macro and macro in GENERIC_MACROS:
-                    # Añadimos un voto al macro regional con el mismo peso (ya bonificado)  # <-- MEJORA
-                    macro_votes[map_to] += weight  # antes era weight * 0.8
+                    macro_votes[map_to] += weight
                     detailed_info.append(f"map_generic: {subgenre}→{map_to} (weight {weight:.1f})")
 
-    # --- APLICAR BONUS POR PAÍS (según prioridad) ---
+    # --- APPLY COUNTRY PRIORITY BONUS ---
     if country and macro_votes:
         priority = COUNTRY_GENRE_PRIORITY.get(country, DEFAULT_GENRE_PRIORITY)
         for macro in list(macro_votes.keys()):
@@ -9946,7 +10015,7 @@ def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str
                 else:
                     macro_votes[macro] *= 1.2
 
-    # --- APLICAR REGLAS ESPECÍFICAS POR PAÍS (keywords, force_macro, prefer_genre) ---
+    # --- APPLY COUNTRY-SPECIFIC RULES (keywords, force_macro, prefer_genre) ---
     if country and macro_votes and country in COUNTRY_SPECIFIC_RULES:
         rule = COUNTRY_SPECIFIC_RULES[country]
         for macro in list(macro_votes.keys()):
@@ -9962,18 +10031,18 @@ def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str
                         macro_votes[macro] *= rule["bonus_extra"]
                     break
 
-    # --- BONUS POR ESCRITURA DETECTADA Y PAÍS ---
+    # --- BONUS BASED ON DETECTED SCRIPT AND COUNTRY ---
     if detected_lang and country:
-        # Sur de Asia
+        # South Asia
         if detected_lang in ['hi', 'ta', 'te', 'ml', 'kn', 'gu', 'or', 'bn'] and country in ['India', 'Pakistan', 'Bangladesh']:
-            for m in ['Indian Pop', 'Pakistani Pop', 'Bangladeshi Pop/Rock']:  # <-- MEJORA (nombres actualizados)
+            for m in ['Indian Pop', 'Pakistani Pop', 'Bangladeshi Pop/Rock']:
                 if m in macro_votes:
                     macro_votes[m] *= 1.2
-        # Corea
+        # Korea
         if detected_lang == 'ko' and country == 'South Korea':
             if 'K-Pop/K-Rock' in macro_votes:
                 macro_votes['K-Pop/K-Rock'] *= 1.2
-        # Japón
+        # Japan
         if detected_lang == 'ja' and country == 'Japan':
             if 'J-Pop/J-Rock' in macro_votes:
                 macro_votes['J-Pop/J-Rock'] *= 1.2
@@ -9985,35 +10054,35 @@ def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str
         if detected_lang == 'mn' and country == 'Mongolia':
             if 'Mongolian Pop/Rock/Metal' in macro_votes:
                 macro_votes['Mongolian Pop/Rock/Metal'] *= 1.2
-        # Mundo árabe
+        # Arab world
         if detected_lang == 'ar' and country in ['Egypt', 'Saudi Arabia', 'UAE', 'Morocco', 'Algeria', 'Tunisia']:
             if 'Arabic Pop/Rock' in macro_votes:
                 macro_votes['Arabic Pop/Rock'] *= 1.2
-        # Turquía
+        # Turkey
         if detected_lang == 'tr' and country == 'Turkey':
             if 'Turkish Pop/Rock' in macro_votes:
                 macro_votes['Turkish Pop/Rock'] *= 1.2
-        # Kazajistán
+        # Kazakhstan
         if detected_lang == 'kk' and country == 'Kazakhstan':
             if 'Q-pop/Q-rock' in macro_votes:
                 macro_votes['Q-pop/Q-rock'] *= 1.2
 
-    # Mostrar candidatos en debug
+    # Log candidates in debug mode
     if detailed_info and logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"Candidatos para género de {len(genre_candidates)} fuentes: {', '.join(detailed_info)}")
+        logger.debug(f"Candidates for {len(genre_candidates)} sources: {', '.join(detailed_info)}")
 
     if macro_votes:
         primary_macro = max(macro_votes.items(), key=lambda x: x[1])[0]
         if len(macro_votes) > 1 and logger.isEnabledFor(logging.DEBUG):
             sorted_votes = sorted(macro_votes.items(), key=lambda x: x[1], reverse=True)
             if sorted_votes[0][1] / sorted_votes[1][1] < 1.5:
-                logger.debug(f"  📊 Múltiples géneros detectados: {dict(sorted_votes)}")
+                logger.debug(f"  📊 Multiple genres detected: {dict(sorted_votes)}")
         return primary_macro
 
     return None
 
 # ============================================================================
-# FUNCIONES DE PAÍS (con caché)
+# COUNTRY FUNCTIONS (with cache)
 # ============================================================================
 
 def search_musicbrainz_country_cached(artist: str) -> Tuple[Optional[str], str]:
@@ -10225,7 +10294,7 @@ def search_wikidata_country_cached(artist: str) -> Optional[str]:
 def search_country(artist: str) -> Tuple[Optional[str], str]:
     variations = generate_all_variations(artist)
 
-    for var in variations[:3]:  # limitar variaciones
+    for var in variations[:3]:
         country, source = search_musicbrainz_country_cached(var)
         if country:
             info = f" (var: {var})" if var != artist else ""
@@ -10244,7 +10313,7 @@ def search_country(artist: str) -> Tuple[Optional[str], str]:
             return country, f"Wikipedia EN infobox{info}"
     time.sleep(0.3)
 
-    # Probar idiomas prioritarios según país detectado
+    # Try priority languages based on detected script
     detected_lang = detect_script_from_name(artist)
     priority_langs = []
     if detected_lang:
@@ -10270,11 +10339,11 @@ def search_country(artist: str) -> Tuple[Optional[str], str]:
     return None, "Not found"
 
 # ============================================================================
-# FUNCIONES DE BASE DE DATOS
+# DATABASE FUNCTIONS
 # ============================================================================
 
 def create_database():
-    """Crea la base de datos con la columna de género"""
+    """Create the artist database with a genre column."""
     try:
         conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
@@ -10305,7 +10374,7 @@ def create_database():
         raise
 
 def artist_in_database(artist: str) -> Tuple[bool, Optional[str], Optional[str]]:
-    """Retorna: (existe, country, macro_genre)"""
+    """Return (exists, country, macro_genre) for an artist."""
     try:
         conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
@@ -10321,7 +10390,7 @@ def artist_in_database(artist: str) -> Tuple[bool, Optional[str], Optional[str]]
         return False, None, None
 
 def insert_artist(artist: str, country: str, genre: Optional[str] = None, source: str = ""):
-    """Inserta o actualiza un artista con país y género"""
+    """Insert or update an artist with country and genre."""
     try:
         conn = sqlite3.connect(str(ARTIST_DB_PATH))
         cursor = conn.cursor()
@@ -10348,7 +10417,7 @@ def insert_artist(artist: str, country: str, genre: Optional[str] = None, source
                 ''', params)
                 conn.commit()
                 if source:
-                    logger.info(f"  🔄 {artist} → País: {country if update_country else existing_country} | Género: {genre if update_genre else existing_genre} ({source})")
+                    logger.info(f"  🔄 {artist} → Country: {country if update_country else existing_country} | Genre: {genre if update_genre else existing_genre} ({source})")
         else:
             cursor.execute('''
                 INSERT INTO artist (name, country, macro_genre)
@@ -10356,9 +10425,9 @@ def insert_artist(artist: str, country: str, genre: Optional[str] = None, source
             ''', (artist, country, genre))
             conn.commit()
             if source:
-                logger.info(f"  ➕ {artist} → País: {country} | Género: {genre or 'N/A'} ({source})")
+                logger.info(f"  ➕ {artist} → Country: {country} | Genre: {genre or 'N/A'} ({source})")
             else:
-                logger.info(f"  ✅ {artist} → País: {country} | Género: {genre or 'N/A'}")
+                logger.info(f"  ✅ {artist} → Country: {country} | Genre: {genre or 'N/A'}")
         conn.close()
     except Exception as e:
         logger.error(f"Error inserting {artist}: {e}")
@@ -10373,31 +10442,32 @@ def count_artists_in_database() -> int:
         return total
     except:
         return 0
+
 # ============================================================================
-# FUNCIÓN PARA OBTENER LA ÚLTIMA BASE DE DATOS DE CHARTS
+# FUNCTION TO GET THE LATEST CHART DATABASE
 # ============================================================================
 def get_latest_chart_database() -> Optional[Path]:
     if not CHARTS_DB_DIR.exists():
-        logger.error(f"❌ Directorio no encontrado: {CHARTS_DB_DIR}")
+        logger.error(f"❌ Directory not found: {CHARTS_DB_DIR}")
         return None
     db_files = list(CHARTS_DB_DIR.glob("youtube_charts_*.db"))
     if not db_files:
-        logger.error("❌ No se encontraron bases de datos de charts")
+        logger.error("❌ No chart databases found")
         return None
     latest = max(db_files, key=lambda f: f.stat().st_mtime)
-    logger.info(f"📁 Usando base de datos: {latest.name}")
+    logger.info(f"📁 Using database: {latest.name}")
     return latest
 
 # ============================================================================
-# FUNCIÓN PARA OBTENER ARTISTAS DESDE LA BASE DE DATOS DE CHARTS
+# FUNCTION TO EXTRACT ARTISTS FROM THE CHART DATABASE
 # ============================================================================
 def get_artists_from_chart_db(db_path: Path) -> Set[str]:
     if not db_path.exists():
-        logger.error(f"❌ Archivo no encontrado: {db_path}")
+        logger.error(f"❌ File not found: {db_path}")
         return set()
     artists = set()
     try:
-        conn = sqlite3.connect(str(ARTIST_DB_PATH))
+        conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(chart_data)")
         columns = [col[1] for col in cursor.fetchall()]
@@ -10407,7 +10477,7 @@ def get_artists_from_chart_db(db_path: Path) -> Set[str]:
                 artist_column = col
                 break
         if not artist_column:
-            logger.error("❌ No se encontró columna de artistas en chart_data")
+            logger.error("❌ No artist column found in chart_data")
             conn.close()
             return set()
         safe_column = f'"{artist_column}"' if ' ' in artist_column else artist_column
@@ -10417,37 +10487,37 @@ def get_artists_from_chart_db(db_path: Path) -> Set[str]:
             if row[0]:
                 artists.update(split_artists(str(row[0])))
         conn.close()
-        logger.info(f"📊 {len(artists)} artistas únicos en la base de datos de charts")
+        logger.info(f"📊 {len(artists)} unique artists in the chart database")
         return artists
     except Exception as e:
-        logger.error(f"❌ Error leyendo base de datos: {e}")
+        logger.error(f"❌ Error reading database: {e}")
         if 'conn' in locals():
             conn.close()
         return set()
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL
+# MAIN FUNCTION
 # ============================================================================
 def main():
     logger.info("="*80)
-    logger.info("🎵 Artist Country + Genre Detection System - MODO GITHUB")
-    logger.info(f"📁 DB de charts: {CHARTS_DB_DIR}")
-    logger.info(f"💾 DB de artistas: {ARTIST_DB_PATH}")
+    logger.info("🎵 Artist Country + Genre Detection System - GITHUB MODE")
+    logger.info(f"📁 Chart DB directory: {CHARTS_DB_DIR}")
+    logger.info(f"💾 Artist DB path: {ARTIST_DB_PATH}")
     logger.info("="*80)
 
     create_database()
 
     chart_db = get_latest_chart_database()
     if not chart_db:
-        logger.error("❌ No se pudo obtener la base de datos de charts. Abortando.")
+        logger.error("❌ Could not obtain chart database. Aborting.")
         sys.exit(1)
 
     chart_artists = get_artists_from_chart_db(chart_db)
     if not chart_artists:
-        logger.error("❌ No se encontraron artistas en la base de datos.")
+        logger.error("❌ No artists found in the chart database.")
         sys.exit(1)
 
-    logger.info(f"🎯 {len(chart_artists)} artistas únicos a procesar\n")
+    logger.info(f"🎯 {len(chart_artists)} unique artists to process\n")
 
     in_db = 0
     new_found = 0
@@ -10463,9 +10533,9 @@ def main():
             genre_found += 1
         else:
             if exists:
-                logger.info(f"  🔍 {artist} (en DB - País: {db_country or '?'} | Género: {db_genre or '?'}, buscando info faltante...)")
+                logger.info(f"  🔍 {artist} (in DB - Country: {db_country or '?'} | Genre: {db_genre or '?'}, searching missing info...)")
             else:
-                logger.info(f"  🔍 {artist} (nuevo, buscando...)")
+                logger.info(f"  🔍 {artist} (new, searching...)")
 
             country, country_source = search_country(artist)
 
@@ -10480,7 +10550,7 @@ def main():
             source_combined = []
             if country_source != "Not found":
                 source_combined.append(country_source)
-            if genre_source and genre_source != "Género no encontrado":
+            if genre_source and genre_source != "Genre not found":
                 source_combined.append(genre_source)
 
             final_source = " | ".join(source_combined) if source_combined else ""
@@ -10496,19 +10566,18 @@ def main():
 
         if i % 10 == 0:
             logger.info(f"\n  📊 {i}/{len(chart_artists)} | "
-                        f"✅ Completos: {in_db} | 🔍 Nuevos país: {new_found} | 🎵 Nuevos género: {genre_found} | ❌ Sin info: {not_found}\n")
+                        f"✅ Complete: {in_db} | 🔍 New country: {new_found} | 🎵 New genre: {genre_found} | ❌ No info: {not_found}\n")
 
     logger.info("\n" + "="*80)
     logger.info(f"📈 SUMMARY")
-    logger.info(f"   Total artistas procesados: {len(chart_artists)}")
+    logger.info(f"   Total artists processed: {len(chart_artists)}")
     if len(chart_artists) > 0:
-        logger.info(f"   ✅ Completos (país+género): {in_db} ({in_db/len(chart_artists)*100:.1f}%)")
-        logger.info(f"   🔍 Nuevos país encontrados: {new_found} ({new_found/len(chart_artists)*100:.1f}%)")
-        logger.info(f"   🎵 Nuevos género encontrados: {genre_found} ({genre_found/len(chart_artists)*100:.1f}%)")
-        logger.info(f"   ❌ Sin información: {not_found} ({not_found/len(chart_artists)*100:.1f}%)")
-    logger.info(f"   🗃️  Total en DB: {count_artists_in_database()}")
+        logger.info(f"   ✅ Complete (country+genre): {in_db} ({in_db/len(chart_artists)*100:.1f}%)")
+        logger.info(f"   🔍 New country found: {new_found} ({new_found/len(chart_artists)*100:.1f}%)")
+        logger.info(f"   🎵 New genre found: {genre_found} ({genre_found/len(chart_artists)*100:.1f}%)")
+        logger.info(f"   ❌ No information: {not_found} ({not_found/len(chart_artists)*100:.1f}%)")
+    logger.info(f"   🗃️  Total in DB: {count_artists_in_database()}")
     logger.info("="*80)
 
 if __name__ == "__main__":
     main()
-
