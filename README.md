@@ -1,434 +1,176 @@
-# 🎵 YouTube Charts Scraper: Automated Download
-YouTube Charts Scraper: Descarga Automatizada <Br><Br>
-![Texto alternativo](https://img.shields.io/badge/License-MIT-green)
-![Texto alternativo](https://img.shields.io/badge/Web-Scraping-orange)
-[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#)
-[![Pandas](https://img.shields.io/badge/Pandas-150458?logo=pandas&logoColor=fff)](#)
-[![NumPy](https://img.shields.io/badge/NumPy-4DABCF?logo=numpy&logoColor=fff)](#)
+# 🎵 Music Charts Intelligence System
+
+![MIT](https://img.shields.io/badge/License-MIT-green) 
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) 
+[![Pandas](https://img.shields.io/badge/Pandas-150458?logo=pandas&logoColor=fff)](#) 
 [![Playwright](https://custom-icon-badges.demolab.com/badge/Playwright-2EAD33?logo=playwright&logoColor=fff)](#)
-[![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#)
+[![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) 
 
-## 📥 Quick Downloads/Descarga Rápida
-| Document/Documento                  | Format/Formato                                                       |
-| ------------------------- | ------------------------------------------------------------ |
-| **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1SdLvJnxcKxmQYmLlwoYttHr2Izud4iE5/view?usp=sharing) |
-| **🇪🇸 Spanish Documentation** | [PDF](https://drive.google.com/file/d/11ANLX6PbK_eIzvHLPqL1rm9NY9rOshhD/view?usp=sharing) |
+A two-part automated system for downloading YouTube Charts data and enriching it with artist metadata (country and genre).
 
-## 📋 General Description
+## 📋 Overview
 
-This project consists of an automated system for weekly downloading and storing YouTube's most popular playlists. The `1_download.py` script is the first component in a series of tools designed for extracting, processing, and analyzing YouTube Charts data.
+This repository contains two Python scripts that work together to build a comprehensive music database:
 
-### Key Features
+| Script                   | Purpose                                                      | Key Technologies             |
+| :----------------------- | :----------------------------------------------------------- | :--------------------------- |
+| **1_download.py**        | Downloads YouTube Charts weekly (100 songs) and stores in SQLite | Playwright, Pandas, SQLite   |
+| **2_build_artist_db.py** | Enriches artists with country and genre from MusicBrainz, Wikipedia, Wikidata | Requests, SQLite, custom NLP |
 
-- **Complete Download**: Obtains full lists of 100 songs
-- **Automation**: Weekly scheduling via GitHub Actions
-- **Historical Storage**: SQLite database with weekly versioning
-- **Backup System**: Automatic backups before updates
-- **Robustness**: Multiple detection strategies and fallback mode
-- **CI/CD Optimization**: Specifically configured for GitHub Actions
+------
 
-## 📊 Process Flow Diagram
-<center>
-<img src="https://drive.google.com/uc?id=1ZZeifoTgmbPdpEBcQot-spyROXOv0SJf" 
-     width="40%" 
-     alt="Diagrama reducido al 40%">
-</center>
+## 🚀 Quick Start
 
-## 🔍 Detailed Analysis of `1_download.py`
+### Prerequisites
 
-### Code Structure
+- Python 3.7+
+- Git
 
-#### **1. Initial Configuration and Directories**
-
-```python
-# Main directories
-OUTPUT_DIR = Path("data")
-ARCHIVE_DIR = Path("charts_archive/1_download-chart")
-DATABASE_DIR = ARCHIVE_DIR / "databases"
-BACKUP_DIR = ARCHIVE_DIR / "backup"
-```
-
-The script organizes data in a hierarchical structure:
-
-- `data/`: Temporary and debugging data
-- `charts_archive/1_download-chart/`: Main archive for downloaded data
-  - `databases/`: SQLite databases by week
-  - `backup/`: Temporary backup copies
-  - `latest_chart.csv`: Most recent chart data
-
-#### **2. Environment Detection**
-
-```python
-IS_GITHUB_ACTIONS = os.getenv('GITHUB_ACTIONS') == 'true'
-```
-
-The script automatically detects if running in GitHub Actions and adjusts:
-
-- Longer timeouts
-- Detailed logs for CI/CD
-- Specific recovery strategies
-
-#### **3. Dependency Installation System**
-
-```python
-def install_playwright():
-    """Complete Playwright verification and installation"""
-```
-
-This function performs a three-level verification:
-
-1. Playwright Python package
-2. Chromium browser binaries
-3. Operating system dependencies
-
-#### **4. Web Scraping Strategies**
-
-The script implements multiple approaches to locate the download button:
-
-```python
-# 1. Primary ID selector
-download_button = await page.query_selector('#download-button')
-
-# 2. aria-label selector (fallback 1)
-download_button = await page.query_selector('[aria-label*="Download"]')
-
-# 3. Text selector (fallback 2)
-download_button = await page.query_selector('text=Download')
-```
-
-**Anti-detection features:**
-
-- Custom user agent
-- JavaScript injection to hide automation
-- Realistic view and locale settings
-- Custom HTTP headers
-
-#### **5. SQLite Database Management**
-
-```python
-def update_sqlite_database(csv_path: Path, week_id: str):
-```
-
-**Update process:**
-
-1. Create backup of existing database
-2. Read and validate downloaded CSV
-3. Add metadata (date, week, timestamp)
-4. Use temporary table pattern to avoid data loss
-5. Create optimized indexes
-6. Update statistics
-
-**`chart_data` table structure:**
-
-| Column             | Type      | Description        |
-| ------------------ | --------- | ------------------ |
-| Rank               | `INTEGER` | Chart position     |
-| Previous Rank      | `INTEGER` | Previous position  |
-| Track Name         | `TEXT`    | Song name          |
-| Artist Names       | `TEXT`    | Artist(s)          |
-| Periods on Chart   | `INTEGER` | Weeks on chart     |
-| Views              | `INTEGER` | View count         |
-| Growth             | `TEXT`    | Growth percentage  |
-| YouTube URL        | `TEXT`    | Video link         |
-| download_date      | `TEXT`    | Download date      |
-| download_timestamp | `TEXT`    | Complete timestamp |
-| week_id            | `TEXT`    | Week identifier    |
-
-#### **6. Backup and Cleanup System**
-
-**Temporary backups:**
-
-- Created before each update
-- Naming: `backup_YYYY-WXX_YYYYMMDD_HHMMSS.db`
-- Retention: 7 days by default
-
-**Old database cleanup:**
-
-- Configurable retention (52 weeks by default)
-- Deletion based on filename date
-- Cleanup statistics in logs
-
-#### **7. Fallback Mode**
-
-When scraping is unavailable:
-
-```python
-def create_fallback_file():
-    """Generates sample data with realistic structure"""
-```
-
-- 100 simulated records
-- Structure identical to real CSV
-- Consistent metadata
-- For development and error recovery
-
-#### **8. Reports and Statistics**
-
-```python
-def list_available_databases():
-    """Displays statistics of all databases"""
-```
-
-Includes:
-
-- Total number of databases
-- Records per database
-- Date range covered
-- File sizes
-- Total accumulated records
-
-## ⚙️ GitHub Actions Workflow Analysis (`1_download-chart.yml`)
-
-### **Workflow Structure**
-
-```yaml
-name: Download YouTube Chart
-on:
-  schedule:
-    - cron: '0 12 * * 1'  # Monday 12:00 UTC
-  workflow_dispatch:       # Manual execution
-  push:                    # Trigger on changes
-```
-
-### **Jobs and Steps**
-
-#### **Job: `download-and-store`**
-
-- **Operating system**: Ubuntu Latest
-- **Timeout**: 30 minutes
-- **Permissions**: Repository write access
-
-#### **Detailed Steps:**
-
-1. **📚 Repository Checkout**
-
-```yaml
-uses: actions/checkout@v4
-with:
-  fetch-depth: 0  # Full history for git operations
-```
-
-2. **🐍 Python 3.12 Setup**
-
-```yaml
-uses: actions/setup-python@v5
-with:
-  cache: 'pip'  # Dependency caching
-```
-
-3. **📦 Dependency Installation**
-   - Playwright and Chromium browser
-   - Pandas, NumPy for processing
-   - System dependencies
-
-4. **📁 Directory Structure Creation**
-
-```yaml
-run: |
-  mkdir -p data charts_archive/1_download-chart/databases charts_archive/1_download-chart/backup
-```
-
-5. **🚀 Main Script Execution**
-
-```yaml
-run: |
-  python scripts/1_download.py
-env:
-  GITHUB_ACTIONS: true  # Environment variable for detection
-```
-
-6. **✅ Results Verification**
-   - Listing of generated files in `charts_archive/1_download-chart/`
-   - Size statistics
-   - Existence validation
-
-7. **📤 Automatic Commit and Push**
-   - Automatic user configuration
-   - Only commits changes to `charts_archive/`
-   - Message with date and week
-   - Automatic push to main
-
-8. **📦 Artifact Upload (only on failure)**
-   - Data and files for debugging
-   - Retention: 7 days
-
-9. **📋 Final Report**
-   - Detailed statistics
-   - Trigger information
-   - File sizes
-   - Database count
-
-### **Cron Scheduling**
-
-```cron
-'0 12 * * 1'  # Minute 0, Hour 12, Any day of month, Any month, Monday
-```
-
-- **Execution**: Every Monday at 12:00 UTC
-- **Equivalent**: 13:00 CET (Central European Time)
-- **Considerations**: YouTube updates charts on Sundays/Mondays
-
-## 🚀 Installation and Local Setup
-
-### **Prerequisites**
-
-- Python 3.7 or higher
-- Git installed
-- Internet access for downloads
-
-### **Step-by-Step Installation**
-
-1. **Clone the Repository**
+### Installation
 
 ```bash
-git clone <repository-url>
-cd <project-directory>
-```
+# Clone repository
+git clone <your-repo-url>
+cd <repo-name>
 
-2. **Create Virtual Environment (recommended)**
-
-```bash
+# Create virtual environment
 python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate    # Windows
 
-# Windows
-venv\Scripts\activate
-
-# Linux/Mac
-source venv/bin/activate
-```
-
-3. **Install Dependencies**
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
 
-# Install Playwright browser
+# For Script 1 only (Playwright browser)
 python -m playwright install chromium
-
-# Install system dependencies (Linux)
-python -m playwright install-deps
 ```
 
-4. **Run Initial Test**
+## 🔄 How It Works
 
-```bash
-python scripts/1_download.py
+### Script 1: Download YouTube Charts
+
+```mermaid
+graph LR
+    A[YouTube Charts] -->|Scrape| B[CSV Download]
+    B -->|Validate| C[SQLite Database]
+    C -->|Backup| D[charts_archive/1/]
+    D -->|Auto Commit| E[GitHub Repository]
 ```
 
-### **Development Configuration**
+**What it does:**
 
-1. **Optional Environment Variables**
+- Runs every Monday at 12:00 UTC via GitHub Actions
+- Downloads complete 100-song CSV with anti-detection measures
+- Stores weekly data in versioned SQLite databases
+- Creates automatic backups before updates
+- Falls back to sample data if scraping fails
 
-```bash
-# To simulate GitHub Actions environment
-export GITHUB_ACTIONS=true
+### Script 2: Enrich Artist Data
 
-# For detailed debugging
-export PWDEBUG=1
+```mermaid
+graph LR
+    A[Chart Database] -->|Extract Artists| B[MusicBrainz]
+    A -->|Extract Artists| C[Wikipedia]
+    A -->|Extract Artists| D[Wikidata]
+    B & C & D -->|Weighted Voting| E[Artist DB]
+    E -->|Auto Commit| F[GitHub Repository]
 ```
 
-2. **Execution with Visualization**
+**What it does:**
 
-```python
-# Modify in script:
-headless=False  # Instead of True
-```
+- Runs after Script 1 completes (Monday 14:00 UTC)
+- Queries multiple APIs for each artist
+- Detects country (cities, demonyms, 30K+ terms)
+- Classifies genre (200+ macro-genres, 5K+ mappings)
+- Only updates missing data, never overwrites
+- Uses smart caching to avoid redundant calls
 
-## 📁 Generated File Structure
+## 📁 Output Structure
 
 ```text
 charts_archive/
-├── 1_download-chart/
-│   ├── latest_chart.csv              # Most recent CSV (always updated)
+├── 1_download-chart/              # Script 1 output
 │   ├── databases/
 │   │   ├── youtube_charts_2025-W01.db
 │   │   ├── youtube_charts_2025-W02.db
-│   │   └── ... (one per week)
-│   └── backup/
-│       ├── backup_2025-W01_20250106_120500.db
-│       └── ... (temporary backups)
-└── 2_enriched_chart/
-    └── (future enriched data)
+│   │   └── ...
+│   └── backup/                     # Automatic backups
+└── 2_artist_countries_genres/      # Script 2 output
+    └── artist_countries_genres.db   # Enriched artist data
 ```
 
-### **Naming Convention**
+### Database Schema
 
-- **Databases**: `youtube_charts_YYYY-WXX.db`
-- **Backups**: `backup_YYYY-WXX_YYYYMMDD_HHMMSS.db`
-- **Weekly CSV**: `latest_chart.csv` (always overwritten)
+**Script 1 DB (`chart_data` table):**
 
-## 🔧 Customization and Configuration
+| Column       | Description         |
+| :----------- | :------------------ |
+| Rank         | Chart position      |
+| Track Name   | Song title          |
+| Artist Names | Artist(s)           |
+| Views        | View count          |
+| week_id      | ISO week identifier |
 
-### **Adjustable Parameters in Script**
+**Script 2 DB (`artist` table):**
+
+| Column      | Description               | Example        |
+| :---------- | :------------------------ | :------------- |
+| name        | Artist name (primary key) | "BTS"          |
+| country     | Canonical country         | "South Korea"  |
+| macro_genre | Primary genre             | "K-Pop/K-Rock" |
+
+------
+
+## ⚙️ GitHub Actions Automation
+
+Both scripts are fully automated via GitHub Actions:
+
+### Script 1 Workflow
+
+- **Schedule**: Every Monday, 12:00 UTC
+- **Triggers**: Manual, or on script changes
+- **Timeout**: 30 minutes
+
+### Script 2 Workflow
+
+- **Schedule**: Every Monday, 14:00 UTC
+- **Triggers**: After Script 1 completes, or manual
+- **Timeout**: 60 minutes (allows for API rate limits)
+
+Both workflows automatically commit changes back to the repository.
+
+------
+
+## 🛠️ Configuration
+
+### Script 1 Parameters (`1_download.py`)
 
 ```python
-# In 1_download.py
-RETENTION_DAYS = 7      # Days to keep backups
-RETENTION_WEEKS = 52    # Weeks to keep databases
-TIMEOUT = 120000        # Timeout in milliseconds (2 minutes)
+RETENTION_DAYS = 7      # Backup retention
+RETENTION_WEEKS = 52    # Database retention
+TIMEOUT = 120000        # Browser timeout (ms)
 ```
 
-### **Workflow Configuration**
+### Script 2 Parameters (`2_build_artist_db.py`)
 
-```yaml
-# In 1_download-chart.yml
-env:
-  RETENTION_DAYS: 30    # Days for artifacts
-
-timeout-minutes: 30     # Total job timeout
+```python
+MIN_CANDIDATES = 3      # Min genre candidates before Wikipedia search
+RETRY_DELAY = 0.5       # Delay between API calls (seconds)
+DEFAULT_TIMEOUT = 10    # API timeout (seconds)
 ```
 
-## 🐛 Troubleshooting
+## 📊 Sample Output
 
-### **Common Issues and Solutions**
+After successful runs, you'll see:
 
-1. **Error: "Playwright browsers not installed"**
+- Weekly chart databases with 100 songs each
+- Artist database growing by 10-50 new artists per week
+- Automatic commits with descriptive messages
 
-```bash
-# Manual solution
-python -m playwright install chromium
-python -m playwright install-deps
+```text
+✅ Script 1: YouTube Chart Update 2025-03-17 (Week 2025-W11)
+✅ Script 2: Update artist database 2025-03-17 (147 new artists)
 ```
-
-2. **Error: Timeout in GitHub Actions**
-   - Check runner network connection
-   - Increase timeout in YML
-   - Review Playwright logs
-
-3. **Error: Download button not found**
-   - YouTube may have changed interface
-   - Check screenshot in artifacts
-   - Update selectors in code
-
-4. **Error: Corrupt database**
-   - Use automatic backups
-   - Verify write permissions
-   - Check disk space
-
-### **Logs and Debugging**
-
-**Available log levels:**
-
-1. **Basic information**: Normal execution
-2. **GitHub Actions debug**: With `GITHUB_ACTIONS=true`
-3. **Error screenshot**: In artifacts when failing
-4. **Detailed statistics**: Final report
-
-## 📈 Monitoring and Maintenance
-
-### **Health Indicators**
-
-1. **Database size**: Grows ~100 records/week
-2. **CSV size**: ~10-50KB per file
-3. **Execution time**: 2-5 minutes normally
-4. **Success rate**: Should be >95% under normal conditions
-
-### **Recommended Alerts**
-
-1. **Consecutive failure**: 2 or more consecutive failures
-2. **Excessive time**: >10 minutes execution
-3. **Incomplete data**: <100 records in CSV
-4. **Disk space**: >1GB in `charts_archive/`
 
 ## 📄 License and Attribution
 
@@ -438,16 +180,6 @@ python -m playwright install-deps
   - 🔗 **LinkedIn:** [Alfonso Droguett](https://www.linkedin.com/in/adroguetth/)
   - 🌐 **Web portfolio:** [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/)
   - 📧 **Email:** [adroguett.consultor@gmail.com](mailto:adroguett.consultor@gmail.com)
+---    
 
-- **Dependencies**:
-  - Playwright (Apache 2.0)
-  - Pandas (BSD 3-Clause)
-  - NumPy (BSD)
-  
-
-## 🤝 Contribution
-
-1. Report issues with complete logs
-2. Propose improvements with use cases
-3. Maintain compatibility with existing structure
-4. Document changes in README
+⭐ Found this useful? Star it on GitHub!
