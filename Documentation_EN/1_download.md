@@ -28,11 +28,48 @@ This project consists of an automated system for weekly downloading and storing 
 - **CI/CD Optimization**: Specifically configured for GitHub Actions
 
 ## 📊 Process Flow Diagram
-<center>
-<img src="https://drive.google.com/uc?id=1ZZeifoTgmbPdpEBcQot-spyROXOv0SJf" 
-     width="40%" 
-     alt="Diagrama reducido al 40%">
-</center>
+
+```mermaid
+graph TD
+    classDef start fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef process fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef decision fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
+    classDef api fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
+    classDef output fill:#e0f2f1,stroke:#004d40,stroke-width:2px;
+    classDef finished fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
+
+    A([Workflow Start]) --> B[Verify Dependencies]
+    B --> C{Playwright Available?}
+    
+    C -->|Yes| D[Launch Headless Browser]
+    C -->|No| E[special_s9]
+    
+    D --> F[Navigate to YouTube Charts]
+    F --> G[Search Download Button]
+    G --> H{Button Found?}
+    
+    H -->|Yes| I[Download Complete CSV]
+    H -->|No| J[Take Screenshot]
+    
+    J --> K[Use Fallback Data]
+    I --> L[Validate CSV File]
+    K --> M[special_s10]
+    
+    L --> M
+    M --> N[Create Backup]
+    N --> O[Clean Old Files]
+    O --> P[Generate Report]
+    P --> Q[Automatic Commit & Push]
+    Q --> R([Process End])
+    E --> J
+    K --> L
+    class A start;
+    class B,D,F,G,I,J,L,M,N,O,P process;
+    class C,H decision;
+    class Q output;
+    class R finished;
+```
+
 
 ## 🔍 Detailed Analysis of `1_download.py`
 
