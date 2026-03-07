@@ -22,10 +22,11 @@ This project is the second component of the YouTube Charts intelligence system. 
 
 ## 📊 Process Flow Diagram
 <center>
-<img src="https://drive.google.com/uc?id=1Ot-b9rX_1qaFgWSqx6kG3VD6R_-nwCvl" 
+<img src="https://drive.google.com/uc?export=view&id=1YWTjgX6uBbrh4kABLRQ4o9hL2Gr9i3i0" 
      width="100%" 
-     alt="Artist Country + Genre Detection System - Process Flow Diagram">
+     alt="Artist Country + Genre Detection System Flow Diagram">
 </center>
+
 
 ### **Legend**
 
