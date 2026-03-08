@@ -1,3 +1,11 @@
+# 🎵 Music Charts Intelligence System
+
+![MIT](https://img.shields.io/badge/License-MIT-green) 
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) 
+[![Pandas](https://img.shields.io/badge/Pandas-150458?logo=pandas&logoColor=fff)](#) 
+[![Playwright](https://custom-icon-badges.demolab.com/badge/Playwright-2EAD33?logo=playwright&logoColor=fff)](#)
+[![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) 
+
 ## 📋 Descripción General
 
 Este repositorio contiene dos scripts de Python que trabajan juntos para construir una base de datos musical completa:
