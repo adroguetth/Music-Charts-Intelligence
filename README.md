@@ -6,12 +6,12 @@
 [![Playwright](https://custom-icon-badges.demolab.com/badge/Playwright-2EAD33?logo=playwright&logoColor=fff)](#)
 [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) 
 
-[EN]: A two-part automated system for downloading YouTube Charts data and enriching it with artist metadata (country and genre). <br>
-[ES]: Un sistema automatizado de dos partes para descargar datos de YouTube Charts y enriquecerlos con metadatos de artistas (país y género).
+A two-part automated system for downloading YouTube Charts data and enriching it with artist metadata (country and genre). <br> <br>
+Un sistema automatizado de dos partes para descargar datos de YouTube Charts y enriquecerlos con metadatos de artistas (país y género).
 
 ## 📋 Overview / Descripción general
 
-This repository contains two Python scripts that work together to build a comprehensive music database: <br>
+This repository contains two Python scripts that work together to build a comprehensive music database: <br> <br>
 Este repositorio contiene dos scripts de Python que trabajan juntos para construir una base de datos musical completa:
 | Script                   | Purpose                                                      | Key Technologies             | **🇬🇧 English Documentation**                                 | **🇪🇸 Spanish Documentation**                                 |
 | :----------------------- | :----------------------------------------------------------- | :--------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
