@@ -6,11 +6,13 @@
 [![Playwright](https://custom-icon-badges.demolab.com/badge/Playwright-2EAD33?logo=playwright&logoColor=fff)](#)
 [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) 
 
-A two-part automated system for downloading YouTube Charts data and enriching it with artist metadata (country and genre).
+[EN]: A two-part automated system for downloading YouTube Charts data and enriching it with artist metadata (country and genre). <br>
+[ES]: Un sistema automatizado de dos partes para descargar datos de YouTube Charts y enriquecerlos con metadatos de artistas (país y género).
 
-## 📋 Overview
+## 📋 Overview / Descripción general
 
-This repository contains two Python scripts that work together to build a comprehensive music database:
+This repository contains two Python scripts that work together to build a comprehensive music database: <br>
+Este repositorio contiene dos scripts de Python que trabajan juntos para construir una base de datos musical completa:
 | Script                   | Purpose                                                      | Key Technologies             | **🇬🇧 English Documentation**                                 | **🇪🇸 Spanish Documentation**                                 |
 | :----------------------- | :----------------------------------------------------------- | :--------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
 | **1_download.py**        | Downloads YouTube Charts weekly (100 songs) and stores in SQLite | Playwright, Pandas, SQLite   | [README](https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_EN/1_download.md) <br> [PDF](https://drive.google.com/file/d/11ANLX6PbK_eIzvHLPqL1rm9NY9rOshhD/view?usp=sharing) | [README](https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_ES/1_download.md) <br/> [PDF](https://drive.google.com/file/d/1SdLvJnxcKxmQYmLlwoYttHr2Izud4iE5/view?usp=sharing) |
