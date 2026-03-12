@@ -39,23 +39,54 @@ This project is the second component of the YouTube Charts intelligence system. 
 ### **Diagram 1: Main Flow Overview**
 
 ```mermaid
+%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart TD
-    DB[("Charts DB\nyoutube_charts_YYYY-WXX.db")]
-    DB --> RSA["Read & Split Artists"]
-    RSA --> GUA{"Get Unique\nArtists"}
-    GUA --> FEA["For Each Artist..."]
-    FEA --> IAD{"In Artist DB?"}
+    DB[("📊 Charts DB<br/>youtube_charts_YYYY-WXX.db")]
+    DB --> RSA["📄 Read & Split Artists"]
+    RSA --> GUA["👥 Get Unique Artists"]
+    GUA --> FEA{"🔄 For Each Artist..."}
+    
+    FEA --> IAD{"📋 In Artist DB?"}
+    
     IAD -- "Yes, Complete" --> SKIP["✅ Skip"]
+    SKIP --> FEA
+    
     IAD -- "Yes, Missing Info" --> SMF["🔍 Search Missing Fields"]
     IAD -- "No" --> SFD["🔍 Search Full Data"]
-    SMF --> CS["Country Search"]
+    
+    SMF --> CS["🌍 Country Search"]
     SFD --> CS
-    CS --> GS["Genre Search"]
-    GS --> VS["Voting System"]
-    VS --> UD["Update Database"]
-    UD --> MA{"More Artists?"}
+    CS --> GS["🎵 Genre Search"]
+    GS --> VS["🗳️ Voting System"]
+    VS --> UD["💾 Update Database"]
+    UD --> MA{"🔄 More Artists?"}
+    
     MA -- "Yes" --> FEA
     MA -- "No" --> GRC["📊 Generate Report & Commit"]
+    
+    GRC --> FIN(["✅ End"])
+
+    %% Estilos con colores suaves
+    classDef db fill:#E3F2FD,stroke:#42A5F5,stroke-width:2px,color:#0D47A1
+    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
+    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
+    classDef search fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
+    classDef vote fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef update fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
+    classDef skip fill:#E0E0E0,stroke:#9E9E9E,stroke-width:2px,color:#424242
+    classDef report fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
+
+    %% Asignación de clases
+    class DB db
+    class RSA,GUA process
+    class FEA,IAD,MA decision
+    class SMF,SFD search
+    class CS,GS search
+    class VS vote
+    class UD update
+    class SKIP skip
+    class GRC report
+    class FIN process
 ```
 
 This diagram shows the **high-level pipeline** of the entire system:
@@ -73,24 +104,26 @@ This diagram shows the **high-level pipeline** of the entire system:
 ### **Diagram 2: Country Search (Detailed)**
 
 ```mermaid
+%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart TD
-    START(["Start Country Search"])
+    START(["🌍 Start Country Search"])
+    
     START --> GNV["Generate Name Variations"]
     GNV --> CC["Check Cache"]
     CC --> QMB["Query MusicBrainz"]
     QMB --> F1{"Found?"}
 
-    F1 -- "No" --> QWE["Query Wikipedia EN\n(Summary + Infobox)"]
+    F1 -- "No" --> QWE["Query Wikipedia EN<br/>(Summary + Infobox)"]
     QWE --> F2{"Found?"}
 
-    F2 -- "No" --> QPL["Query Wikipedia\nPriority Languages*"]
+    F2 -- "No" --> QPL["Query Wikipedia<br/>Priority Languages*"]
     QPL --> F3{"Found?"}
 
     F3 -- "No" --> QWD["Query Wikidata"]
     QWD --> F4{"Found?"}
 
     F4 -- "Yes" --> RC["✅ Return Country"]
-    F4 -- "No" --> RU["Return Unknown"]
+    F4 -- "No" --> RU["❌ Return Unknown"]
 
     F3 -- "Yes" --> RC
     F2 -- "Yes" --> RC
@@ -98,6 +131,22 @@ flowchart TD
 
     RC --> NGS(["Next: Genre Search"])
     RU --> NGS
+
+    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:1.5px,color:#1B5E20
+    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:1.5px,color:#BF360C
+    classDef cache fill:#E8F5E9,stroke:#A5D6A7,stroke-width:1.5px,color:#1B5E20
+    classDef api fill:#F3E5F5,stroke:#CE93D8,stroke-width:1.5px,color:#4A148C
+    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:1.5px,color:#B71C1C
+    classDef success fill:#C8E6C9,stroke:#81C784,stroke-width:1.5px,color:#1B5E20
+    classDef unknown fill:#FFEBEE,stroke:#EF9A9A,stroke-width:1.5px,color:#B71C1C
+
+    class START,NGS start_end
+    class GNV,QWE,QPL,QWD process
+    class CC cache
+    class QMB api
+    class F1,F2,F3,F4 decision
+    class RC success
+    class RU unknown
 ```
 This diagram details the **cascading search strategy** for detecting an artist's country:
 
@@ -120,28 +169,49 @@ This diagram details the **cascading search strategy** for detecting an artist's
 ### **Diagram 3: Genre Search (Detailed)**
 
 ```mermaid
+%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart TD
-    START(["Start Genre Search"])
+    START(["🎵 Start Genre Search"])
+    
     START --> GNV["Generate Name Variations"]
-    GNV --> MB["MusicBrainz\n(genres/tags)"]
+    GNV --> MB["🎵 MusicBrainz<br/>(genres/tags)"]
     MB --> ACW1["Add Candidates + Weights"]
-    ACW1 --> WD["Wikidata\n(Property P136)"]
+    ACW1 --> WD[" Wikidata<br/>(Property P136)"]
     WD --> ACW2["Add Candidates + Weights"]
     ACW2 --> C1{"3+ Candidates?"}
 
-    C1 -- "No" --> WPP["Wikipedia Priority**"]
-    WPP --> EIS["Extract from Infobox\n& Summary"]
+    C1 -- "No" --> WPP["📚 Wikipedia Priority**"]
+    WPP --> EIS["Extract from Infobox<br/>& Summary"]
     EIS --> ACW3["Add Candidates + Weights"]
     ACW3 --> C2{"3+ Candidates?"}
 
-    C2 -- "No" --> WOL["Wikipedia Other Languages"]
+    C2 -- "No" --> WOL["🌐 Wikipedia Other Languages"]
     WOL --> EA["Extract & Add"]
     EA --> GTV["Go to Voting"]
 
     C2 -- "Yes" --> GTV
     C1 -- "Yes" --> GTV
 
-    GTV --> NVS(["Next: Voting System"])
+    GTV --> NVS(["🗳️ Next: Voting System"])
+
+    %% Estilos con colores suaves
+    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
+    classDef api fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
+    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
+    classDef candidate fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef wiki fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
+    classDef next fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
+
+    %% Asignación de clases
+    class START start_end
+    class GNV process
+    class MB,WD api
+    class ACW1,ACW2,ACW3 candidate
+    class C1,C2 decision
+    class WPP,EIS,WOL,EA wiki
+    class GTV process
+    class NVS next
 ```
 This diagram shows how the system **collects genre candidates** from multiple sources:
 
@@ -166,25 +236,55 @@ This diagram shows how the system **collects genre candidates** from multiple so
 ### **Diagram 4: Voting & Weight System**
 
 ```mermaid
+%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart TD
-    START(["Candidates from Search"])
-    START --> NMG["Normalize to Macro-Genre"]
-    NMG --> ASW["Apply Source Weights\nMB:1.5x, WD:1.3x, WP:1.0-1.2x"]
-    ASW --> DNS["Detect Name Script"]
-    DNS --> BST["Bonus for Specific Terms\nK-Pop, Reggaetón, etc.\n+1.4x"]
-    BST --> CK{"Country Known?"}
+    START(["🗳️ Candidates from Search"])
+    
+    START --> NMG["🔄 Normalize to Macro-Genre"]
+    NMG --> ASW["⚖️ Apply Source Weights<br/>MB: 1.5x, WD: 1.3x, WP: 1.0-1.2x"]
+    ASW --> DNS["📝 Detect Name Script"]
+    DNS --> BST["✨ Bonus for Specific Terms<br/>K-Pop, Reggaetón, etc.<br/>+1.4x"]
+    BST --> CK{"🌍 Country Known?"}
 
-    CK -- "Yes" --> ACP["Apply Country Priority\n#1:2.0x, #2:1.5x, #3+:1.2x"]
-    ACP --> ACR["Apply Country Rules\nforce_macro,\nmap_generic_to"]
-    ACR --> SAV["Sum All Votes"]
+    CK -- "Yes" --> ACP["🎯 Apply Country Priority<br/>#1: 2.0x, #2: 1.5x, #3+: 1.2x"]
+    ACP --> ACR["⚙️ Apply Country Rules<br/>force_macro, map_generic_to"]
+    ACR --> SAV["📊 Sum All Votes"]
 
-    CK -- "No" --> ASB["Apply Script Bonus\nif region matches +1.2x"]
+    CK -- "No" --> ASB["🌐 Apply Script Bonus<br/>if region matches +1.2x"]
     ASB --> SAV
 
-    SAV --> HW{"Have Winner?"}
+    SAV --> HW{"🏆 Have Winner?"}
+    
     HW -- "Yes" --> RG["✅ Return Genre"]
-    HW -- "No & Country Known" --> FCP["Fallback: First\nCountry Priority Genre"]
+    
+    HW -- "No & Country Known" --> FCP["🔄 Fallback: First<br/>Country Priority Genre"]
     FCP --> RG
+    
+    RG --> NEXT(["🎵 Next: Update Database"])
+
+    %% Estilos con colores suaves
+    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
+    classDef weight fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
+    classDef country fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
+    classDef bonus fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
+    classDef sum fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
+    classDef success fill:#C8E6C9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef fallback fill:#FFCCBC,stroke:#FF8A65,stroke-width:2px,color:#BF360C
+    classDef next fill:#E0E0E0,stroke:#9E9E9E,stroke-width:2px,color:#424242
+
+    %% Asignación de clases
+    class START start_end
+    class NMG,ASW,DNS process
+    class BST bonus
+    class CK,HW decision
+    class ACP,ACR country
+    class ASB bonus
+    class SAV sum
+    class RG success
+    class FCP fallback
+    class NEXT next
 ```
 This is the **intelligent decision engine** that selects the final genre:
 
@@ -216,25 +316,55 @@ This is the **intelligent decision engine** that selects the final genre:
 
 ### **Diagram 5: Database Update**
 ```mermaid
+%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
 flowchart TD
-    START(["Country + Genre Data"])
-    START --> CDB["Connect to\nartist_countries_genres.db"]
-    CDB --> AE{"Artist Exists?"}
+    START(["💾 Country + Genre Data"])
+    
+    START --> CDB["🔌 Connect to<br/>artist_countries_genres.db"]
+    CDB --> AE{"👤 Artist Exists?"}
 
-    AE -- "Yes" --> CMF{"Check Missing Fields"}
-    CMF --> UOM["Update Only Missing\nCountry or Genre"]
+    AE -- "Yes" --> CMF{"🔍 Check Missing Fields"}
+    CMF --> UOM["📝 Update Only Missing<br/>Country or Genre"]
+    UOM --> DBU[("✅ Database Updated")]
 
-    AE -- "No" --> INR["Insert New Record"]
-
-    UOM --> DBU[("Database Updated")]
+    AE -- "No" --> INR["➕ Insert New Record"]
     INR --> DBU
 
-    DBU --> LS["Log Statistics"]
-    LS --> MA{"More Artists?"}
+    DBU --> LS["📊 Log Statistics"]
+    LS --> MA{"🔄 More Artists?"}
 
-    MA -- "Yes" --> NA(["Next Artist"])
-    MA -- "No" --> GFR["Generate Final Report"]
-    GFR --> CPR["Commit & Push to Repo"]
+    MA -- "Yes" --> NA(["⏭️ Next Artist"])
+    NA --> CDB
+
+    MA -- "No" --> GFR["📋 Generate Final Report"]
+    GFR --> CPR["📤 Commit & Push to Repo"]
+    
+    CPR --> FIN(["🏁 Process Complete"])
+
+    %% Estilos con colores suaves
+    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef database fill:#E3F2FD,stroke:#42A5F5,stroke-width:2px,color:#0D47A1
+    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
+    classDef update fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
+    classDef insert fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
+    classDef dbstate fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
+    classDef stats fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
+    classDef next fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
+    classDef report fill:#FFCCBC,stroke:#FF8A65,stroke-width:2px,color:#BF360C
+    classDef commit fill:#E0E0E0,stroke:#9E9E9E,stroke-width:2px,color:#424242
+
+    %% Asignación de clases
+    class START start_end
+    class CDB database
+    class AE,CMF,MA decision
+    class UOM update
+    class INR insert
+    class DBU dbstate
+    class LS stats
+    class NA next
+    class GFR report
+    class CPR commit
+    class FIN start_end
 ```
 This diagram shows how the system **persists data intelligently**:
 
