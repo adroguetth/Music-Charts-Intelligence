@@ -474,6 +474,7 @@ Resultado: (País: Reino Unido, Género: Rock)  ✓ Solo se actualizó el país
 | macro_genre | `TEXT` | Macro-género principal              | "K-Pop/K-Rock"  |
 
 ## ⚙️ Análisis del Workflow de GitHub Actions (`2-update-artist-database.yml`)
+## ⚙️ Análisis del Workflow de GitHub Actions (`2-update-artist-database.yml`)
 
 ### **Estructura del Workflow**
 
@@ -482,15 +483,9 @@ name: 2- Update Artist Database
 
 on:
   schedule:
-    # Ejecutar cada lunes a las 14:00 UTC (2 horas después de la descarga)
+    # Se ejecuta cada lunes a las 14:00 UTC (2 horas después de la descarga)
     - cron: '0 14 * * 1'
-  workflow_dispatch:       # Ejecución manual
-  workflow_run:            # Disparar después del workflow de descarga
-    workflows: ["1- Download YouTube Chart"]
-    types:
-      - completed
-    branches:
-      - main
+  workflow_dispatch:       # Solo ejecución manual
 ```
 
 ### **Trabajos y Pasos**
@@ -527,6 +522,8 @@ run: |
   # Playwright no es necesario para este script
 ```
 
+<div style="page-break-after: always;"></div>
+
 4. **📁 Creación de Estructura de Directorios**
 
 ```yaml
@@ -548,14 +545,14 @@ run: |
 6. **✅ Verificación de Integridad de la Base de Datos**
 
 ```yaml
-- name: ✅ Verify database integrity
+- name: ✅ Verificar integridad de la base de datos
   run: |
     echo "📊 Verificando base de datos de artistas..."
-    DB_PATH="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+    DB_PATH="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
     
     # Verificar contenido del directorio
     echo "📂 Contenido del directorio:"
-    ls -la charts_archive/2_artist_countries_genres/
+    ls -la charts_archive/2_countries_genres_artist/
     
     # Verificar que la base de datos existe y tiene tamaño
     if [ -f "$DB_PATH" ]; then
@@ -573,10 +570,37 @@ run: |
     fi
 ```
 
+<div style="page-break-after: always;"></div>
+
 7. **📤 Commit y Push Automático**
 
 ```yaml
-- name: 📤 Commit and push changes
+- name: 📤 Commit y push de cambios
+  run: |
+    echo "📝 Preparando commit..."
+    
+    # Configurar usuario de git para commits automatizados
+    git config --global user.name "github-actions[bot]"
+    git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    
+    # Añadir solo archivos de la base de datos de artistas
+    git add charts_archive/2_countries_genres_artist/
+    
+    # Verificar si hay cambios para commit
+    if git diff --cached --quiet; then
+      echo "🔭 No hay cambios para commit"
+    else
+      DATE=$(date +'%Y-%m-%d')
+      git commit -m "🤖 Actualizar base de datos de artistas ${DATE} [Automático]"
+      
+      # Obtener últimos cambios con rebase para evitar commits de merge
+      echo "⬇️ Obteniendo últimos cambios con rebase..."
+      git pull --rebase origin main
+      
+      echo "⬆️ Subiendo cambios al repositorio..."
+      git push origin HEAD:main
+      echo "✅ Cambios subidos exitosamente"
+    fi- name: 📤 Commit and push changes
   run: |
     echo "📝 Preparando commit..."
     
@@ -607,7 +631,7 @@ run: |
 8. **📦 Subida de Artefactos (en caso de fallo)**
 
 ```yaml
-- name: 📦 Upload debug artifacts
+- name: 📦 Subir artefactos de depuración
   if: failure()
   uses: actions/upload-artifact@v4
   with:
@@ -617,10 +641,12 @@ run: |
     retention-days: 7
 ```
 
+<div style="page-break-after: always;"></div>
+
 9. **📋 Reporte Final**
 
 ```yaml
-- name: 📋 Generate final report
+- name: 📋 Generar informe final
   if: always()
   run: |
     echo "========================================"
@@ -631,14 +657,14 @@ run: |
     echo "🔗 Commit: ${{ github.sha }}"
     echo ""
     
-    DB_FILE="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+    DB_FILE="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
     if [ -f "$DB_FILE" ]; then
       SIZE=$(stat -c%s "$DB_FILE")
       echo "✅ Base de datos de artistas: $((SIZE / 1024)) KB"
       
       # Contar artistas
       if command -v sqlite3 &> /dev/null; then
-        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artist;" 2>/dev/null || echo "N/A")
+        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artists;" 2>/dev/null || echo "N/A")
         echo "👤 Artistas procesados: ${ARTIST_COUNT}"
       fi
     else
@@ -648,24 +674,27 @@ run: |
     # Mostrar información del disparador
     echo ""
     echo "📊 Detalles del disparador:"
-    if [ "${{ github.event_name }}" = "workflow_run" ]; then
-      echo "   • Disparado por: Workflow de descarga"
-      echo "   • Estado del workflow: ${{ github.event.workflow_run.conclusion }}"
-    elif [ "${{ github.event_name }}" = "schedule" ]; then
-      echo "   • Disparado por: Cron programado (martes 14:00 UTC)"
-    else
+    if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
       echo "   • Disparado por: Ejecución manual"
+    elif [ "${{ github.event_name }}" = "schedule" ]; then
+      echo "   • Disparado por: Programación cron (Lunes 14:00 UTC)"
+    else
+      echo "   • Disparado por: Push u otro evento"
     fi
+    
+    echo ""
+    echo "✅ Proceso completado"
+    echo "========================================"
 ```
 
 ### **Programación Cron**
 
 ```crom
-'0 14 * * 1'  # Minuto 0, Hora 14, Cualquier día del mes, Cualquier mes, Lunes
+'0 13 * * 1'  # Minuto 0, Hora 13, Cualquier día del mes, Cualquier mes, Lunes
 ```
 
-- **Ejecución**: Cada lunes a las 14:00 UTC
-- **Desfase**: 2 horas después del workflow de descarga (12:00 UTC)
+- **Ejecución**: Cada lunes a las 11:00 UTC
+- **Desfase**: 1 hora después del workflow de descarga (12:00 UTC)
 - **Propósito**: Permite que el workflow de descarga se complete antes de comenzar el enriquecimiento
 
 ## 🚀 Instalación y Configuración Local
@@ -718,7 +747,6 @@ export GITHUB_ACTIONS=true
 
 # Para depuración detallada (muestra candidatos de género)
 export LOG_LEVEL=DEBUG
-```
 
 ## 📁 Estructura de Archivos Generada
 
