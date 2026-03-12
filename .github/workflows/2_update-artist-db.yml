@@ -7,14 +7,6 @@ on:
   
   # Allow manual execution
   workflow_dispatch:
-  
-  # Run after successful completion of download workflow
-  workflow_run:
-    workflows: ["1- Download YouTube Chart"]
-    types:
-      - completed
-    branches:
-      - main
 
 env:
   RETENTION_DAYS: 30
