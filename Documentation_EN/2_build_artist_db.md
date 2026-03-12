@@ -478,20 +478,16 @@ Result: (Country: UK, Genre: Rock)  ✓ Only country updated
 
 ### **Workflow Structure**
 
-```python
+```yaml
 name: 2- Update Artist Database
 
 on:
   schedule:
     # Run every Monday at 14:00 UTC (2 hours after download)
     - cron: '0 14 * * 1'
-  workflow_dispatch:       # Manual execution
-  workflow_run:            # Trigger after download workflow
-    workflows: ["1- Download YouTube Chart"]
-    types:
-      - completed
-    branches:
-      - main
+  workflow_dispatch:       # Manual execution only
+  # NOTA: workflow_run eliminado para evitar doble ejecución
+  # El workflow se ejecuta ÚNICAMENTE a las 14:00 UTC del lunes
 ```
 
 ### **Jobs and Steps**
@@ -506,7 +502,7 @@ on:
 
 1. **📚 Repository Checkout**
 
-```python
+```yaml
 uses: actions/checkout@v4
 with:
   fetch-depth: 0  # Full history for git operations
@@ -520,7 +516,7 @@ with:
   cache: 'pip'  # Dependency caching
 ```
 
-3. 📦 **Dependency Installation**
+3. **📦 Dependency Installation**
 
 ```yaml
 run: |
@@ -533,7 +529,7 @@ run: |
 ```yaml
 run: |
   mkdir -p charts_archive/1_download-chart/databases
-  mkdir -p charts_archive/2_artist_countries_genres
+  mkdir -p charts_archive/2_countries_genres_artist
 ```
 
 5. **🚀 Main Script Execution**
@@ -552,11 +548,11 @@ run: |
 - name: ✅ Verify database integrity
   run: |
     echo "📊 Verifying artist database..."
-    DB_PATH="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+    DB_PATH="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
     
     # Check directory contents
     echo "📂 Directory contents:"
-    ls -la charts_archive/2_artist_countries_genres/
+    ls -la charts_archive/2_countries_genres_artist/
     
     # Verify database exists and has size
     if [ -f "$DB_PATH" ]; then
@@ -586,7 +582,7 @@ run: |
     git config --global user.email "github-actions[bot]@users.noreply.github.com"
     
     # Stage only artist database files
-    git add charts_archive/2_artist_countries_genres/
+    git add charts_archive/2_countries_genres_artist/
     
     # Check if there are changes to commit
     if git diff --cached --quiet; then
@@ -632,14 +628,14 @@ run: |
     echo "🔗 Commit: ${{ github.sha }}"
     echo ""
     
-    DB_FILE="charts_archive/2_artist_countries_genres/artist_countries_genres.db"
+    DB_FILE="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
     if [ -f "$DB_FILE" ]; then
       SIZE=$(stat -c%s "$DB_FILE")
       echo "✅ Artist database: $((SIZE / 1024)) KB"
       
       # Count artists
       if command -v sqlite3 &> /dev/null; then
-        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artist;" 2>/dev/null || echo "N/A")
+        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artists;" 2>/dev/null || echo "N/A")
         echo "👤 Artists processed: ${ARTIST_COUNT}"
       fi
     else
@@ -649,25 +645,29 @@ run: |
     # Show trigger information
     echo ""
     echo "📊 Trigger details:"
-    if [ "${{ github.event_name }}" = "workflow_run" ]; then
-      echo "   • Triggered by: Download workflow"
-      echo "   • Workflow status: ${{ github.event.workflow_run.conclusion }}"
-    elif [ "${{ github.event_name }}" = "schedule" ]; then
-      echo "   • Triggered by: Scheduled cron (Tuesday 14:00 UTC)"
-    else
+    if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
       echo "   • Triggered by: Manual dispatch"
+    elif [ "${{ github.event_name }}" = "schedule" ]; then
+      echo "   • Triggered by: Scheduled cron (Monday 14:00 UTC)"
+    else
+      echo "   • Triggered by: Push or other event"
     fi
+    
+    echo ""
+    echo "✅ Process completed"
+    echo "========================================"
 ```
 
 ### **Cron Scheduling**
 
-```crom
+```cron
 '0 14 * * 1'  # Minute 0, Hour 14, Any day of month, Any month, Monday
 ```
 
 - **Execution**: Every Monday at 14:00 UTC
 - **Offset**: 2 hours after the download workflow (12:00 UTC)
 - **Purpose**: Allows download workflow to complete before enrichment begins
+- **Nota**: El workflow ya no se ejecuta automáticamente al finalizar el download workflow. Solo se ejecuta según el cron programado o manualmente.
 
 ## 🚀 Installation and Local Setup
 
@@ -707,7 +707,6 @@ pip install -r requirements.txt
 
 4. **Run Initial Test**
 
-
 ```bash
 python scripts/2_build_artist_db.py
 ```
@@ -721,6 +720,7 @@ export GITHUB_ACTIONS=true
 # For detailed debugging (shows genre candidates)
 export LOG_LEVEL=DEBUG
 ```
+
 
 ## 📁 Generated File Structure
 
