@@ -146,27 +146,224 @@ graph TD
 | 🔴 Red        | Decision | Conditional branching points  |
 | 🟢 Dark Green | Output   | Results and final database    |
 
-### **Simplified Flow**
+### **Diagram 1: Main Flow Overview**
 
-1. **Input**: Reads weekly chart database (`youtube_charts_YYYY-WXX.db`)
-2. **Extraction**: Gets and splits artist names (handles feat., &, etc.)
-3. **Deduplication**: Creates list of unique artists
-4. **For each artist**:
-   - Checks if already in `artist_countries_genres.db`
-   - If complete → skip
-   - If missing info → search only missing fields
-   - If new → search full country and genre
-5. **Country Search**: MusicBrainz → Wikipedia EN → Wikipedia other languages → Wikidata
-6. **Genre Search**: MusicBrainz → Wikidata → Wikipedia (with language detection)
-7. **Voting System**:
-   - Normalize candidates to macro-genres
-   - Apply source weights
-   - Bonus for specific terms
-   - Apply country priority (2.0x, 1.5x, 1.2x)
-   - Apply country-specific rules (force_macro, map_generic_to)
-   - Script detection bonus
-8. **Database Update**: Insert or update with partial logic (only missing fields)
-9. **Report**: Final statistics and automatic commit
+```mermaid
+flowchart TD
+    DB[("Charts DB\nyoutube_charts_YYYY-WXX.db")]
+    DB --> RSA["Read & Split Artists"]
+    RSA --> GUA{"Get Unique\nArtists"}
+    GUA --> FEA["For Each Artist..."]
+    FEA --> IAD{"In Artist DB?"}
+    IAD -- "Yes, Complete" --> SKIP["✅ Skip"]
+    IAD -- "Yes, Missing Info" --> SMF["🔍 Search Missing Fields"]
+    IAD -- "No" --> SFD["🔍 Search Full Data"]
+    SMF --> CS["Country Search"]
+    SFD --> CS
+    CS --> GS["Genre Search"]
+    GS --> VS["Voting System"]
+    VS --> UD["Update Database"]
+    UD --> MA{"More Artists?"}
+    MA -- "Yes" --> FEA
+    MA -- "No" --> GRC["📊 Generate Report & Commit"]
+```
+
+This diagram shows the **high-level pipeline** of the entire system:
+
+1. **Input**: Reads the weekly YouTube Charts database (`youtube_charts_YYYY-WXX.db`)
+2. **Extraction**: Reads artist names and splits them (handles "feat.", "&", commas, etc.)
+3. **Deduplication**: Creates a list of unique artists to avoid redundant processing
+4. **Per-Artist Loop**: For each artist, checks if they already exist in the enriched database
+   - **If complete** (country + genre known): Skips to next artist ✅
+   - **If missing info**: Searches only the missing fields (country or genre)
+   - **If new**: Performs full country and genre search
+5. **Country Search** → **Genre Search** → **Voting System** → **Database Update**
+6. **After all artists**: Generates a final report and automatically commits changes to GitHub
+
+### **Diagram 2: Country Search (Detailed)**
+
+```mermaid
+flowchart TD
+    START(["Start Country Search"])
+    START --> GNV["Generate Name Variations"]
+    GNV --> CC["Check Cache"]
+    CC --> QMB["Query MusicBrainz"]
+    QMB --> F1{"Found?"}
+
+    F1 -- "No" --> QWE["Query Wikipedia EN\n(Summary + Infobox)"]
+    QWE --> F2{"Found?"}
+
+    F2 -- "No" --> QPL["Query Wikipedia\nPriority Languages*"]
+    QPL --> F3{"Found?"}
+
+    F3 -- "No" --> QWD["Query Wikidata"]
+    QWD --> F4{"Found?"}
+
+    F4 -- "Yes" --> RC["✅ Return Country"]
+    F4 -- "No" --> RU["Return Unknown"]
+
+    F3 -- "Yes" --> RC
+    F2 -- "Yes" --> RC
+    F1 -- "Yes" --> RC
+
+    RC --> NGS(["Next: Genre Search"])
+    RU --> NGS
+```
+This diagram details the **cascading search strategy** for detecting an artist's country:
+
+1. **Start**: Receives an artist name (may be missing info or new artist)
+2. **Name Variations**: Generates up to 15 variations (no accents, no prefixes, etc.)
+3. **Cache Check**: First checks in-memory cache to avoid repeat API calls
+4. **MusicBrainz**: Queries MusicBrainz API (structured data, high reliability)
+   - If found → returns country ✅
+5. **Wikipedia English**: If not found, queries Wikipedia English:
+   - First checks summary (first paragraph) for patterns like "born in...", "from..."
+   - Then checks infobox for fields like "origin", "birth_place", "location"
+   - If found → returns country ✅
+6. **Wikipedia Priority Languages**: If still not found, tries Wikipedia in languages based on:
+   - The artist's country (if already known from previous step)
+   - Detected script from the artist's name (Cyrillic → Russian Wikipedia, etc.)
+   - If found → returns country ✅
+7. **Wikidata**: Final attempt, queries Wikidata using properties P27 (country of citizenship) and P19 (place of birth)
+8. **Result**: Returns either a canonical country name or "Unknown"
+
+### **Diagram 3: Genre Search (Detailed)**
+
+```mermaid
+flowchart TD
+    START(["Start Genre Search"])
+    START --> GNV["Generate Name Variations"]
+    GNV --> MB["MusicBrainz\n(genres/tags)"]
+    MB --> ACW1["Add Candidates + Weights"]
+    ACW1 --> WD["Wikidata\n(Property P136)"]
+    WD --> ACW2["Add Candidates + Weights"]
+    ACW2 --> C1{"3+ Candidates?"}
+
+    C1 -- "No" --> WPP["Wikipedia Priority**"]
+    WPP --> EIS["Extract from Infobox\n& Summary"]
+    EIS --> ACW3["Add Candidates + Weights"]
+    ACW3 --> C2{"3+ Candidates?"}
+
+    C2 -- "No" --> WOL["Wikipedia Other Languages"]
+    WOL --> EA["Extract & Add"]
+    EA --> GTV["Go to Voting"]
+
+    C2 -- "Yes" --> GTV
+    C1 -- "Yes" --> GTV
+
+    GTV --> NVS(["Next: Voting System"])
+```
+This diagram shows how the system **collects genre candidates** from multiple sources:
+
+1. **Start**: Receives artist name (and country if already detected)
+2. **Name Variations**: Same variation system for maximum match rate
+3. **MusicBrainz**: First source, extracts genre tags and their counts
+   - Adds candidates with base weight (1.5x for MusicBrainz)
+4. **Wikidata**: Second source, queries property P136 (genre)
+   - Adds candidates with base weight (1.3x for Wikidata)
+5. **Candidate Check**: Checks if we already have at least 3 genre candidates
+   - **If yes**: Proceeds directly to voting system
+   - **If no**: Continues to Wikipedia search
+6. **Wikipedia Priority Languages**: Queries Wikipedia in languages prioritized by:
+   - Country (e.g., Korean artists → Korean Wikipedia)
+   - Detected script (e.g., Arabic name → Arabic Wikipedia)
+7. **Extraction**: Uses pattern matching to extract genres from:
+   - **Infobox**: Looks for "genre", "genres", "género" fields
+   - **Summary**: Uses NLP patterns like "is a [genre] singer", "known for [genre] music"
+8. **Second Check**: If still under 3 candidates, tries Wikipedia in other common languages
+9. **Final**: All candidates (with their weights and sources) go to the Voting System
+
+### **Diagram 4: Voting & Weight System**
+
+```mermaid
+flowchart TD
+    START(["Candidates from Search"])
+    START --> NMG["Normalize to Macro-Genre"]
+    NMG --> ASW["Apply Source Weights\nMB:1.5x, WD:1.3x, WP:1.0-1.2x"]
+    ASW --> DNS["Detect Name Script"]
+    DNS --> BST["Bonus for Specific Terms\nK-Pop, Reggaetón, etc.\n+1.4x"]
+    BST --> CK{"Country Known?"}
+
+    CK -- "Yes" --> ACP["Apply Country Priority\n#1:2.0x, #2:1.5x, #3+:1.2x"]
+    ACP --> ACR["Apply Country Rules\nforce_macro,\nmap_generic_to"]
+    ACR --> SAV["Sum All Votes"]
+
+    CK -- "No" --> ASB["Apply Script Bonus\nif region matches +1.2x"]
+    ASB --> SAV
+
+    SAV --> HW{"Have Winner?"}
+    HW -- "Yes" --> RG["✅ Return Genre"]
+    HW -- "No & Country Known" --> FCP["Fallback: First\nCountry Priority Genre"]
+    FCP --> RG
+```
+This is the **intelligent decision engine** that selects the final genre:
+
+1. **Input**: Receives all genre candidates with their raw weights and sources
+2. **Normalization**: Maps each specific subgenre to a macro-genre using the `GENRE_MAPPINGS` dictionary
+   - Example: "synth pop", "synth-pop", "synthpop" all → "Pop"
+3. **Source Weights**: Applies multipliers based on source reliability:
+   - MusicBrainz: ×1.5 (structured, reliable)
+   - Wikidata: ×1.3 (semantic, medium reliability)
+   - Wikipedia Infobox: ×1.2 (semi-structured)
+   - Wikipedia Summary: ×1.0 (free text, lower confidence)
+   - Wikipedia Keywords: ×0.5 (lowest confidence)
+4. **Script Detection**: Analyzes the artist's name to detect writing system (Cyrillic, Hangul, Arabic, etc.)
+5. **Term Bonuses**: Multiplies weight by 1.4x if specific keywords are found:
+   - "reggaeton", "trap latino" → boosts Latin genres
+   - "k-pop", "korean pop" → boosts K-Pop
+   - "sertanejo", "funk brasileiro" → boosts Brazilian genres
+6. **Country Priority** (if country known): Applies additional multipliers based on country's genre priority list:
+   - 1st priority genre: ×2.0
+   - 2nd priority genre: ×1.5
+   - 3rd+ priority genres: ×1.2
+7. **Country-Specific Rules**: Applies special rules for certain countries:
+   - **force_macro**: Forces a specific macro-genre (e.g., Puerto Rico → Reggaetón/Trap Latino)
+   - **map_generic_to**: Maps generic genres (Pop, Rock) to regional ones (e.g., Korea → K-Pop/K-Rock)
+8. **Script Bonus**: If detected script matches the country's dominant language, applies ×1.2 bonus
+9. **Vote Summation**: Adds all weighted votes for each macro-genre
+10. **Winner Selection**: Chooses macro-genre with highest total votes
+11. **Fallback**: If no winner and country is known, uses the first genre from country's priority list
+
+### **Diagram 5: Database Update**
+```mermaid
+flowchart TD
+    START(["Country + Genre Data"])
+    START --> CDB["Connect to\nartist_countries_genres.db"]
+    CDB --> AE{"Artist Exists?"}
+
+    AE -- "Yes" --> CMF{"Check Missing Fields"}
+    CMF --> UOM["Update Only Missing\nCountry or Genre"]
+
+    AE -- "No" --> INR["Insert New Record"]
+
+    UOM --> DBU[("Database Updated")]
+    INR --> DBU
+
+    DBU --> LS["Log Statistics"]
+    LS --> MA{"More Artists?"}
+
+    MA -- "Yes" --> NA(["Next Artist"])
+    MA -- "No" --> GFR["Generate Final Report"]
+    GFR --> CPR["Commit & Push to Repo"]
+```
+This diagram shows how the system **persists data intelligently**:
+
+1. **Input**: Receives final country and genre data for an artist
+2. **Connect**: Opens connection to `artist_countries_genres.db`
+3. **Existence Check**: Queries if artist already exists in database
+4. **If Artist Exists**:
+   - **Check Missing Fields**: Compares existing data with new data
+   - **Update Only Missing**: Updates country only if existing is NULL/Unknown and new is known
+   - Updates genre only if existing is NULL/Unknown and new is known
+   - **Never overwrites** existing correct data!
+5. **If Artist is New**:
+   - Inserts complete new record with country and genre
+6. **Log Statistics**: Records success/failure for reporting
+7. **Loop Check**: If more artists remain, returns to main loop
+8. **All Artists Processed**:
+   - Generates final report with statistics (success rate, new artists, etc.)
+9. **GitHub Commit**: Automatically commits and pushes changes to repository
+
 
 
 ## 🔍 Detailed Analysis of `2_build_artist_db.py`
