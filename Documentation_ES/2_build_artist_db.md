@@ -474,8 +474,6 @@ Resultado: (País: Reino Unido, Género: Rock)  ✓ Solo se actualizó el país
 | macro_genre | `TEXT` | Macro-género principal              | "K-Pop/K-Rock"  |
 
 ## ⚙️ Análisis del Workflow de GitHub Actions (`2-update-artist-database.yml`)
-## ⚙️ Análisis del Workflow de GitHub Actions (`2-update-artist-database.yml`)
-
 ### **Estructura del Workflow**
 
 ```yaml
