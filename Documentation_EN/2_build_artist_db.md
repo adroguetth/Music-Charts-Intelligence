@@ -951,7 +951,7 @@ charts_archive/
 │   │   └── ...
 │   └── backup/
 │       └── ...
-└── 2_artist_countries_genres/          # ← This script's output
+└── 2_countries-genres-artist/          # ← This script's output
     └── artist_countries_genres.db       # Enriched artist database
 ```
 
