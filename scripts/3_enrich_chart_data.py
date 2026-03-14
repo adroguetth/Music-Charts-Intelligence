@@ -444,9 +444,7 @@ JERARQUIA_GENEROS = {
 }
 
 # Género por defecto para países sin jerarquía definida
-GENERO_POR_DEFECTO = {
-    "Pop", "Rock", "Hip-Hop/Rap", "R&B/Soul", "Electrónica/Dance",
-    "Alternative", "Metal", "Punk", "Country", "Jazz/Blues", "Folklore/Raíces", "Classical" }
+GENERO_POR_DEFECTO = "Pop"
 
 # =====================================================================
 # FUNCIONES DE SOPORTE
