@@ -2,11 +2,19 @@ name: 3- Enrich Chart Data
 
 on:
   schedule:
-    # Lunes 14:00 UTC (2 hora después del workflow de descarga)
+    # Lunes 14:00 UTC (1 hora después del workflow de descarga)
     - cron: '0 14 * * 1'
   
   # Ejecución manual desde la interfaz de GitHub
   workflow_dispatch:
+  
+  # Ejecutar cuando haya cambios en el script de enriquecimiento
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/3_enrich_chart_data.py'
+      - '.github/workflows/3_enrich-chart-data.yml'
 
 env:
   RETENTION_DAYS: 30
@@ -46,14 +54,14 @@ jobs:
         mkdir -p charts_archive/3_enrich-chart-data
     
     # ==================================================
-    # DEBUG PHASE (opcional, puedes quitarlo después)
+    # DEBUG PHASE (opcional)
     # ==================================================
     - name: 🔍 Debug - List directories
       run: |
         echo "Contenido de scripts/:"
         ls -la scripts/ || echo "scripts/ no encontrado"
         echo ""
-        echo "Contenido de databases/:"
+        echo "Contenido de databases de entrada:"
         ls -la charts_archive/1_download-chart/databases/ || echo "Vacío"
         echo ""
         echo "Python version:"
@@ -164,7 +172,7 @@ jobs:
         retention-days: 7
     
     # ==================================================
-    # REPORTING PHASE - CORREGIDO
+    # REPORTING PHASE
     # ==================================================
     - name: 📋 Generate final report
       if: always()
@@ -184,7 +192,7 @@ jobs:
           echo "✅ Latest database: $(basename $LATEST_DB)"
           
           if command -v sqlite3 &> /dev/null; then
-            # Detailed stats - CORREGIDO con 'EOF'
+            # Detailed stats
             sqlite3 "$LATEST_DB" <<'EOF'
 .mode box
 WITH stats AS (
@@ -222,6 +230,8 @@ EOF
         echo "📊 Trigger details:"
         if [ "${{ github.event_name }}" = "schedule" ]; then
           echo "   • Triggered by: Scheduled cron (Monday 14:00 UTC)"
+        elif [ "${{ github.event_name }}" = "push" ]; then
+          echo "   • Triggered by: Push to main (script update)"
         else
           echo "   • Triggered by: Manual dispatch"
         fi
