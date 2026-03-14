@@ -921,13 +921,13 @@ def encontrar_ultima_db():
 def leer_canciones_desde_db(ruta_db):
     """
     Lee las canciones desde la base de datos SQLite de entrada.
-    Se espera una tabla 'chart_data' con las columnas:
-    rank, artist_names, track_name, periods_on_chart, views, youtube_url
+    Usa los nombres exactos de las columnas de la tabla chart_data.
     """
     if not ruta_db.exists():
         raise FileNotFoundError(f"❌ No existe la base de datos: {ruta_db}")
 
     conn = sqlite3.connect(ruta_db)
+    conn.row_factory = sqlite3.Row  # Para acceder por nombre de columna
     cursor = conn.cursor()
 
     # Verificar que la tabla existe
@@ -935,18 +935,32 @@ def leer_canciones_desde_db(ruta_db):
     if not cursor.fetchone():
         raise Exception(f"La base de datos {ruta_db.name} no contiene una tabla 'chart_data'")
 
-    cursor.execute("SELECT rank, artist_names, track_name, periods_on_chart, views, youtube_url FROM chart_data")
-    columnas = [description[0] for description in cursor.description]
+    # Usar los nombres exactos de las columnas
+    cursor.execute("""
+        SELECT
+            [Rank] as rank,
+            [Artist Names] as artist_names,
+            [Track Name] as track_name,
+            [Periods on Chart] as periods_on_chart,
+            [Views] as views,
+            [YouTube URL] as youtube_url
+        FROM chart_data
+    """)
+
     resultados = cursor.fetchall()
     conn.close()
 
     canciones = []
     for fila in resultados:
-        cancion = dict(zip(columnas, fila))
+        cancion = {
+            'rank': fila['rank'],
+            'artist_names': fila['artist_names'],
+            'track_name': fila['track_name'],
+            'periods_on_chart': fila['periods_on_chart'],
+            'views': fila['views'],
+            'youtube_url': fila['youtube_url']
+        }
         canciones.append(cancion)
-
-    print(f"✅ {len(canciones)} canciones cargadas desde {ruta_db.name}")
-    return canciones
 
     print(f"✅ {len(canciones)} canciones cargadas desde {ruta_db.name}")
     return canciones
