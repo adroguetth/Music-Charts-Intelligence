@@ -745,10 +745,11 @@ export GITHUB_ACTIONS=true
 
 # Para depuración detallada (muestra candidatos de género)
 export LOG_LEVEL=DEBUG
+```
 
 ## 📁 Estructura de Archivos Generada
 
-```
+```text
 charts_archive/
 ├── 1_download-chart/
 │   ├── latest_chart.csv
@@ -758,7 +759,7 @@ charts_archive/
 │   │   └── ...
 │   └── backup/
 │       └── ...
-└── 2_artist_countries_genres/          # ← Salida de este script
+└── 2_countries-genres-artist/          # ← Salida de este script
     └── artist_countries_genres.db       # Base de datos de artistas enriquecida
 ```
 
