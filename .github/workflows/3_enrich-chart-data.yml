@@ -5,10 +5,8 @@ on:
     # Lunes 14:00 UTC (1 hora después del workflow de descarga)
     - cron: '0 14 * * 1'
 
-  # Ejecución manual desde la interfaz de GitHub
   workflow_dispatch:
 
-  # Ejecutar cuando haya cambios en el script de enriquecimiento
   push:
     branches:
       - main
@@ -17,7 +15,7 @@ on:
       - '.github/workflows/3_enrich-chart-data.yml'
 
 env:
-  RETENTION_WEEKS: 78  # 1.5 años de retención
+  RETENTION_WEEKS: 78
 
 jobs:
   enrich-chart-data:
@@ -29,6 +27,7 @@ jobs:
       contents: write
 
     steps:
+
       # ==================================================
       # SETUP PHASE
       # ==================================================
@@ -41,7 +40,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: 'pip'
+          cache: pip
 
       - name: 📦 Install dependencies
         run: |
@@ -52,19 +51,23 @@ jobs:
           mkdir -p charts_archive/1_download-chart/databases
           mkdir -p charts_archive/3_enrich-chart-data
 
+
       # ==================================================
-      # DEBUG PHASE (opcional)
+      # DEBUG PHASE
       # ==================================================
       - name: 🔍 Debug - List directories
         run: |
           echo "📂 Contenido de scripts/:"
           ls -la scripts/ || echo "scripts/ no encontrado"
+
           echo ""
           echo "📂 Bases de datos de entrada disponibles:"
           ls -la charts_archive/1_download-chart/databases/ || echo "Vacío"
+
           echo ""
           echo "🐍 Python version:"
           python --version
+
 
       # ==================================================
       # EXECUTION PHASE
@@ -76,6 +79,7 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GITHUB_ACTIONS: true
 
+
       # ==================================================
       # VALIDATION PHASE
       # ==================================================
@@ -86,11 +90,14 @@ jobs:
           LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
 
           if [ -f "$LATEST_DB" ]; then
+
             SIZE=$(stat -c%s "$LATEST_DB")
+
             echo "✅ Enriched database found: $(basename $LATEST_DB)"
             echo "📦 Size: $((SIZE / 1024)) KB"
 
             if command -v sqlite3 &> /dev/null; then
+
               echo "🔍 Checking database integrity..."
               sqlite3 "$LATEST_DB" "PRAGMA integrity_check;"
 
@@ -99,11 +106,16 @@ jobs:
               ERROR=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM canciones_enriquecidas WHERE error != '';")
 
               echo "📊 Stats: $TOTAL songs, $MULTI multi-country, $ERROR with errors"
+
             fi
+
           else
+
             echo "❌ No enriched database found!"
             exit 1
+
           fi
+
 
       # ==================================================
       # PERSISTENCE PHASE
@@ -118,22 +130,30 @@ jobs:
           git add charts_archive/3_enrich-chart-data/
 
           if git diff --cached --quiet; then
+
             echo "🔭 No changes to commit"
+
           else
+
             DATE=$(date +'%Y-%m-%d')
             WEEK=$(date +'%Y-W%W')
+
             git commit -m "🤖 Enriched chart data ${DATE} (Week ${WEEK}) [Automated]"
             git pull --rebase origin main
             git push origin HEAD:main
+
             echo "✅ Changes pushed successfully"
+
           fi
 
+
       # ==================================================
-      # CLEANUP PHASE - Keep only last 78 weeks
+      # CLEANUP PHASE
       # ==================================================
       - name: 🧹 Clean old enriched databases
         run: |
           echo "🗑️ Cleaning enriched databases older than ${{ env.RETENTION_WEEKS }} weeks..."
+
           find charts_archive/3_enrich-chart-data/ \
             -name "*_enriched.db" \
             -type f \
@@ -141,10 +161,12 @@ jobs:
             -delete
 
           REMAINING=$(ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l)
+
           echo "✅ Cleanup completed. $REMAINING enriched databases remaining."
 
+
       # ==================================================
-      # RECOVERY PHASE (on failure)
+      # RECOVERY PHASE
       # ==================================================
       - name: 📦 Upload debug artifacts
         if: failure()
@@ -155,31 +177,33 @@ jobs:
             charts_archive/3_enrich-chart-data/
             scripts/3_enrich_chart_data.py.log
           retention-days: 7
+
+
       # ==================================================
       # REPORTING PHASE
-      # ==================================================
-    # ==================================================
-      # REPORTING PHASE - VERSIÓN CON ARCHIVO TEMPORAL
       # ==================================================
       - name: 📋 Generate final report
         if: always()
         run: |
+
           echo "========================================"
           echo "🎵 ENRICHMENT EXECUTION REPORT"
           echo "========================================"
+
           echo "📅 Date: $(date)"
           echo "📌 Trigger: ${{ github.event_name }}"
           echo "🔗 Commit: ${{ github.sha }}"
           echo ""
-          
+
           LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
-          
+
           if [ -f "$LATEST_DB" ]; then
+
             echo "✅ Latest database: $(basename $LATEST_DB)"
-            
+
             if command -v sqlite3 &> /dev/null; then
-              # Crear archivo temporal con la consulta SQL
-              cat > /tmp/report_query.sql <<'EOF'
+
+              sqlite3 "$LATEST_DB" <<EOF
 .mode box
 WITH stats AS (
   SELECT 
@@ -192,30 +216,31 @@ WITH stats AS (
   FROM canciones_enriquecidas
 )
 SELECT 
-  total as 'Total Songs',
-  multi_country as 'Multi-Country',
-  unknown_country as 'Unknown Country',
-  with_errors as 'With Errors',
-  unique_countries as 'Unique Countries',
-  unique_genres as 'Unique Genres'
+  total as "Total Songs",
+  multi_country as "Multi-Country",
+  unknown_country as "Unknown Country",
+  with_errors as "With Errors",
+  unique_countries as "Unique Countries",
+  unique_genres as "Unique Genres"
 FROM stats;
 EOF
-              # Ejecutar la consulta desde el archivo temporal
-              sqlite3 "$LATEST_DB" < /tmp/report_query.sql
-              # Limpiar (opcional)
-              rm -f /tmp/report_query.sql
+
             fi
+
           else
+
             echo "⚠️ No enriched database found"
+
           fi
-          
+
           echo ""
           echo "📊 Retention policy:"
           echo "   • Maximum weeks: ${{ env.RETENTION_WEEKS }} (1.5 years)"
           echo "   • Current count: $(ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l) databases"
-          
+
           echo ""
           echo "📊 Trigger details:"
+
           if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "   • Triggered by: Scheduled cron (Monday 14:00 UTC)"
           elif [ "${{ github.event_name }}" = "push" ]; then
@@ -223,7 +248,7 @@ EOF
           else
             echo "   • Triggered by: Manual dispatch"
           fi
-          
+
           echo ""
           echo "✅ Process completed"
           echo "========================================"
