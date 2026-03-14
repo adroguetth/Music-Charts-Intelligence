@@ -1,6 +1,6 @@
 name: 3- Enrich Chart Data
 
-on:
+"on":
   schedule:
     # Lunes 14:00 UTC (1 hora después del workflow de descarga)
     - cron: '0 14 * * 1'
