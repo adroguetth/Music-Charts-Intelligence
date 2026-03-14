@@ -1223,8 +1223,14 @@ if __name__ == "__main__":
         print("✗ NO obtendrá: comentarios, idioma, restricciones")
         print("="*70)
 
-    respuesta = input("\n¿Continuar con el procesamiento? (s/n): ").lower()
-    if respuesta in ['s', 'si', 'y', 'yes']:
+    # EN GITHUB ACTIONS, EJECUTAR SIEMPRE
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        print("🔄 Ejecutando en GitHub Actions (modo no interactivo)")
         main()
     else:
-        print("Proceso cancelado.")
+        # Solo preguntar en entorno local
+        respuesta = input("\n¿Continuar con el procesamiento? (s/n): ").lower()
+        if respuesta in ['s', 'si', 'y', 'yes']:
+            main()
+        else:
+            print("Proceso cancelado.")
