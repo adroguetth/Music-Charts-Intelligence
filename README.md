@@ -96,7 +96,7 @@ charts_archive/
 │   │   ├── youtube_charts_2025-W02.db
 │   │   └── ...
 │   └── backup/                     # Automatic backups
-└── 2_artist_countries_genres/      # Script 2 output
+└── 2_artist-countries-genres/      # Script 2 output
     └── artist_countries_genres.db   # Enriched artist data
 ```
 
