@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-SCRIPT DE ENRIQUECIMIENTO DE CHART (VERSIÓN GITHUB)
-- Lee la última base de datos de 1_download-chart/databases/
-- Obtiene metadatos con yt-dlp + YouTube API
-- Consulta país y género desde base remota (2_countries-genres-artist)
-- Implementa sistema de pesos para colaboraciones
-- Guarda resultado en 3_enrich-chart-data/ con nombre: input_enriched.db
+SCRIPT UNIFICADO COMPLETO CON SISTEMA DE PESOS
+- Salida a SQLite en charts_archive/3_enrich-chart-data/
+- Obtiene metadatos específicos con yt-dlp + YouTube API
+- Consulta país y género desde base de datos remota
+- Implementa algoritmo de decisión para colaboraciones
 """
 
 import csv
@@ -25,20 +24,19 @@ from collections import Counter
 # =====================================================================
 
 API_KEY = "AIzaSyA3WKtRcRwn__qPc8Gt9mqCEvUFaCk13HE"
-
-# Rutas (relativas al script)
 SCRIPT_DIR = Path(__file__).parent.absolute()
-REPO_ROOT = SCRIPT_DIR.parent  # Music-Charts-Intelligence/
+INPUT_CSV = SCRIPT_DIR / "latest_chart.csv"
 
-# Directorio de entrada (bases de datos descargadas)
-INPUT_DB_DIR = REPO_ROOT / "charts_archive" / "1_download-chart" / "databases"
+# NUEVA RUTA: Base de datos SQLite de salida
+DB_OUTPUT_DIR = SCRIPT_DIR / "charts_archive" / "3_enrich-chart-data"
+DB_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)  # Crea el directorio si no existe
 
-# Directorio de salida (datos enriquecidos)
-OUTPUT_DIR = REPO_ROOT / "charts_archive" / "3_enrich-chart-data"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Nombre del archivo con timestamp para evitar sobrescribir
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+DB_OUTPUT_PATH = DB_OUTPUT_DIR / f"chart_enriquecido_{timestamp}.db"
 
-# URL RAW de la base de datos de artistas (2_countries-genres-artist)
-URL_ARTISTAS_DB = "https://github.com/adroguetth/Music-Charts-Intelligence/raw/refs/heads/main/charts_archive/2_countries-genres-artist/artist_countries_genres.db"
+# URL RAW de tu base de datos en GitHub
+URL_DB = "https://github.com/adroguetth/Music-Charts-Intelligence/raw/refs/heads/main/charts_archive/2_countries-genres-artist/artist_countries_genres.db"
 
 # =====================================================================
 # DICCIONARIOS DE SOPORTE
@@ -59,26 +57,26 @@ PAIS_A_CONTINENTE = {
     "Oman": "Asia", "United Arab Emirates": "Asia", "Qatar": "Asia", "Kuwait": "Asia",
     "Bahrain": "Asia", "Turkey": "Asia", "Cyprus": "Asia", "Azerbaijan": "Asia",
     "Georgia": "Asia", "Armenia": "Asia", "Russia": "Asia",  # Rusia es euroasiática
-
+    
     # América del Norte
     "United States": "America", "Canada": "America", "Mexico": "America",
     "Guatemala": "America", "Honduras": "America", "El Salvador": "America",
     "Nicaragua": "America", "Costa Rica": "America", "Panama": "America",
     "Belize": "America",
-
+    
     # Caribe
     "Cuba": "America", "Jamaica": "America", "Haiti": "America", "Dominican Republic": "America",
     "Puerto Rico": "America", "Bahamas": "America", "Trinidad and Tobago": "America",
     "Barbados": "America", "Saint Lucia": "America", "Grenada": "America",
     "Saint Vincent and the Grenadines": "America", "Antigua and Barbuda": "America",
     "Dominica": "America", "Saint Kitts and Nevis": "America",
-
+    
     # América del Sur
     "Colombia": "America", "Venezuela": "America", "Ecuador": "America", "Peru": "America",
     "Bolivia": "America", "Chile": "America", "Argentina": "America", "Paraguay": "America",
     "Uruguay": "America", "Brazil": "America", "Guyana": "America", "Suriname": "America",
     "French Guiana": "America",
-
+    
     # Europa
     "United Kingdom": "Europe", "Ireland": "Europe", "France": "Europe", "Belgium": "Europe",
     "Netherlands": "Europe", "Germany": "Europe", "Austria": "Europe", "Switzerland": "Europe",
@@ -91,7 +89,7 @@ PAIS_A_CONTINENTE = {
     "Montenegro": "Europe", "North Macedonia": "Europe", "Kosovo": "Europe", "Albania": "Europe",
     "Slovenia": "Europe", "Lithuania": "Europe", "Latvia": "Europe", "Estonia": "Europe",
     "Belarus": "Europe", "Moldova": "Europe", "Ukraine": "Europe",
-
+    
     # África
     "Nigeria": "Africa", "Ghana": "Africa", "South Africa": "Africa", "Tanzania": "Africa",
     "Kenya": "Africa", "Uganda": "Africa", "Zimbabwe": "Africa", "Zambia": "Africa",
@@ -105,7 +103,7 @@ PAIS_A_CONTINENTE = {
     "Namibia": "Africa", "Lesotho": "Africa", "Eswatini": "Africa", "Madagascar": "Africa",
     "Comoros": "Africa", "Mauritius": "Africa", "Seychelles": "Africa", "Cabo Verde": "Africa",
     "São Tomé and Príncipe": "Africa",
-
+    
     # Oceanía
     "Australia": "Oceania", "New Zealand": "Oceania", "Papua New Guinea": "Oceania",
     "Fiji": "Oceania", "Samoa": "Oceania", "Tonga": "Oceania", "Solomon Islands": "Oceania",
@@ -354,7 +352,7 @@ JERARQUIA_GENEROS = {
     "India": [
         "Indian Pop", "Hip-Hop/Rap", "Bollywood", "Indian Classical",
         "Rock", "Electrónica/Dance"
-    ],
+    ],  # 'Indian Classical' ya cubre la tradición clásica india, no se añade 'Classical'
     "Pakistan": ["Pakistani Pop", "Hip-Hop/Rap", "Qawwali", "Rock"],
     "Bangladesh": ["Bangladeshi Pop/Rock", "Hip-Hop/Rap", "Folk"],
     "Sri Lanka": ["Sri Lankan Pop/Rock", "Baila", "Hip-Hop/Rap"],
@@ -446,10 +444,6 @@ JERARQUIA_GENEROS = {
 # Género por defecto para países sin jerarquía definida
 GENERO_POR_DEFECTO = "Pop"
 
-# =====================================================================
-# FUNCIONES DE SOPORTE
-# =====================================================================
-
 def obtener_continente(pais):
     """Retorna el continente de un país o 'Desconocido' si no está mapeado"""
     return PAIS_A_CONTINENTE.get(pais, "Desconocido")
@@ -461,29 +455,29 @@ def generar_genero_por_pais(artistas_info):
     """
     if not artistas_info:
         return GENERO_POR_DEFECTO
-
+    
     # Obtener el país (todos deberían ser iguales en este punto)
     pais = artistas_info[0]['pais']
-
+    
     # Obtener la jerarquía para este país
     jerarquia = JERARQUIA_GENEROS.get(pais, [GENERO_POR_DEFECTO])
-
+    
     # Contar frecuencias de géneros conocidos
     generos_conocidos = [a['genero'] for a in artistas_info if a['genero']]
     if not generos_conocidos:
         return jerarquia[0] if jerarquia else GENERO_POR_DEFECTO
-
+    
     # Si hay un género claramente dominante, usarlo
     counter = Counter(generos_conocidos)
     genero_mas_comun = counter.most_common(1)[0][0]
     if counter[genero_mas_comun] > len(generos_conocidos) / 2:
         return genero_mas_comun
-
+    
     # Si no hay dominancia, usar el de mayor jerarquía entre los presentes
     for genero_prioritario in jerarquia:
         if genero_prioritario in generos_conocidos:
             return genero_prioritario
-
+    
     # Si nada coincide, usar el primero de la jerarquía
     return jerarquia[0] if jerarquia else GENERO_POR_DEFECTO
 
@@ -494,40 +488,40 @@ def determinar_pais_y_genero_colaboracion(artistas_info):
     Retorna: (pais_resultado, genero_resultado)
     """
     total_artistas = len(artistas_info)
-
+    
     # Caso especial: artista único o todos desconocidos
     if total_artistas == 0:
         return "Desconocido", GENERO_POR_DEFECTO
-
+    
     if total_artistas == 1:
         info = artistas_info[0]
         return info['pais'] or "Desconocido", info['genero'] or GENERO_POR_DEFECTO
-
+    
     # Separar conocidos y desconocidos
     conocidos = [a for a in artistas_info if a['pais'] is not None]
     desconocidos = [a for a in artistas_info if a['pais'] is None]
-
+    
     # Si todos son desconocidos
     if not conocidos:
         return "Desconocido", GENERO_POR_DEFECTO
-
+    
     # Contar países en conocidos
     paises_conocidos = [a['pais'] for a in conocidos]
     contador_paises = Counter(paises_conocidos)
     pais_mayoritario = contador_paises.most_common(1)[0][0]
     cantidad_mayoritaria = contador_paises[pais_mayoritario]
     porcentaje_mayoritario = cantidad_mayoritaria / total_artistas
-
+    
     # Contar continentes
     continentes = [obtener_continente(p) for p in paises_conocidos if p]
     contador_continentes = Counter(continentes)
     cantidad_continentes_distintos = len(contador_continentes)
-
+    
     # Determinar cuántos países distintos hay
     paises_distintos = len(contador_paises)
-
+    
     # --- REGLAS DE DECISIÓN ---
-
+    
     # REGLA 1: Mayoría absoluta (>50%)
     if porcentaje_mayoritario > 0.5:
         # Inferir géneros de desconocidos si comparten país
@@ -538,13 +532,13 @@ def determinar_pais_y_genero_colaboracion(artistas_info):
                 artistas_completos.append({'pais': pais_mayoritario, 'genero': None})
             else:
                 artistas_completos.append(a)
-
+        
         # Determinar género basado en los conocidos de ese país
         artistas_del_pais = [a for a in artistas_completos if a['pais'] == pais_mayoritario]
         genero_final = generar_genero_por_pais(artistas_del_pais)
-
+        
         return pais_mayoritario, genero_final
-
+    
     # REGLA 2: Mayoría exacta (50%)
     if porcentaje_mayoritario == 0.5:
         if paises_distintos == 2:
@@ -555,7 +549,7 @@ def determinar_pais_y_genero_colaboracion(artistas_info):
         else:
             # 50% con 3+ países distintos: MULTI
             return "Multipais", "Multigénero"
-
+    
     # REGLA 3: Mayoría relativa (<50%)
     if porcentaje_mayoritario < 0.5:
         # Verificar si todos los conocidos son del mismo continente
@@ -567,40 +561,40 @@ def determinar_pais_y_genero_colaboracion(artistas_info):
         else:
             # Diferentes continentes o muchos países
             return "Multipais", "Multigénero"
-
+    
     # Caso por defecto
     return "Multipais", "Multigénero"
 
 # =====================================================================
-# FUNCIONES DE DETECCIÓN DE METADATOS (yt-dlp + YouTube API)
+# FUNCIONES DE DETECCIÓN DE METADATOS
 # =====================================================================
 
 def detectar_tipo_video(titulo, descripcion=""):
     """Detecta tipo específico de video musical"""
     texto_completo = f"{titulo.lower()} {descripcion.lower()}"
     titulo_lower = titulo.lower()
-
+    
     es_oficial = any(palabra in texto_completo for palabra in [
         'official', 'oficial', 'video oficial', 'official video',
         'official music video', 'vídeo oficial'
     ])
-
+    
     es_lyric = any(palabra in titulo_lower for palabra in [
         'lyric', 'lyrics', 'letra', 'letras', 'karaoke',
         'lyric video', 'letra oficial'
     ]) or 'lyric' in texto_completo
-
+    
     es_live = any(palabra in texto_completo for palabra in [
         'live', 'en vivo', 'concert', 'performance', 'show',
         'live performance', 'en concierto', 'directo'
     ])
-
+    
     es_remix = any(palabra in titulo_lower for palabra in [
         'remix', 'version', 'edit', 'mix', 'bootleg', 'rework',
         'sped up', 'slowed', 'reverb', 'acoustic', 'acústico',
         'piano version', 'instrumental'
     ])
-
+    
     return {
         'is_official_video': es_oficial,
         'is_lyric_video': es_lyric,
@@ -611,19 +605,19 @@ def detectar_tipo_video(titulo, descripcion=""):
 def detectar_colaboracion_artistas(titulo, artistas_csv):
     """Detecta colaboración y cuenta artistas"""
     titulo_lower = titulo.lower()
-
+    
     patrones_colaboracion = [
         r'\sft\.\s', r'\sfeat\.\s', r'\sfeaturing\s', r'\sft\s',
         r'\scon\s', r'\swith\s', r'\s&\s', r'\sx\s', r'\s×\s',
         r'\(feat\.', r'\(ft\.', r'\(with', r'\[feat\.', r'\[ft\.'
     ]
-
+    
     es_colaboracion = False
     for patron in patrones_colaboracion:
         if re.search(patron, titulo_lower, re.IGNORECASE):
             es_colaboracion = True
             break
-
+    
     if artistas_csv:
         artist_count = artistas_csv.count('&') + artistas_csv.count(',') + 1
     else:
@@ -631,7 +625,7 @@ def detectar_colaboracion_artistas(titulo, artistas_csv):
         if es_colaboracion:
             artist_count = 2
             artist_count += titulo_lower.count(' & ') + titulo_lower.count(' x ')
-
+    
     return {
         'is_collaboration': es_colaboracion,
         'artist_count': min(artist_count, 10)
@@ -641,9 +635,9 @@ def detectar_tipo_canal(channel_title):
     """Detecta tipo de canal"""
     if not channel_title:
         return {'channel_type': 'unknown'}
-
+    
     channel_lower = channel_title.lower()
-
+    
     if 'vevo' in channel_lower:
         return {'channel_type': 'VEVO'}
     elif 'topic' in channel_lower:
@@ -687,8 +681,84 @@ def detectar_restricciones_regionales(content_details):
     is_restricted = bool(region_restriction.get('blocked') or region_restriction.get('allowed'))
     return {'region_restricted': is_restricted}
 
+# =====================================================================
+# FUNCIONES PARA BASE DE DATOS REMOTA
+# =====================================================================
+
+def descargar_db(url):
+    """Descarga la base de datos desde GitHub a un archivo temporal."""
+    print("🌍 Descargando base de datos desde GitHub...")
+    try:
+        respuesta = requests.get(url, timeout=30)
+        respuesta.raise_for_status()
+    except Exception as e:
+        print(f"❌ Error al descargar DB: {e}")
+        sys.exit(1)
+    
+    archivo_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    archivo_temp.write(respuesta.content)
+    archivo_temp.close()
+    print(f"✓ Base de datos descargada temporalmente en: {archivo_temp.name}")
+    return Path(archivo_temp.name)
+
+def normalizar_nombre(nombre):
+    """Limpia y normaliza un nombre para búsqueda (None → cadena vacía)."""
+    if nombre is None:
+        return ""
+    nombre = re.sub(r'\s+', ' ', str(nombre)).strip().lower()
+    nombre = re.sub(r'[^\w\s]', '', nombre)
+    return nombre
+
+def extraer_lista_artistas(artist_names):
+    """Convierte 'A & B feat. C' en lista de nombres limpios (None → lista vacía)."""
+    if artist_names is None:
+        return []
+    texto = artist_names
+    for sep in ['&', 'feat.', 'ft.', ',', ' y ', ' and ', ' with ', ' x ', ' vs ']:
+        texto = texto.replace(sep, '|')
+    return [parte.strip() for parte in texto.split('|') if parte.strip()]
+
+def cargar_db_en_diccionario(ruta_db):
+    """Lee la DB y retorna dict: {nombre_normalizado: (país, género)}"""
+    conn = sqlite3.connect(ruta_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, country, macro_genre FROM artist")
+    filas = cursor.fetchall()
+    conn.close()
+
+    artistas_dict = {}
+    for nombre_original, pais, genero in filas:
+        key = normalizar_nombre(nombre_original)
+        artistas_dict[key] = (pais, genero)
+    print(f"✓ Cargados {len(artistas_dict)} artistas desde la DB remota.")
+    return artistas_dict
+
+def obtener_info_artistas(artist_names, artistas_dict):
+    """
+    Versión mejorada: retorna lista de diccionarios con info de cada artista
+    """
+    lista = extraer_lista_artistas(artist_names)
+    if not lista:
+        return []
+    
+    artistas_info = []
+    for nombre in lista:
+        key = normalizar_nombre(nombre)
+        pais, genero = artistas_dict.get(key, (None, None))
+        artistas_info.append({
+            'nombre': nombre,
+            'pais': pais,
+            'genero': genero
+        })
+    
+    return artistas_info
+
+# =====================================================================
+# FUNCIÓN PRINCIPAL DE OBTENCIÓN DE METADATOS
+# =====================================================================
+
 def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
-    """Obtiene los metadatos específicos usando yt-dlp y YouTube API"""
+    """Obtiene los metadatos específicos usando yt-dlp (con opciones anti-bloqueo) y YouTube API"""
     metadatos = {
         'Duration (s)': 0,
         'duration (m:s)': "0:00",
@@ -709,10 +779,33 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
 
     error_msgs = []
 
-    # yt-dlp
+    # Intentar con yt-dlp (con opciones mejoradas para GitHub Actions)
     try:
         import yt_dlp
-        ydl_opts = {'quiet': True, 'skip_download': True, 'ignoreerrors': True}
+
+        # Opciones especiales para evitar bloqueos
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True,
+            'ignoreerrors': True,
+            'extract_flat': False,
+
+            # Headers de navegador real
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+
+            # Usar cliente móvil (menos bloqueado)
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+
+            # Retry configuration
+            'extractor_retries': 5,
+            'fragment_retries': 5,
+            'retry_sleep_functions': {'extractor': 2},
+
+            # Cookies (opcional, pero ayuda)
+            'cookiefile': None,
+        }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if info:
@@ -742,10 +835,10 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
                 error_msgs.append("No se pudo obtener info (yt-dlp)")
     except Exception as e:
         yt_dlp_success = False
-        error_msgs.append(f"Error yt-dlp: {str(e)[:30]}")
+        error_msgs.append(f"Error yt-dlp: {str(e)}")  # Mensaje completo para debug
 
-    # YouTube API (si hay key)
-    if api_key and api_key != "insertar_api":
+    # YouTube API como respaldo (si yt-dlp falló)
+    if not yt_dlp_success and api_key and api_key != "insertar_api":
         try:
             from googleapiclient.discovery import build
             video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', url)
@@ -768,282 +861,98 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
                     metadatos['audio_language'] = idioma[:2].upper() if idioma else ""
                     metadatos.update(detectar_restricciones_regionales(content_details))
 
-                    if not yt_dlp_success:
-                        titulo_api = snippet.get('title', '')
-                        descripcion_api = snippet.get('description', '')
-                        channel_api = snippet.get('channelTitle', '')
-                        metadatos.update(detectar_tipo_video(titulo_api, descripcion_api))
-                        metadatos.update(detectar_tipo_canal(channel_api))
-                        metadatos.update(detectar_colaboracion_artistas(titulo_api, artistas_csv))
-                        fecha_api = snippet.get('publishedAt', '')[:10]
-                        if fecha_api:
-                            metadatos['upload_date'] = fecha_api
-                            metadatos.update(analizar_fecha_trimestre(fecha_api))
+                    titulo_api = snippet.get('title', '')
+                    descripcion_api = snippet.get('description', '')
+                    channel_api = snippet.get('channelTitle', '')
+                    metadatos.update(detectar_tipo_video(titulo_api, descripcion_api))
+                    metadatos.update(detectar_tipo_canal(channel_api))
+                    metadatos.update(detectar_colaboracion_artistas(titulo_api, artistas_csv))
+                    fecha_api = snippet.get('publishedAt', '')[:10]
+                    if fecha_api:
+                        metadatos['upload_date'] = fecha_api
+                        metadatos.update(analizar_fecha_trimestre(fecha_api))
         except Exception as e:
-            error_msgs.append(f"Error API: {str(e)[:30]}")
+            error_msgs.append(f"Error API: {str(e)}")
 
     if error_msgs:
         metadatos['error'] = " | ".join(error_msgs)
 
     return metadatos
 
-# =====================================================================
-# FUNCIONES PARA BASE DE DATOS DE ARTISTAS (REMOTA)
-# =====================================================================
-
-def descargar_db_artistas(url):
-    """Descarga la base de datos de artistas desde GitHub a un archivo temporal."""
-    print("🌍 Descargando base de datos de artistas desde GitHub...")
-    try:
-        respuesta = requests.get(url, timeout=30)
-        respuesta.raise_for_status()
-    except Exception as e:
-        print(f"❌ Error al descargar DB de artistas: {e}")
-        sys.exit(1)
-
-    archivo_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    archivo_temp.write(respuesta.content)
-    archivo_temp.close()
-    print(f"✓ Base de datos de artistas descargada temporalmente en: {archivo_temp.name}")
-    return Path(archivo_temp.name)
-
-def normalizar_nombre(nombre):
-    """Limpia y normaliza un nombre para búsqueda (None → cadena vacía)."""
-    if nombre is None:
-        return ""
-    nombre = re.sub(r'\s+', ' ', str(nombre)).strip().lower()
-    nombre = re.sub(r'[^\w\s]', '', nombre)
-    return nombre
-
-def extraer_lista_artistas(artist_names):
-    """Convierte 'A & B feat. C' en lista de nombres limpios (None → lista vacía)."""
-    if artist_names is None:
-        return []
-    texto = artist_names
-    for sep in ['&', 'feat.', 'ft.', ',', ' y ', ' and ', ' with ', ' x ', ' vs ']:
-        texto = texto.replace(sep, '|')
-    return [parte.strip() for parte in texto.split('|') if parte.strip()]
-
-def cargar_db_artistas_en_diccionario(ruta_db):
-    """Lee la DB de artistas y retorna dict: {nombre_normalizado: (país, género)}"""
-    conn = sqlite3.connect(ruta_db)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, country, macro_genre FROM artist")
-    filas = cursor.fetchall()
-    conn.close()
-
-    artistas_dict = {}
-    for nombre_original, pais, genero in filas:
-        key = normalizar_nombre(nombre_original)
-        artistas_dict[key] = (pais, genero)
-    print(f"✓ Cargados {len(artistas_dict)} artistas desde la DB remota.")
-    return artistas_dict
-
-def obtener_info_artistas(artist_names, artistas_dict):
-    """
-    Retorna lista de diccionarios con info de cada artista
-    """
-    lista = extraer_lista_artistas(artist_names)
-    if not lista:
-        return []
-
-    artistas_info = []
-    for nombre in lista:
-        key = normalizar_nombre(nombre)
-        pais, genero = artistas_dict.get(key, (None, None))
-        artistas_info.append({
-            'nombre': nombre,
-            'pais': pais,
-            'genero': genero
-        })
-
-    return artistas_info
 
 # =====================================================================
-# FUNCIONES PARA MANEJO DE BASES DE DATOS (ENTRADA/SALIDA)
+# FUNCIONES PARA BASE DE DATOS SQLITE DE SALIDA
 # =====================================================================
-
-def encontrar_ultima_db():
-    """
-    Encuentra la base de datos más reciente en 1_download-chart/databases/
-    Versión con debug explícito
-    """
-    print(f"\n🔍 Buscando en: {INPUT_DB_DIR}")
-
-    # 1. Verificar si el directorio existe
-    if not INPUT_DB_DIR.exists():
-        print(f"❌ ERROR: El directorio NO existe: {INPUT_DB_DIR}")
-        print("📂 Contenido de charts_archive/:")
-        for p in REPO_ROOT.glob("charts_archive/*"):
-            print(f"   - {p.name}")
-        raise FileNotFoundError(f"No existe el directorio: {INPUT_DB_DIR}")
-
-    print(f"✅ Directorio existe: {INPUT_DB_DIR}")
-
-    # 2. Listar todo el contenido (incluyendo ocultos)
-    print(f"\n📋 Contenido completo del directorio:")
-    todos = list(INPUT_DB_DIR.glob("*"))
-    if not todos:
-        print("   ⚠️ El directorio está VACÍO")
-    else:
-        for archivo in sorted(todos):
-            tamaño = archivo.stat().st_size
-            print(f"   - {archivo.name} ({tamaño} bytes)")
-
-    # 3. Buscar específicamente archivos .db
-    archivos = list(INPUT_DB_DIR.glob("*.db"))
-    print(f"\n🔎 Archivos .db encontrados: {len(archivos)}")
-
-    if not archivos:
-        # Buscar cualquier archivo para ver qué hay
-        print("⚠️ No hay archivos .db. Buscando otros archivos...")
-        otros = list(INPUT_DB_DIR.glob("*.*"))
-        if otros:
-            print("📄 Otros archivos encontrados:")
-            for a in otros:
-                print(f"   - {a.name}")
-        raise FileNotFoundError(f"No se encontraron bases de datos .db en: {INPUT_DB_DIR}")
-
-    # 4. Mostrar todos los .db encontrados
-    print("\n📊 Bases de datos encontradas:")
-    for db in sorted(archivos):
-        print(f"   - {db.name}")
-
-    # 5. Ordenar y seleccionar la última
-    archivos.sort(reverse=True)
-    ultima_db = archivos[0]
-    print(f"\n✅ Última base de datos seleccionada: {ultima_db.name}")
-    print(f"   Ruta completa: {ultima_db}")
-
-    return ultima_db
-def leer_canciones_desde_db(ruta_db):
-    """
-    Lee las canciones desde la base de datos SQLite de entrada.
-    Usa los nombres exactos de las columnas de la tabla chart_data.
-    """
-    if not ruta_db.exists():
-        raise FileNotFoundError(f"❌ No existe la base de datos: {ruta_db}")
-
-    conn = sqlite3.connect(ruta_db)
-    conn.row_factory = sqlite3.Row  # Para acceder por nombre de columna
-    cursor = conn.cursor()
-
-    # Verificar que la tabla existe
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='chart_data'")
-    if not cursor.fetchone():
-        raise Exception(f"La base de datos {ruta_db.name} no contiene una tabla 'chart_data'")
-
-    # Usar los nombres exactos de las columnas
-    cursor.execute("""
-        SELECT
-            [Rank] as rank,
-            [Artist Names] as artist_names,
-            [Track Name] as track_name,
-            [Periods on Chart] as periods_on_chart,
-            [Views] as views,
-            [YouTube URL] as youtube_url
-        FROM chart_data
-    """)
-
-    resultados = cursor.fetchall()
-    conn.close()
-
-    canciones = []
-    for fila in resultados:
-        cancion = {
-            'rank': fila['rank'],
-            'artist_names': fila['artist_names'],
-            'track_name': fila['track_name'],
-            'periods_on_chart': fila['periods_on_chart'],
-            'views': fila['views'],
-            'youtube_url': fila['youtube_url']
-        }
-        canciones.append(cancion)
-
-    print(f"✅ {len(canciones)} canciones cargadas desde {ruta_db.name}")
-    return canciones
 
 def crear_tabla_resultados(conn):
-    """Crea la tabla de resultados en la base de datos SQLite (sin label, error al final)"""
+    """Crea la tabla de resultados en la base de datos SQLite"""
     cursor = conn.cursor()
-
+    
+    # Crear tabla
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS canciones_enriquecidas (
-            -- Identificadores
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             rank INTEGER,
             artist_names TEXT,
             track_name TEXT,
-
-            -- Métricas del chart
             periods_on_chart INTEGER,
             views INTEGER,
             youtube_url TEXT,
-
-            -- Metadatos de video
             duration_s INTEGER,
             duration_ms TEXT,
             upload_date TEXT,
             likes INTEGER,
             comment_count INTEGER,
             audio_language TEXT,
-
-            -- Flags de tipo de video
             is_official_video BOOLEAN,
             is_lyric_video BOOLEAN,
             is_live_performance BOOLEAN,
-
-            -- Metadatos de contexto
             upload_season TEXT,
             channel_type TEXT,
             is_collaboration BOOLEAN,
             artist_count INTEGER,
             region_restricted BOOLEAN,
-
-            -- Resultados del sistema de pesos
+            error TEXT,
             artist_country TEXT,
             macro_genre TEXT,
             artistas_encontrados TEXT,
-
-            -- Control de calidad (TODO AL FINAL)
-            error TEXT,
+            label TEXT,
             fecha_procesamiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-
+    
     # Crear índices para búsquedas rápidas
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pais ON canciones_enriquecidas(artist_country)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_genero ON canciones_enriquecidas(macro_genre)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_fecha ON canciones_enriquecidas(upload_date)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_error ON canciones_enriquecidas(error)')
-
+    
     conn.commit()
 
 def guardar_en_sqlite(conn, fila):
-    """Guarda una fila en la base de datos SQLite (sin label)"""
+    """Guarda una fila en la base de datos SQLite"""
     cursor = conn.cursor()
-
+    
     cursor.execute('''
         INSERT INTO canciones_enriquecidas (
             rank, artist_names, track_name, periods_on_chart, views, youtube_url,
             duration_s, duration_ms, upload_date, likes, comment_count,
             audio_language, is_official_video, is_lyric_video, is_live_performance,
             upload_season, channel_type, is_collaboration, artist_count,
-            region_restricted, artist_country, macro_genre, artistas_encontrados,
-            error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            region_restricted, error, artist_country, macro_genre,
+            artistas_encontrados, label
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        fila['Rank'], fila['Artist Names'], fila['Track Name'],
+        fila['Rank'], fila['Artist Names'], fila['Track Name'], 
         fila['Periods on Chart'], fila['Views'], fila['YouTube URL'],
         fila['Duration (s)'], fila['duration (m:s)'], fila['upload_date'],
         fila['likes'], fila['comment_count'], fila['audio_language'],
         fila['is_official_video'], fila['is_lyric_video'], fila['is_live_performance'],
         fila['upload_season'], fila['channel_type'], fila['is_collaboration'],
-        fila['artist_count'], fila['region_restricted'],
+        fila['artist_count'], fila['region_restricted'], fila['error'],
         fila['Artist_Country'], fila['macro_genre'], fila['artistas_encontrados'],
-        fila['error']
+        fila['Label']
     ))
-
+    
     conn.commit()
 
 # =====================================================================
@@ -1052,28 +961,21 @@ def guardar_en_sqlite(conn, fila):
 
 def main():
     print("="*80)
-    print("🎵 ENRIQUECIMIENTO DE CHART CON SISTEMA DE PESOS (VERSIÓN GITHUB)")
+    print("🎵 ENRIQUECIMIENTO CON SISTEMA DE PESOS (salida a SQLite)")
     print("="*80)
-    print(f"📂 Directorio raíz: {REPO_ROOT}")
-    print(f"📂 Directorio de entrada esperado: {INPUT_DB_DIR}")
-
-    # 1. Encontrar la última base de datos descargada
-    try:
-        db_input_path = encontrar_ultima_db()
-    except FileNotFoundError as e:
-        print(f"\n❌ {e}")
+    print(f"📁 Directorio de salida: {DB_OUTPUT_DIR}")
+    print(f"💾 Base de datos: {DB_OUTPUT_PATH.name}\n")
+    
+    # 1. Descargar y cargar base de datos remota
+    ruta_db_temp = descargar_db(URL_DB)
+    artistas_dict = cargar_db_en_diccionario(ruta_db_temp)
+    
+    # 2. Verificar archivo CSV
+    if not INPUT_CSV.exists():
+        print(f"\n❌ No se encuentra: {INPUT_CSV.name}")
         return
-
-    # 2. Definir nombre de salida
-    nombre_base = db_input_path.stem
-    db_output_path = OUTPUT_DIR / f"{nombre_base}_enriched.db"
-    print(f"💾 Base de datos de salida: {db_output_path}")
-
-    # 3. Descargar y cargar base de datos de artistas
-    ruta_db_artistas_temp = descargar_db_artistas(URL_ARTISTAS_DB)
-    artistas_dict = cargar_db_artistas_en_diccionario(ruta_db_artistas_temp)
-
-    # 4. Instalar/verificar dependencias
+    
+    # 3. Instalar/verificar dependencias
     try:
         import yt_dlp
         print("✅ yt-dlp disponible")
@@ -1083,49 +985,53 @@ def main():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "yt-dlp"])
         import yt_dlp
         print("✅ yt-dlp instalado")
-
-    # 5. Leer canciones desde la base de datos de entrada
-    print(f"\n📖 Leyendo canciones desde: {db_input_path.name}")
+    
+    # 4. Leer CSV
+    print(f"\n📖 Leyendo canciones de: {INPUT_CSV.name}")
     try:
-        canciones = leer_canciones_desde_db(db_input_path)
+        with open(INPUT_CSV, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            canciones = list(reader)
+        print(f"✅ {len(canciones)} canciones cargadas\n")
     except Exception as e:
-        print(f"❌ Error leyendo base de datos: {e}")
+        print(f"❌ Error leyendo CSV: {e}")
         return
-
-    # 6. Conectar a base de datos SQLite de salida
-    conn = sqlite3.connect(db_output_path)
+    
+    # 5. Conectar a base de datos SQLite de salida
+    conn = sqlite3.connect(DB_OUTPUT_PATH)
     crear_tabla_resultados(conn)
-
-    # 7. Procesar cada canción
-    print("\n🎬 Procesando y extrayendo metadatos...")
-
+    
+    # 6. Procesar cada canción
+    print("🎬 Procesando y extrayendo metadatos...")
+    resultados = []
+    
     for i, cancion in enumerate(canciones, 1):
-        url = cancion['youtube_url']
-        track = cancion['track_name'][:30]
-        artistas_csv = cancion.get('artist_names', '')
-
+        url = cancion['YouTube URL']
+        track = cancion['Track Name'][:30]
+        artistas_csv = cancion.get('Artist Names', '')
+        
         print(f"[{i:2d}/{len(canciones)}] {track:30}... ", end='', flush=True)
-
+        
         # Obtener metadatos específicos
         metadatos = obtener_metadatos_especificos(url, artistas_csv, API_KEY)
-
+        
         # Obtener información de artistas desde la DB
         artistas_info = obtener_info_artistas(artistas_csv, artistas_dict)
-
+        
         # Aplicar algoritmo de decisión
         pais_final, genero_final = determinar_pais_y_genero_colaboracion(artistas_info)
-
+        
         # Mostrar info de artistas encontrados
         encontrados = sum(1 for a in artistas_info if a['pais'] is not None)
         total_arts = len(artistas_info) if artistas_info else 1
-
+        
         # Combinar todo en una fila
         fila = {
-            'Rank': cancion['rank'],
+            'Rank': cancion['Rank'],
             'Artist Names': artistas_csv,
-            'Track Name': cancion['track_name'],
-            'Periods on Chart': cancion['periods_on_chart'],
-            'Views': cancion['views'],
+            'Track Name': cancion['Track Name'],
+            'Periods on Chart': cancion['Periods on Chart'],
+            'Views': cancion['Views'],
             'YouTube URL': url,
             'Duration (s)': metadatos['Duration (s)'],
             'duration (m:s)': metadatos['duration (m:s)'],
@@ -1144,12 +1050,13 @@ def main():
             'error': metadatos['error'],
             'Artist_Country': pais_final,
             'macro_genre': genero_final,
-            'artistas_encontrados': f"{encontrados}/{total_arts}"
+            'artistas_encontrados': f"{encontrados}/{total_arts}",
+            'Label': None
         }
-
+        
         # Guardar en SQLite
         guardar_en_sqlite(conn, fila)
-
+        
         # Mostrar resumen
         iconos = []
         if metadatos['Duration (s)'] > 0:
@@ -1166,60 +1073,56 @@ def main():
             iconos.append(f"🌍{pais_final[:2]}")
         elif pais_final == "Multipais":
             iconos.append("🌐")
-
+        
         if encontrados < total_arts:
             iconos.append(f"⚠️{encontrados}/{total_arts}")
-
+        
         if iconos:
             print(f"({' '.join(iconos)}) → {pais_final[:15]}, {genero_final[:15]}")
         else:
             error_display = metadatos['error'][:20] if metadatos['error'] else "Sin datos"
             print(f"({error_display})")
-
+        
         time.sleep(0.1)
-
-    # 8. Cerrar conexión a base de datos
+    
+    # 7. Cerrar conexión a base de datos
     conn.close()
-
-    # 9. Mostrar estadísticas finales
-    print(f"\n💾 Base de datos guardada en: {db_output_path}")
-
+    
+    # 8. Mostrar estadísticas finales
+    print(f"\n💾 Base de datos guardada en: {DB_OUTPUT_PATH}")
+    
     # Conectar para leer estadísticas
-    conn = sqlite3.connect(db_output_path)
+    conn = sqlite3.connect(DB_OUTPUT_PATH)
     cursor = conn.cursor()
-
+    
     cursor.execute("SELECT COUNT(*) FROM canciones_enriquecidas")
     total = cursor.fetchone()[0]
-
+    
     cursor.execute("SELECT COUNT(*) FROM canciones_enriquecidas WHERE artist_country = 'Multipais'")
     multi_pais = cursor.fetchone()[0]
-
+    
     cursor.execute("SELECT COUNT(DISTINCT artist_country) FROM canciones_enriquecidas WHERE artist_country NOT IN ('Desconocido', 'Multipais')")
     paises_unicos = cursor.fetchone()[0]
-
+    
     cursor.execute("SELECT COUNT(DISTINCT macro_genre) FROM canciones_enriquecidas WHERE macro_genre != 'Multigénero' AND macro_genre IS NOT NULL")
     generos_unicos = cursor.fetchone()[0]
-
+    
     cursor.execute("SELECT COUNT(*) FROM canciones_enriquecidas WHERE artist_country = 'Desconocido'")
     desconocidos = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM canciones_enriquecidas WHERE error != ''")
-    errores = cursor.fetchone()[0]
-
+    
     conn.close()
-
+    
     print("\n📊 ESTADÍSTICAS FINALES")
     print(f"   • Total canciones: {total}")
     print(f"   • Colaboraciones multi-país: {multi_pais} ({multi_pais/total*100:.1f}%)")
     print(f"   • Países distintos detectados: {paises_unicos}")
     print(f"   • Géneros distintos: {generos_unicos}")
     print(f"   • Canciones sin país: {desconocidos} ({desconocidos/total*100:.1f}%)")
-    print(f"   • Canciones con error: {errores} ({errores/total*100:.1f}%)")
-
-    # 10. Limpiar archivo temporal
-    os.unlink(ruta_db_artistas_temp)
-    print("\n🧹 Archivo temporal de artistas eliminado.")
-
+    
+    # 9. Limpiar archivo temporal
+    os.unlink(ruta_db_temp)
+    print("\n🧹 Archivo temporal eliminado.")
+    
     print("\n✅ PROCESO COMPLETADO")
 
 if __name__ == "__main__":
@@ -1235,15 +1138,9 @@ if __name__ == "__main__":
         print("✓ País y género desde DB remota (CON SISTEMA DE PESOS)")
         print("✗ NO obtendrá: comentarios, idioma, restricciones")
         print("="*70)
-
-    # EN GITHUB ACTIONS, EJECUTAR SIEMPRE
-    if os.environ.get('GITHUB_ACTIONS') == 'true':
-        print("🔄 Ejecutando en GitHub Actions (modo no interactivo)")
+    
+    respuesta = input("\n¿Continuar con el procesamiento? (s/n): ").lower()
+    if respuesta in ['s', 'si', 'y', 'yes']:
         main()
     else:
-        # Solo preguntar en entorno local
-        respuesta = input("\n¿Continuar con el procesamiento? (s/n): ").lower()
-        if respuesta in ['s', 'si', 'y', 'yes']:
-            main()
-        else:
-            print("Proceso cancelado.")
+        print("Proceso cancelado.")
