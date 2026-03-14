@@ -918,11 +918,10 @@ def encontrar_ultima_db():
     print(f"   Ruta completa: {ultima_db}")
 
     return ultima_db
-
 def leer_canciones_desde_db(ruta_db):
     """
     Lee las canciones desde la base de datos SQLite de entrada.
-    Se espera una tabla 'canciones' con las columnas:
+    Se espera una tabla 'chart_data' con las columnas:
     rank, artist_names, track_name, periods_on_chart, views, youtube_url
     """
     if not ruta_db.exists():
@@ -932,11 +931,11 @@ def leer_canciones_desde_db(ruta_db):
     cursor = conn.cursor()
 
     # Verificar que la tabla existe
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='canciones'")
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='chart_data'")
     if not cursor.fetchone():
-        raise Exception(f"La base de datos {ruta_db.name} no contiene una tabla 'canciones'")
+        raise Exception(f"La base de datos {ruta_db.name} no contiene una tabla 'chart_data'")
 
-    cursor.execute("SELECT rank, artist_names, track_name, periods_on_chart, views, youtube_url FROM canciones")
+    cursor.execute("SELECT rank, artist_names, track_name, periods_on_chart, views, youtube_url FROM chart_data")
     columnas = [description[0] for description in cursor.description]
     resultados = cursor.fetchall()
     conn.close()
@@ -944,8 +943,10 @@ def leer_canciones_desde_db(ruta_db):
     canciones = []
     for fila in resultados:
         cancion = dict(zip(columnas, fila))
-        # Convertir tipos si es necesario
         canciones.append(cancion)
+
+    print(f"✅ {len(canciones)} canciones cargadas desde {ruta_db.name}")
+    return canciones
 
     print(f"✅ {len(canciones)} canciones cargadas desde {ruta_db.name}")
     return canciones
