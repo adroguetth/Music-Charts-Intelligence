@@ -4,10 +4,10 @@ on:
   schedule:
     # Lunes 14:00 UTC (1 hora después del workflow de descarga)
     - cron: '0 14 * * 1'
-  
+
   # Ejecución manual desde la interfaz de GitHub
   workflow_dispatch:
-  
+
   # Ejecutar cuando haya cambios en el script de enriquecimiento
   push:
     branches:
@@ -24,10 +24,10 @@ jobs:
     name: Enrich YouTube Chart Data
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    
+
     permissions:
       contents: write
-    
+
     steps:
       # ==================================================
       # SETUP PHASE
@@ -82,22 +82,22 @@ jobs:
       - name: ✅ Verify enriched database
         run: |
           echo "📊 Verifying enriched database..."
-          
+
           LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
-          
+
           if [ -f "$LATEST_DB" ]; then
             SIZE=$(stat -c%s "$LATEST_DB")
             echo "✅ Enriched database found: $(basename $LATEST_DB)"
             echo "📦 Size: $((SIZE / 1024)) KB"
-            
+
             if command -v sqlite3 &> /dev/null; then
               echo "🔍 Checking database integrity..."
               sqlite3 "$LATEST_DB" "PRAGMA integrity_check;"
-              
+
               TOTAL=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM canciones_enriquecidas;")
               MULTI=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM canciones_enriquecidas WHERE artist_country = 'Multipais';")
               ERROR=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM canciones_enriquecidas WHERE error != '';")
-              
+
               echo "📊 Stats: $TOTAL songs, $MULTI multi-country, $ERROR with errors"
             fi
           else
@@ -111,12 +111,12 @@ jobs:
       - name: 📤 Commit and push changes
         run: |
           echo "📝 Preparing commit..."
-          
+
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git add charts_archive/3_enrich-chart-data/
-          
+
           if git diff --cached --quiet; then
             echo "🔭 No changes to commit"
           else
@@ -139,7 +139,7 @@ jobs:
             -type f \
             -mtime +$((RETENTION_WEEKS * 7)) \
             -delete
-          
+
           REMAINING=$(ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l)
           echo "✅ Cleanup completed. $REMAINING enriched databases remaining."
 
@@ -156,8 +156,8 @@ jobs:
             scripts/3_enrich_chart_data.py.log
           retention-days: 7
 
-                # ==================================================
-      # REPORTING PHASE - VERSIÓN CORREGIDA
+      # ==================================================
+      # REPORTING PHASE
       # ==================================================
       - name: 📋 Generate final report
         if: always()
@@ -169,18 +169,17 @@ jobs:
           echo "📌 Trigger: ${{ github.event_name }}"
           echo "🔗 Commit: ${{ github.sha }}"
           echo ""
-          
+
           LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
-          
+
           if [ -f "$LATEST_DB" ]; then
             echo "✅ Latest database: $(basename $LATEST_DB)"
-            
+
             if command -v sqlite3 &> /dev/null; then
-              # El here-document debe empezar en la siguiente línea
-              sqlite3 "$LATEST_DB" <<'EOF'
+              cat > /tmp/report_query.sql << 'ENDOFQUERY'
 .mode box
 WITH stats AS (
-  SELECT 
+  SELECT
     COUNT(*) as total,
     SUM(CASE WHEN artist_country = 'Multipais' THEN 1 ELSE 0 END) as multi_country,
     SUM(CASE WHEN artist_country = 'Desconocido' THEN 1 ELSE 0 END) as unknown_country,
@@ -189,7 +188,7 @@ WITH stats AS (
     COUNT(DISTINCT macro_genre) as unique_genres
   FROM canciones_enriquecidas
 )
-SELECT 
+SELECT
   total as 'Total Songs',
   multi_country as 'Multi-Country',
   unknown_country as 'Unknown Country',
@@ -197,17 +196,18 @@ SELECT
   unique_countries as 'Unique Countries',
   unique_genres as 'Unique Genres'
 FROM stats;
-EOF
+ENDOFQUERY
+              sqlite3 "$LATEST_DB" < /tmp/report_query.sql
             fi
           else
             echo "⚠️ No enriched database found"
           fi
-          
+
           echo ""
           echo "📊 Retention policy:"
           echo "   • Maximum weeks: ${{ env.RETENTION_WEEKS }} (1.5 years)"
           echo "   • Current count: $(ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l) databases"
-          
+
           echo ""
           echo "📊 Trigger details:"
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -217,7 +217,7 @@ EOF
           else
             echo "   • Triggered by: Manual dispatch"
           fi
-          
+
           echo ""
           echo "✅ Process completed"
           echo "========================================"
