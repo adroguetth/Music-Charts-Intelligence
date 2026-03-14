@@ -2,23 +2,15 @@ name: 3- Enrich Chart Data
 
 on:
   schedule:
-    # Lunes 14:00 UTC (1 hora después del workflow de descarga)
+    # Lunes 14:00 UTC (2 hora después del workflow de descarga)
     - cron: '0 14 * * 1'
   
   # Ejecución manual desde la interfaz de GitHub
   workflow_dispatch:
-  
-  # Ejecución automática cuando termine el workflow de descarga
-  workflow_run:
-    workflows: ["1- Download YouTube Chart"]
-    types:
-      - completed
-    branches:
-      - main
 
 env:
   RETENTION_DAYS: 30
-  MAX_WEEKS: 78  # 1.5 años de retención
+  MAX_WEEKS: 78
 
 jobs:
   enrich-chart-data:
@@ -54,11 +46,25 @@ jobs:
         mkdir -p charts_archive/3_enrich-chart-data
     
     # ==================================================
+    # DEBUG PHASE (opcional, puedes quitarlo después)
+    # ==================================================
+    - name: 🔍 Debug - List directories
+      run: |
+        echo "Contenido de scripts/:"
+        ls -la scripts/ || echo "scripts/ no encontrado"
+        echo ""
+        echo "Contenido de databases/:"
+        ls -la charts_archive/1_download-chart/databases/ || echo "Vacío"
+        echo ""
+        echo "Python version:"
+        python --version
+    
+    # ==================================================
     # EXECUTION PHASE
     # ==================================================
     - name: 🚀 Run enrichment script
       run: |
-        python scripts/3_enrich-chart-data.py
+        python scripts/3_enrich_chart_data.py
       env:
         YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         GITHUB_ACTIONS: true
@@ -143,16 +149,6 @@ jobs:
         # Mostrar cuántas quedan
         REMAINING=$(ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l)
         echo "✅ Cleanup completed. $REMAINING enriched databases remaining."
-        
-        # Opcional: listar las que se mantienen (solo nombres, no contenido)
-        if [ $REMAINING -gt 0 ] && [ $REMAINING -le 10 ]; then
-          echo ""
-          echo "📋 Current enriched databases:"
-          ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | xargs -n 1 basename | sort
-        elif [ $REMAINING -gt 10 ]; then
-          echo ""
-          echo "📋 $REMAINING databases retained (list suppressed for brevity)"
-        fi
     
     # ==================================================
     # RECOVERY PHASE (on failure)
@@ -164,7 +160,7 @@ jobs:
         name: enrich-debug-${{ github.run_number }}
         path: |
           charts_archive/3_enrich-chart-data/
-          scripts/3_enrich-chart-data.py.log
+          scripts/3_enrich_chart_data.py.log
         retention-days: 7
     
     # ==================================================
@@ -224,11 +220,7 @@ jobs:
         # Show trigger information
         echo ""
         echo "📊 Trigger details:"
-        if [ "${{ github.event_name }}" = "workflow_run" ]; then
-          echo "   • Triggered by: Download workflow"
-          echo "   • Workflow status: ${{ github.event.workflow_run.conclusion }}"
-          echo "   • Workflow ID: ${{ github.event.workflow_run.id }}"
-        elif [ "${{ github.event_name }}" = "schedule" ]; then
+        if [ "${{ github.event_name }}" = "schedule" ]; then
           echo "   • Triggered by: Scheduled cron (Monday 14:00 UTC)"
         else
           echo "   • Triggered by: Manual dispatch"
