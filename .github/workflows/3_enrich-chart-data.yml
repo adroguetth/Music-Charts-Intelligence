@@ -156,8 +156,8 @@ jobs:
             scripts/3_enrich_chart_data.py.log
           retention-days: 7
 
-      # ==================================================
-      # REPORTING PHASE - CORREGIDO
+                # ==================================================
+      # REPORTING PHASE - VERSIÓN CORREGIDA
       # ==================================================
       - name: 📋 Generate final report
         if: always()
@@ -176,6 +176,7 @@ jobs:
             echo "✅ Latest database: $(basename $LATEST_DB)"
             
             if command -v sqlite3 &> /dev/null; then
+              # El here-document debe empezar en la siguiente línea
               sqlite3 "$LATEST_DB" <<'EOF'
 .mode box
 WITH stats AS (
