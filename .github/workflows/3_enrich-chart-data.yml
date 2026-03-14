@@ -155,7 +155,6 @@ jobs:
             charts_archive/3_enrich-chart-data/
             scripts/3_enrich_chart_data.py.log
           retention-days: 7
-
       # ==================================================
       # REPORTING PHASE
       # ==================================================
@@ -169,17 +168,17 @@ jobs:
           echo "📌 Trigger: ${{ github.event_name }}"
           echo "🔗 Commit: ${{ github.sha }}"
           echo ""
-
+          
           LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
-
+          
           if [ -f "$LATEST_DB" ]; then
             echo "✅ Latest database: $(basename $LATEST_DB)"
-
+            
             if command -v sqlite3 &> /dev/null; then
-              cat > /tmp/report_query.sql << 'ENDOFQUERY'
+              sqlite3 "$LATEST_DB" <<'EOF'
 .mode box
 WITH stats AS (
-  SELECT
+  SELECT 
     COUNT(*) as total,
     SUM(CASE WHEN artist_country = 'Multipais' THEN 1 ELSE 0 END) as multi_country,
     SUM(CASE WHEN artist_country = 'Desconocido' THEN 1 ELSE 0 END) as unknown_country,
@@ -188,7 +187,7 @@ WITH stats AS (
     COUNT(DISTINCT macro_genre) as unique_genres
   FROM canciones_enriquecidas
 )
-SELECT
+SELECT 
   total as 'Total Songs',
   multi_country as 'Multi-Country',
   unknown_country as 'Unknown Country',
@@ -196,18 +195,17 @@ SELECT
   unique_countries as 'Unique Countries',
   unique_genres as 'Unique Genres'
 FROM stats;
-ENDOFQUERY
-              sqlite3 "$LATEST_DB" < /tmp/report_query.sql
+EOF
             fi
           else
             echo "⚠️ No enriched database found"
           fi
-
+          
           echo ""
           echo "📊 Retention policy:"
           echo "   • Maximum weeks: ${{ env.RETENTION_WEEKS }} (1.5 years)"
           echo "   • Current count: $(ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l) databases"
-
+          
           echo ""
           echo "📊 Trigger details:"
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -217,7 +215,8 @@ ENDOFQUERY
           else
             echo "   • Triggered by: Manual dispatch"
           fi
-
+          
           echo ""
           echo "✅ Process completed"
           echo "========================================"
+     
