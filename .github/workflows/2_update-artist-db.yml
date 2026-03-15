@@ -66,11 +66,11 @@ jobs:
     - name: ✅ Verify database integrity
       run: |
         echo "📊 Verifying artist database..."
-        DB_PATH="charts_archive/2_countries-genres-artist/artist_countries_genres.db"  # ← CAMBIADO
+        DB_PATH="charts_archive/2_countries-genres-artist/artist_countries_genres.db"  
         
         # Check directory contents
         echo "📂 Directory contents:"
-        ls -la charts_archive/2_countries-genres-artist/  # ← CAMBIADO
+        ls -la charts_archive/2_countries-genres-artist/
         
         # Verify database exists and has size
         if [ -f "$DB_PATH" ]; then
@@ -99,7 +99,7 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
         # Stage only artist database files
-        git add charts_archive/2_countries-genres-artist/  # ← CAMBIADO
+        git add charts_archive/2_countries-genres-artist/
         
         # Check if there are changes to commit
         if git diff --cached --quiet; then
