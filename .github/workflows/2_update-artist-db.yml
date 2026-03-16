@@ -2,7 +2,7 @@ name: 2- Update Artist Database
 
 on:
   schedule:
-    # Run every Monday at 13:00 UTC (1 hour after Monday's 12:00 UTC download)
+    # Run every Monday at 13:00 UTC (one hour after Monday's download at 12:00 UTC)
     - cron: '0 13 * * 1'
   
   # Allow manual execution
@@ -10,6 +10,7 @@ on:
 
 env:
   RETENTION_DAYS: 30
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Advance to Node.js 24
 
 jobs:
   build-artist-database:
@@ -28,25 +29,25 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Full history for git operations
-    
+
     - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
         cache: 'pip'
-    
+
     - name: 📦 Install dependencies
       run: |
         pip install -r requirements.txt
-        # Playwright not needed for this script, but kept for reference
+        # Playwright is not needed for this script, but kept as reference
         # python -m playwright install chromium
         # python -m playwright install-deps
-    
+
     - name: 📁 Ensure directory structure
       run: |
         mkdir -p charts_archive/1_download-chart/databases
-        mkdir -p charts_archive/2_countries-genres-artist
-    
+        mkdir -p charts_archive/2_countries-genres-artist  
+
     # ==================================================
     # EXECUTION PHASE
     # ==================================================
@@ -59,25 +60,22 @@ jobs:
         # MUSICBRAINZ_TOKEN: ${{ secrets.MUSICBRAINZ_TOKEN }}
         # SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
         # SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-    
+
     # ==================================================
     # VALIDATION PHASE
     # ==================================================
     - name: ✅ Verify database integrity
       run: |
         echo "📊 Verifying artist database..."
-        DB_PATH="charts_archive/2_countries-genres-artist/artist_countries_genres.db"  
+        DB_PATH="charts_archive/2_countries-genres-artist/artist_countries_genres.db"   
         
-        # Check directory contents
         echo "📂 Directory contents:"
         ls -la charts_archive/2_countries-genres-artist/
         
-        # Verify database exists and has size
         if [ -f "$DB_PATH" ]; then
           SIZE=$(stat -c%s "$DB_PATH")
           echo "✅ Database found: $((SIZE / 1024)) KB"
           
-          # Optional: Verify database integrity with sqlite3
           if command -v sqlite3 &> /dev/null; then
             echo "🔍 Checking database integrity..."
             sqlite3 "$DB_PATH" "PRAGMA integrity_check;"
@@ -86,7 +84,7 @@ jobs:
           echo "❌ Database not found!"
           exit 1
         fi
-    
+
     # ==================================================
     # PERSISTENCE PHASE
     # ==================================================
@@ -94,21 +92,17 @@ jobs:
       run: |
         echo "📝 Preparing commit..."
         
-        # Configure git user for automated commits
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Stage only artist database files
-        git add charts_archive/2_countries-genres-artist/
+        git add charts_archive/2_countries-genres-artist/  
         
-        # Check if there are changes to commit
         if git diff --cached --quiet; then
           echo "🔭 No changes to commit"
         else
           DATE=$(date +'%Y-%m-%d')
           git commit -m "🤖 Update artist database ${DATE} [Automated]"
           
-          # Pull latest changes with rebase to avoid merge commits
           echo "⬇️ Pulling latest changes with rebase..."
           git pull --rebase origin main
           
@@ -116,7 +110,7 @@ jobs:
           git push origin HEAD:main
           echo "✅ Changes pushed successfully"
         fi
-    
+
     # ==================================================
     # RECOVERY PHASE (on failure)
     # ==================================================
@@ -128,7 +122,7 @@ jobs:
         path: |
           charts_archive/
         retention-days: 7
-    
+
     # ==================================================
     # REPORTING PHASE
     # ==================================================
@@ -143,28 +137,26 @@ jobs:
         echo "🔗 Commit: ${{ github.sha }}"
         echo ""
         
-        DB_FILE="charts_archive/2_countries-genres-artist/artist_countries_genres.db"  # ← CAMBIADO
+        DB_FILE="charts_archive/2_countries-genres-artist/artist_countries_genres.db"   
         if [ -f "$DB_FILE" ]; then
           SIZE=$(stat -c%s "$DB_FILE")
           echo "✅ Artist database: $((SIZE / 1024)) KB"
           
-          # Count artists (optional, if you want more details)
           if command -v sqlite3 &> /dev/null; then
-            ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artists;" 2>/dev/null || echo "N/A")
+            ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artist;" 2>/dev/null || echo "N/A")
             echo "👤 Artists processed: ${ARTIST_COUNT}"
           fi
         else
           echo "⚠️ Artist database not found"
         fi
         
-        # Show trigger information
         echo ""
         echo "📊 Trigger details:"
         if [ "${{ github.event_name }}" = "workflow_run" ]; then
           echo "   • Triggered by: Download workflow"
           echo "   • Workflow status: ${{ github.event.workflow_run.conclusion }}"
         elif [ "${{ github.event_name }}" = "schedule" ]; then
-          echo "   • Triggered by: Scheduled cron (Tuesday 14:00 UTC)"
+          echo "   • Triggered by: Scheduled cron (Monday 13:00 UTC)"
         else
           echo "   • Triggered by: Manual dispatch"
         fi
