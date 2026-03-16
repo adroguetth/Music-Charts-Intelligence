@@ -10490,14 +10490,34 @@ def count_artists_in_database() -> int:
 # FUNCTION TO GET THE LATEST CHART DATABASE
 # ============================================================================
 def get_latest_chart_database() -> Optional[Path]:
+    """
+    Get the most recent YouTube chart database based on year and week from filename.
+    Returns the Path object of the latest database or None if not found.
+    """
     if not CHARTS_DB_DIR.exists():
         logger.error(f"❌ Directory not found: {CHARTS_DB_DIR}")
         return None
+
     db_files = list(CHARTS_DB_DIR.glob("youtube_charts_*.db"))
     if not db_files:
         logger.error("❌ No chart databases found")
         return None
-    latest = max(db_files, key=lambda f: f.stat().st_mtime)
+
+    def week_key(file_path: Path) -> tuple:
+        """
+        Returns a tuple (year, week) for sorting.
+        If filename doesn't match the pattern, uses (0, timestamp) as fallback.
+        """
+        match = re.search(r'youtube_charts_(\d{4})-W(\d{1,2})\.db', file_path.name)
+        if match:
+            year = int(match.group(1))
+            week = int(match.group(2))
+            return (year, week)
+        else:
+            # Fallback: use timestamp (less reliable, but safe)
+            return (0, file_path.stat().st_mtime)
+
+    latest = max(db_files, key=week_key)
     logger.info(f"📁 Using database: {latest.name}")
     return latest
 
