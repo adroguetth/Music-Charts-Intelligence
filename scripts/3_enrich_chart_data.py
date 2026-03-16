@@ -519,107 +519,13 @@ def extraer_lista_artistas(artist_names):
     return [parte.strip() for parte in texto.split('|') if parte.strip()]
 
 # ---------------------------------------------------------------------
-# FUNCIONES DE METADATOS DE YOUTUBE (igual que Local.py)
+# FUNCIONES DE METADATOS DE YOUTUBE
 # ---------------------------------------------------------------------
-def detectar_tipo_video(titulo, descripcion=""):
-    texto_completo = f"{titulo.lower()} {descripcion.lower()}"
-    titulo_lower = titulo.lower()
-    es_oficial = any(palabra in texto_completo for palabra in [
-        'official', 'oficial', 'video oficial', 'official video',
-        'official music video', 'vídeo oficial'
-    ])
-    es_lyric = any(palabra in titulo_lower for palabra in [
-        'lyric', 'lyrics', 'letra', 'letras', 'karaoke',
-        'lyric video', 'letra oficial'
-    ]) or 'lyric' in texto_completo
-    es_live = any(palabra in texto_completo for palabra in [
-        'live', 'en vivo', 'concert', 'performance', 'show',
-        'live performance', 'en concierto', 'directo'
-    ])
-    es_remix = any(palabra in titulo_lower for palabra in [
-        'remix', 'version', 'edit', 'mix', 'bootleg', 'rework',
-        'sped up', 'slowed', 'reverb', 'acoustic', 'acústico',
-        'piano version', 'instrumental'
-    ])
-    return {
-        'is_official_video': es_oficial,
-        'is_lyric_video': es_lyric,
-        'is_live_performance': es_live,
-        'is_special_version': es_remix
-    }
-
-def detectar_colaboracion_artistas(titulo, artistas_csv):
-    titulo_lower = titulo.lower()
-    patrones_colaboracion = [
-        r'\sft\.\s', r'\sfeat\.\s', r'\sfeaturing\s', r'\sft\s',
-        r'\scon\s', r'\swith\s', r'\s&\s', r'\sx\s', r'\s×\s',
-        r'\(feat\.', r'\(ft\.', r'\(with', r'\[feat\.', r'\[ft\.'
-    ]
-    es_colaboracion = False
-    for patron in patrones_colaboracion:
-        if re.search(patron, titulo_lower, re.IGNORECASE):
-            es_colaboracion = True
-            break
-    if artistas_csv:
-        artist_count = artistas_csv.count('&') + artistas_csv.count(',') + 1
-    else:
-        artist_count = 1
-        if es_colaboracion:
-            artist_count = 2
-            artist_count += titulo_lower.count(' & ') + titulo_lower.count(' x ')
-    return {
-        'is_collaboration': es_colaboracion,
-        'artist_count': min(artist_count, 10)
-    }
-
-def detectar_tipo_canal(channel_title):
-    if not channel_title:
-        return {'channel_type': 'unknown'}
-    channel_lower = channel_title.lower()
-    if 'vevo' in channel_lower:
-        return {'channel_type': 'VEVO'}
-    elif 'topic' in channel_lower:
-        return {'channel_type': 'Topic'}
-    elif any(word in channel_lower for word in [
-        'records', 'music', 'label', 'entertainment', 'studios',
-        'production', 'presents', 'network'
-    ]):
-        return {'channel_type': 'Label/Studio'}
-    elif any(word in channel_lower for word in [
-        'official', 'oficial', 'artist', 'band', 'singer',
-        'musician', 'rapper', 'dj', 'producer'
-    ]):
-        return {'channel_type': 'Artist Channel'}
-    elif any(word in channel_lower for word in [
-        'channel', 'tv', 'hd', 'video', 'videos'
-    ]):
-        return {'channel_type': 'User Channel'}
-    else:
-        if ' - ' in channel_title or ' | ' in channel_title:
-            return {'channel_type': 'Artist Channel'}
-        else:
-            return {'channel_type': 'General'}
-
-def obtener_trimestre(mes):
-    return f'Q{mes}' if 1 <= mes <= 4 else 'unknown'
-
-def analizar_fecha_trimestre(publish_date):
-    if not publish_date or len(publish_date) < 10:
-        return {'upload_season': 'unknown'}
-    try:
-        fecha = datetime.strptime(publish_date[:10], "%Y-%m-%d")
-        return {'upload_season': obtener_trimestre((fecha.month-1)//3 + 1)}
-    except:
-        return {'upload_season': 'unknown'}
-
-def detectar_restricciones_regionales(content_details):
-    if not content_details:
-        return {'region_restricted': False}
-    region_restriction = content_details.get('regionRestriction', {})
-    is_restricted = bool(region_restriction.get('blocked') or region_restriction.get('allowed'))
-    return {'region_restricted': is_restricted}
-
-def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
+ef obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
+    """
+    Obtiene metadatos del video con yt-dlp (y API como respaldo).
+    Incluye mejoras para depuración y robustez.
+    """
     metadatos = {
         'Duration (s)': 0,
         'duration (m:s)': "0:00",
@@ -639,46 +545,74 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
     }
     error_msgs = []
 
-    # Intentar con yt-dlp
+    # Intentar con yt-dlp (con opciones mejoradas)
     try:
         import yt_dlp
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'skip_download': True,
-            'ignoreerrors': True,
-            'extract_flat': False,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-            'extractor_retries': 5,
-            'fragment_retries': 5,
-            'retry_sleep_functions': {'extractor': 2},
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if info:
-                duracion = info.get('duration', 0)
-                fecha_raw = info.get('upload_date', '')
-                if fecha_raw and len(fecha_raw) == 8:
-                    fecha = f"{fecha_raw[:4]}-{fecha_raw[4:6]}-{fecha_raw[6:8]}"
-                    trimestre_info = analizar_fecha_trimestre(fecha)
-                    metadatos.update(trimestre_info)
-                    metadatos['upload_date'] = fecha
-                metadatos['likes'] = info.get('like_count', 0)
-                titulo = info.get('title', '')
-                descripcion = info.get('description', '')
-                channel_title = info.get('channel', '')
-                metadatos.update({
-                    'Duration (s)': duracion,
-                    'duration (m:s)': f"{duracion//60}:{duracion%60:02d}",
-                })
-                metadatos.update(detectar_tipo_video(titulo, descripcion))
-                metadatos.update(detectar_tipo_canal(channel_title))
-                metadatos.update(detectar_colaboracion_artistas(titulo, artistas_csv))
-            else:
-                error_msgs.append("No se pudo obtener info (yt-dlp)")
+        # Verificar/actualizar yt-dlp silenciosamente (opcional)
+        try:
+            import subprocess
+            subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"], 
+                           capture_output=True, check=False)
+        except:
+            pass
+
+        # Lista de configuraciones de cliente a probar (android suele funcionar mejor)
+        clientes = [
+            {'player_client': ['android', 'web']},
+            {'player_client': ['android']},
+            {'player_client': ['web']},
+            {'player_client': ['ios']},
+            {'extractor_args': {'youtube': {'player_client': ['android', 'web']}}}
+        ]
+
+        info = None
+        ultimo_error = ""
+
+        for opts in clientes:
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': True,
+                'ignoreerrors': False,  # Cambiado a False para capturar errores
+                'extract_flat': False,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'extractor_retries': 3,
+                'fragment_retries': 3,
+                'retry_sleep_functions': {'extractor': 1},
+                **opts
+            }
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                if info:
+                    break
+            except Exception as e:
+                ultimo_error = str(e)
+                continue
+
+        if info:
+            duracion = info.get('duration', 0)
+            fecha_raw = info.get('upload_date', '')
+            if fecha_raw and len(fecha_raw) == 8:
+                fecha = f"{fecha_raw[:4]}-{fecha_raw[4:6]}-{fecha_raw[6:8]}"
+                trimestre_info = analizar_fecha_trimestre(fecha)
+                metadatos.update(trimestre_info)
+                metadatos['upload_date'] = fecha
+            metadatos['likes'] = info.get('like_count', 0)
+            titulo = info.get('title', '')
+            descripcion = info.get('description', '')
+            channel_title = info.get('channel', '')
+            metadatos.update({
+                'Duration (s)': duracion,
+                'duration (m:s)': f"{duracion//60}:{duracion%60:02d}",
+            })
+            metadatos.update(detectar_tipo_video(titulo, descripcion))
+            metadatos.update(detectar_tipo_canal(channel_title))
+            metadatos.update(detectar_colaboracion_artistas(titulo, artistas_csv))
+        else:
+            error_msgs.append(f"yt-dlp no pudo extraer info: {ultimo_error}")
     except Exception as e:
-        error_msgs.append(f"Error yt-dlp: {str(e)}")
+        error_msgs.append(f"Error general yt-dlp: {str(e)}")
 
     # Respaldo con API de YouTube si está disponible
     if error_msgs and api_key:
@@ -712,12 +646,31 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
                     if fecha_api:
                         metadatos['upload_date'] = fecha_api
                         metadatos.update(analizar_fecha_trimestre(fecha_api))
+                    # Si la API devuelve duración, también la actualizamos
+                    duracion_iso = content_details.get('duration', '')
+                    if duracion_iso:
+                        # Convertir ISO 8601 a segundos (ejemplo: PT3M45S)
+                        import isodate
+                        try:
+                            duracion_seg = int(isodate.parse_duration(duracion_iso).total_seconds())
+                            metadatos['Duration (s)'] = duracion_seg
+                            metadatos['duration (m:s)'] = f"{duracion_seg//60}:{duracion_seg%60:02d}"
+                        except:
+                            pass
+                    # Likes desde API
+                    metadatos['likes'] = int(statistics.get('likeCount', 0))
                     error_msgs = []  # Reseteamos errores si la API funciona
+                else:
+                    error_msgs.append("API: video no encontrado")
+            else:
+                error_msgs.append("API: no se pudo extraer video_id")
         except Exception as e:
             error_msgs.append(f"Error API: {str(e)}")
 
     if error_msgs:
         metadatos['error'] = " | ".join(error_msgs)
+        # Mostrar el error en consola para depuración (opcional)
+        print(f"\n⚠️  Error en metadatos: {metadatos['error']}")
     return metadatos
 
 # ---------------------------------------------------------------------
