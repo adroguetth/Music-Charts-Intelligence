@@ -519,110 +519,13 @@ def extraer_lista_artistas(artist_names):
     return [parte.strip() for parte in texto.split('|') if parte.strip()]
 
 # ---------------------------------------------------------------------
-# FUNCIONES DE METADATOS DE YOUTUBE (mejoradas)
+# FUNCIONES DE METADATOS DE YOUTUBE
 # ---------------------------------------------------------------------
-def detectar_tipo_video(titulo, descripcion=""):
-    texto_completo = f"{titulo.lower()} {descripcion.lower()}"
-    titulo_lower = titulo.lower()
-    es_oficial = any(palabra in texto_completo for palabra in [
-        'official', 'oficial', 'video oficial', 'official video',
-        'official music video', 'vídeo oficial'
-    ])
-    es_lyric = any(palabra in titulo_lower for palabra in [
-        'lyric', 'lyrics', 'letra', 'letras', 'karaoke',
-        'lyric video', 'letra oficial'
-    ]) or 'lyric' in texto_completo
-    es_live = any(palabra in texto_completo for palabra in [
-        'live', 'en vivo', 'concert', 'performance', 'show',
-        'live performance', 'en concierto', 'directo'
-    ])
-    es_remix = any(palabra in titulo_lower for palabra in [
-        'remix', 'version', 'edit', 'mix', 'bootleg', 'rework',
-        'sped up', 'slowed', 'reverb', 'acoustic', 'acústico',
-        'piano version', 'instrumental'
-    ])
-    return {
-        'is_official_video': es_oficial,
-        'is_lyric_video': es_lyric,
-        'is_live_performance': es_live,
-        'is_special_version': es_remix
-    }
-
-def detectar_colaboracion_artistas(titulo, artistas_csv):
-    titulo_lower = titulo.lower()
-    patrones_colaboracion = [
-        r'\sft\.\s', r'\sfeat\.\s', r'\sfeaturing\s', r'\sft\s',
-        r'\scon\s', r'\swith\s', r'\s&\s', r'\sx\s', r'\s×\s',
-        r'\(feat\.', r'\(ft\.', r'\(with', r'\[feat\.', r'\[ft\.'
-    ]
-    es_colaboracion = False
-    for patron in patrones_colaboracion:
-        if re.search(patron, titulo_lower, re.IGNORECASE):
-            es_colaboracion = True
-            break
-    if artistas_csv:
-        artist_count = artistas_csv.count('&') + artistas_csv.count(',') + 1
-    else:
-        artist_count = 1
-        if es_colaboracion:
-            artist_count = 2
-            artist_count += titulo_lower.count(' & ') + titulo_lower.count(' x ')
-    return {
-        'is_collaboration': es_colaboracion,
-        'artist_count': min(artist_count, 10)
-    }
-
-def detectar_tipo_canal(channel_title):
-    if not channel_title:
-        return {'channel_type': 'unknown'}
-    channel_lower = channel_title.lower()
-    if 'vevo' in channel_lower:
-        return {'channel_type': 'VEVO'}
-    elif 'topic' in channel_lower:
-        return {'channel_type': 'Topic'}
-    elif any(word in channel_lower for word in [
-        'records', 'music', 'label', 'entertainment', 'studios',
-        'production', 'presents', 'network'
-    ]):
-        return {'channel_type': 'Label/Studio'}
-    elif any(word in channel_lower for word in [
-        'official', 'oficial', 'artist', 'band', 'singer',
-        'musician', 'rapper', 'dj', 'producer'
-    ]):
-        return {'channel_type': 'Artist Channel'}
-    elif any(word in channel_lower for word in [
-        'channel', 'tv', 'hd', 'video', 'videos'
-    ]):
-        return {'channel_type': 'User Channel'}
-    else:
-        if ' - ' in channel_title or ' | ' in channel_title:
-            return {'channel_type': 'Artist Channel'}
-        else:
-            return {'channel_type': 'General'}
-
-def obtener_trimestre(mes):
-    return f'Q{mes}' if 1 <= mes <= 4 else 'unknown'
-
-def analizar_fecha_trimestre(publish_date):
-    if not publish_date or len(publish_date) < 10:
-        return {'upload_season': 'unknown'}
-    try:
-        fecha = datetime.strptime(publish_date[:10], "%Y-%m-%d")
-        return {'upload_season': obtener_trimestre((fecha.month-1)//3 + 1)}
-    except:
-        return {'upload_season': 'unknown'}
-
-def detectar_restricciones_regionales(content_details):
-    if not content_details:
-        return {'region_restricted': False}
-    region_restriction = content_details.get('regionRestriction', {})
-    is_restricted = bool(region_restriction.get('blocked') or region_restriction.get('allowed'))
-    return {'region_restricted': is_restricted}
-
 def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
     """
-    Obtiene metadatos del video con yt-dlp (y API como respaldo).
-    Incluye mejoras para depuración y robustez.
+    Obtiene metadatos del video:
+    - Primero intenta con la API de YouTube (si hay api_key)
+    - Si falla o no hay api_key, usa yt-dlp con configuraciones anti-bloqueo
     """
     metadatos = {
         'Duration (s)': 0,
@@ -643,22 +546,95 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
     }
     error_msgs = []
 
-    # Intentar con yt-dlp (con opciones mejoradas)
+    # -----------------------------------------------------------------
+    # 1. INTENTAR CON LA API DE YOUTUBE (si hay clave)
+    # -----------------------------------------------------------------
+    if api_key:
+        try:
+            # Asegurar que isodate esté instalado
+            try:
+                import isodate
+            except ImportError:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "isodate"])
+                import isodate
+
+            from googleapiclient.discovery import build
+            video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', url)
+            if video_id_match:
+                video_id = video_id_match.group(1)
+                youtube = build('youtube', 'v3', developerKey=api_key)
+                request = youtube.videos().list(
+                    part='snippet,contentDetails,statistics',
+                    id=video_id
+                )
+                response = request.execute()
+                if response.get('items'):
+                    video = response['items'][0]
+                    snippet = video.get('snippet', {})
+                    statistics = video.get('statistics', {})
+                    content_details = video.get('contentDetails', {})
+
+                    # Duración
+                    duracion_iso = content_details.get('duration', '')
+                    if duracion_iso:
+                        duracion_seg = int(isodate.parse_duration(duracion_iso).total_seconds())
+                        metadatos['Duration (s)'] = duracion_seg
+                        metadatos['duration (m:s)'] = f"{duracion_seg//60}:{duracion_seg%60:02d}"
+
+                    # Likes
+                    metadatos['likes'] = int(statistics.get('likeCount', 0))
+                    metadatos['comment_count'] = int(statistics.get('commentCount', 0))
+
+                    # Idioma
+                    idioma = snippet.get('defaultAudioLanguage', '')
+                    metadatos['audio_language'] = idioma[:2].upper() if idioma else ""
+
+                    # Restricciones regionales
+                    region_restriction = content_details.get('regionRestriction', {})
+                    metadatos['region_restricted'] = bool(region_restriction.get('blocked') or region_restriction.get('allowed'))
+
+                    # Fecha
+                    fecha_api = snippet.get('publishedAt', '')[:10]
+                    if fecha_api:
+                        metadatos['upload_date'] = fecha_api
+                        metadatos.update(analizar_fecha_trimestre(fecha_api))
+
+                    # Título y descripción para detectar tipo de video
+                    titulo_api = snippet.get('title', '')
+                    descripcion_api = snippet.get('description', '')
+                    channel_api = snippet.get('channelTitle', '')
+                    metadatos.update(detectar_tipo_video(titulo_api, descripcion_api))
+                    metadatos.update(detectar_tipo_canal(channel_api))
+                    metadatos.update(detectar_colaboracion_artistas(titulo_api, artistas_csv))
+
+                    # Si llegamos aquí, la API funcionó
+                    error_msgs = []
+                    return metadatos
+                else:
+                    error_msgs.append("API: video no encontrado")
+            else:
+                error_msgs.append("API: no se pudo extraer video_id")
+        except Exception as e:
+            error_msgs.append(f"Error API: {str(e)}")
+
+    # -----------------------------------------------------------------
+    # 2. RESPALDO CON yt-dlp (con opciones anti-bloqueo)
+    # -----------------------------------------------------------------
     try:
         import yt_dlp
-        # Actualizar yt-dlp silenciosamente (opcional)
+        # Intentar actualizar yt-dlp silenciosamente
         try:
-            subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"], 
+            subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
                            capture_output=True, check=False)
         except:
             pass
 
-        # Lista de configuraciones de cliente a probar (android suele funcionar mejor)
+        # Configuraciones de cliente a probar (android suele ser el que menos bloquea)
         clientes = [
-            {'player_client': ['android', 'web']},
             {'player_client': ['android']},
-            {'player_client': ['web']},
             {'player_client': ['ios']},
+            {'player_client': ['android', 'web']},
+            {'player_client': ['web']},
             {'extractor_args': {'youtube': {'player_client': ['android', 'web']}}}
         ]
 
@@ -670,12 +646,15 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
                 'quiet': True,
                 'no_warnings': True,
                 'skip_download': True,
-                'ignoreerrors': False,  # Cambiado a False para capturar errores
+                'ignoreerrors': False,
                 'extract_flat': False,
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'extractor_retries': 3,
-                'fragment_retries': 3,
-                'retry_sleep_functions': {'extractor': 1},
+                'extractor_retries': 5,
+                'fragment_retries': 5,
+                'retry_sleep_functions': {'extractor': 2},
+                'sleep_interval': 1,           # Espera entre solicitudes
+                'sleep_interval_requests': 1,
+                'throttledratelimit': 100000,  # Evita límite de velocidad
                 **opts
             }
             try:
@@ -692,8 +671,7 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
             fecha_raw = info.get('upload_date', '')
             if fecha_raw and len(fecha_raw) == 8:
                 fecha = f"{fecha_raw[:4]}-{fecha_raw[4:6]}-{fecha_raw[6:8]}"
-                trimestre_info = analizar_fecha_trimestre(fecha)
-                metadatos.update(trimestre_info)
+                metadatos.update(analizar_fecha_trimestre(fecha))
                 metadatos['upload_date'] = fecha
             metadatos['likes'] = info.get('like_count', 0)
             titulo = info.get('title', '')
@@ -706,67 +684,18 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
             metadatos.update(detectar_tipo_video(titulo, descripcion))
             metadatos.update(detectar_tipo_canal(channel_title))
             metadatos.update(detectar_colaboracion_artistas(titulo, artistas_csv))
+            error_msgs = []  # Reseteamos errores si yt-dlp funcionó
         else:
             error_msgs.append(f"yt-dlp no pudo extraer info: {ultimo_error}")
     except Exception as e:
         error_msgs.append(f"Error general yt-dlp: {str(e)}")
 
-    # Respaldo con API de YouTube si está disponible
-    if error_msgs and api_key:
-        try:
-            from googleapiclient.discovery import build
-            import isodate  # Para convertir duración ISO 8601
-            video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', url)
-            if video_id_match:
-                video_id = video_id_match.group(1)
-                youtube = build('youtube', 'v3', developerKey=api_key)
-                request = youtube.videos().list(
-                    part='snippet,contentDetails,statistics',
-                    id=video_id
-                )
-                response = request.execute()
-                if response.get('items'):
-                    video = response['items'][0]
-                    snippet = video.get('snippet', {})
-                    statistics = video.get('statistics', {})
-                    content_details = video.get('contentDetails', {})
-                    metadatos['comment_count'] = int(statistics.get('commentCount', 0))
-                    idioma = snippet.get('defaultAudioLanguage', '')
-                    metadatos['audio_language'] = idioma[:2].upper() if idioma else ""
-                    metadatos.update(detectar_restricciones_regionales(content_details))
-                    titulo_api = snippet.get('title', '')
-                    descripcion_api = snippet.get('description', '')
-                    channel_api = snippet.get('channelTitle', '')
-                    metadatos.update(detectar_tipo_video(titulo_api, descripcion_api))
-                    metadatos.update(detectar_tipo_canal(channel_api))
-                    metadatos.update(detectar_colaboracion_artistas(titulo_api, artistas_csv))
-                    fecha_api = snippet.get('publishedAt', '')[:10]
-                    if fecha_api:
-                        metadatos['upload_date'] = fecha_api
-                        metadatos.update(analizar_fecha_trimestre(fecha_api))
-                    # Duración desde API
-                    duracion_iso = content_details.get('duration', '')
-                    if duracion_iso:
-                        try:
-                            duracion_seg = int(isodate.parse_duration(duracion_iso).total_seconds())
-                            metadatos['Duration (s)'] = duracion_seg
-                            metadatos['duration (m:s)'] = f"{duracion_seg//60}:{duracion_seg%60:02d}"
-                        except:
-                            pass
-                    # Likes desde API
-                    metadatos['likes'] = int(statistics.get('likeCount', 0))
-                    error_msgs = []  # Reseteamos errores si la API funciona
-                else:
-                    error_msgs.append("API: video no encontrado")
-            else:
-                error_msgs.append("API: no se pudo extraer video_id")
-        except Exception as e:
-            error_msgs.append(f"Error API: {str(e)}")
-
     if error_msgs:
         metadatos['error'] = " | ".join(error_msgs)
-        # Mostrar el error en consola para depuración (opcional)
-        print(f"\n⚠️  Error en metadatos: {metadatos['error']}")
+        # En GitHub Actions, imprimir el error para diagnóstico
+        if IN_GITHUB_ACTIONS:
+            print(f"⚠️ Error en metadatos para {url}: {metadatos['error']}")
+
     return metadatos
 
 # ---------------------------------------------------------------------
