@@ -3,7 +3,10 @@
 SCRIPT PARA ENRIQUECER DATOS DE CHART SEMANAL
 - Lee la última base de datos de charts (SQLite) desde charts_archive/1_download-chart/databases/
 - Descarga temporalmente artist_countries_genres.db desde GitHub
-- Obtiene metadatos de YouTube con yt-dlp (y API como respaldo)
+- Obtiene metadatos de YouTube con:
+    1. API de YouTube (si hay clave)
+    2. Selenium (si la API falla)
+    3. yt-dlp (último recurso con opciones anti-bloqueo)
 - Aplica sistema de pesos para colaboraciones (país y género)
 - Guarda resultados en charts_archive/3_enrich-chart-data/ como {nombre}_enriched.db
 """
@@ -15,10 +18,10 @@ import time
 import sqlite3
 import tempfile
 import requests
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
-import subprocess
 
 # ---------------------------------------------------------------------
 # CONFIGURACIÓN
@@ -26,24 +29,16 @@ import subprocess
 SCRIPT_DIR = Path(__file__).parent.absolute()
 PROJECT_ROOT = SCRIPT_DIR.parent  # Music-Charts-Intelligence/
 
-# Directorio donde están las bases de los charts (descargadas semanalmente)
 INPUT_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
-
-# URL de la base remota de artistas (país y género)
 URL_ARTISTAS_DB = "https://github.com/adroguetth/Music-Charts-Intelligence/raw/refs/heads/main/charts_archive/2_countries-genres-artist/artist_countries_genres.db"
-
-# Directorio de salida para las bases enriquecidas
 OUTPUT_DIR = PROJECT_ROOT / "charts_archive" / "3_enrich-chart-data"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# API Key de YouTube (desde variable de entorno)
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
-
-# Detectar si corre en GitHub Actions (para evitar preguntas)
 IN_GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
 
 # ---------------------------------------------------------------------
-# DICCIONARIOS DE SOPORTE (igual que en Local.py)
+# DICCIONARIOS DE SOPORTE (PAÍS → CONTINENTE, JERARQUÍA DE GÉNEROS)
 # ---------------------------------------------------------------------
 PAIS_A_CONTINENTE = {
     # Asia
@@ -58,7 +53,7 @@ PAIS_A_CONTINENTE = {
     "Israel": "Asia", "Palestine": "Asia", "Saudi Arabia": "Asia", "Yemen": "Asia",
     "Oman": "Asia", "United Arab Emirates": "Asia", "Qatar": "Asia", "Kuwait": "Asia",
     "Bahrain": "Asia", "Turkey": "Asia", "Cyprus": "Asia", "Azerbaijan": "Asia",
-    "Georgia": "Asia", "Armenia": "Asia", "Russia": "Asia",  # Rusia es euroasiática
+    "Georgia": "Asia", "Armenia": "Asia", "Russia": "Asia",
     # América del Norte
     "United States": "America", "Canada": "America", "Mexico": "America",
     "Guatemala": "America", "Honduras": "America", "El Salvador": "America",
@@ -428,7 +423,7 @@ JERARQUIA_GENEROS = {
 GENERO_POR_DEFECTO = "Pop"
 
 # ---------------------------------------------------------------------
-# FUNCIONES DE SOPORTE (igual que Local.py)
+# FUNCIONES DE SOPORTE (sistema de pesos)
 # ---------------------------------------------------------------------
 def obtener_continente(pais):
     return PAIS_A_CONTINENTE.get(pais, "Desconocido")
@@ -458,7 +453,6 @@ def determinar_pais_y_genero_colaboracion(artistas_info):
         info = artistas_info[0]
         return info['pais'] or "Desconocido", info['genero'] or GENERO_POR_DEFECTO
     conocidos = [a for a in artistas_info if a['pais'] is not None]
-    desconocidos = [a for a in artistas_info if a['pais'] is None]
     if not conocidos:
         return "Desconocido", GENERO_POR_DEFECTO
     paises_conocidos = [a['pais'] for a in conocidos]
@@ -519,13 +513,215 @@ def extraer_lista_artistas(artist_names):
     return [parte.strip() for parte in texto.split('|') if parte.strip()]
 
 # ---------------------------------------------------------------------
-# FUNCIONES DE METADATOS DE YOUTUBE
+# FUNCIONES DE DETECCIÓN DE METADATOS (tipo de video, canal, etc.)
 # ---------------------------------------------------------------------
+def detectar_tipo_video(titulo, descripcion=""):
+    texto_completo = f"{titulo.lower()} {descripcion.lower()}"
+    titulo_lower = titulo.lower()
+    es_oficial = any(palabra in texto_completo for palabra in [
+        'official', 'oficial', 'video oficial', 'official video',
+        'official music video', 'vídeo oficial'
+    ])
+    es_lyric = any(palabra in titulo_lower for palabra in [
+        'lyric', 'lyrics', 'letra', 'letras', 'karaoke',
+        'lyric video', 'letra oficial'
+    ]) or 'lyric' in texto_completo
+    es_live = any(palabra in texto_completo for palabra in [
+        'live', 'en vivo', 'concert', 'performance', 'show',
+        'live performance', 'en concierto', 'directo'
+    ])
+    es_remix = any(palabra in titulo_lower for palabra in [
+        'remix', 'version', 'edit', 'mix', 'bootleg', 'rework',
+        'sped up', 'slowed', 'reverb', 'acoustic', 'acústico',
+        'piano version', 'instrumental'
+    ])
+    return {
+        'is_official_video': es_oficial,
+        'is_lyric_video': es_lyric,
+        'is_live_performance': es_live,
+        'is_special_version': es_remix
+    }
+
+def detectar_colaboracion_artistas(titulo, artistas_csv):
+    titulo_lower = titulo.lower()
+    patrones_colaboracion = [
+        r'\sft\.\s', r'\sfeat\.\s', r'\sfeaturing\s', r'\sft\s',
+        r'\scon\s', r'\swith\s', r'\s&\s', r'\sx\s', r'\s×\s',
+        r'\(feat\.', r'\(ft\.', r'\(with', r'\[feat\.', r'\[ft\.'
+    ]
+    es_colaboracion = False
+    for patron in patrones_colaboracion:
+        if re.search(patron, titulo_lower, re.IGNORECASE):
+            es_colaboracion = True
+            break
+    if artistas_csv:
+        artist_count = artistas_csv.count('&') + artistas_csv.count(',') + 1
+    else:
+        artist_count = 1
+        if es_colaboracion:
+            artist_count = 2
+            artist_count += titulo_lower.count(' & ') + titulo_lower.count(' x ')
+    return {
+        'is_collaboration': es_colaboracion,
+        'artist_count': min(artist_count, 10)
+    }
+
+def detectar_tipo_canal(channel_title):
+    if not channel_title:
+        return {'channel_type': 'unknown'}
+    channel_lower = channel_title.lower()
+    if 'vevo' in channel_lower:
+        return {'channel_type': 'VEVO'}
+    elif 'topic' in channel_lower:
+        return {'channel_type': 'Topic'}
+    elif any(word in channel_lower for word in [
+        'records', 'music', 'label', 'entertainment', 'studios',
+        'production', 'presents', 'network'
+    ]):
+        return {'channel_type': 'Label/Studio'}
+    elif any(word in channel_lower for word in [
+        'official', 'oficial', 'artist', 'band', 'singer',
+        'musician', 'rapper', 'dj', 'producer'
+    ]):
+        return {'channel_type': 'Artist Channel'}
+    elif any(word in channel_lower for word in [
+        'channel', 'tv', 'hd', 'video', 'videos'
+    ]):
+        return {'channel_type': 'User Channel'}
+    else:
+        if ' - ' in channel_title or ' | ' in channel_title:
+            return {'channel_type': 'Artist Channel'}
+        else:
+            return {'channel_type': 'General'}
+
+def obtener_trimestre(mes):
+    return f'Q{mes}' if 1 <= mes <= 4 else 'unknown'
+
+def analizar_fecha_trimestre(publish_date):
+    if not publish_date or len(publish_date) < 10:
+        return {'upload_season': 'unknown'}
+    try:
+        fecha = datetime.strptime(publish_date[:10], "%Y-%m-%d")
+        return {'upload_season': obtener_trimestre((fecha.month-1)//3 + 1)}
+    except:
+        return {'upload_season': 'unknown'}
+
+def detectar_restricciones_regionales(content_details):
+    if not content_details:
+        return {'region_restricted': False}
+    region_restriction = content_details.get('regionRestriction', {})
+    is_restricted = bool(region_restriction.get('blocked') or region_restriction.get('allowed'))
+    return {'region_restricted': is_restricted}
+
+# ---------------------------------------------------------------------
+# FUNCIONES DE OBTENCIÓN DE METADATOS (API, Selenium, yt-dlp)
+# ---------------------------------------------------------------------
+def obtener_metadatos_con_selenium(url, artistas_csv=""):
+    """
+    Usa Selenium con un navegador headless para obtener metadatos básicos
+    (duración, título, etc.) cuando la API falla.
+    """
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from webdriver_manager.chrome import ChromeDriverManager
+    from selenium.webdriver.chrome.service import Service
+
+    metadatos = {
+        'Duration (s)': 0,
+        'duration (m:s)': "0:00",
+        'upload_date': "",
+        'likes': 0,
+        'comment_count': 0,
+        'audio_language': "",
+        'is_official_video': False,
+        'is_lyric_video': False,
+        'is_live_performance': False,
+        'upload_season': 'unknown',
+        'channel_type': 'unknown',
+        'is_collaboration': False,
+        'artist_count': 1,
+        'region_restricted': False,
+        'error': ""
+    }
+    error_msgs = []
+
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+    try:
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver.get(url)
+
+        # Esperar a que cargue el título
+        wait = WebDriverWait(driver, 10)
+        titulo_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1.ytd-video-primary-info-renderer")))
+        titulo = titulo_element.text
+
+        # Intentar obtener duración
+        try:
+            duracion_element = driver.find_element(By.CSS_SELECTOR, "span.ytp-time-duration")
+            duracion_texto = duracion_element.text
+            partes = duracion_texto.split(':')
+            if len(partes) == 2:
+                duracion_seg = int(partes[0]) * 60 + int(partes[1])
+            elif len(partes) == 3:
+                duracion_seg = int(partes[0]) * 3600 + int(partes[1]) * 60 + int(partes[2])
+            else:
+                duracion_seg = 0
+            metadatos['Duration (s)'] = duracion_seg
+            metadatos['duration (m:s)'] = f"{duracion_seg//60}:{duracion_seg%60:02d}"
+        except:
+            pass
+
+        # Obtener nombre del canal
+        try:
+            canal_element = driver.find_element(By.CSS_SELECTOR, "a.ytd-channel-name")
+            channel_title = canal_element.text
+            metadatos.update(detectar_tipo_canal(channel_title))
+        except:
+            pass
+
+        # Detectar tipo de video por el título
+        metadatos.update(detectar_tipo_video(titulo, ""))
+        metadatos.update(detectar_colaboracion_artistas(titulo, artistas_csv))
+
+        # Fecha de subida (meta tag)
+        try:
+            fecha_element = driver.find_element(By.CSS_SELECTOR, "meta[itemprop='datePublished']")
+            fecha = fecha_element.get_attribute("content")[:10]
+            if fecha:
+                metadatos['upload_date'] = fecha
+                metadatos.update(analizar_fecha_trimestre(fecha))
+        except:
+            pass
+
+        driver.quit()
+    except Exception as e:
+        error_msgs.append(f"Selenium error: {str(e)}")
+        try:
+            driver.quit()
+        except:
+            pass
+
+    if error_msgs:
+        metadatos['error'] = " | ".join(error_msgs)
+    return metadatos
+
 def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
     """
     Obtiene metadatos del video:
-    - Primero intenta con la API de YouTube (si hay api_key)
-    - Si falla o no hay api_key, usa yt-dlp con configuraciones anti-bloqueo
+    - 1. API de YouTube (si hay clave)
+    - 2. Selenium (simula navegador, evita bloqueos)
+    - 3. yt-dlp (último recurso con opciones anti-bloqueo)
     """
     metadatos = {
         'Duration (s)': 0,
@@ -618,24 +814,48 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
             error_msgs.append(f"Error API: {str(e)}")
 
     # -----------------------------------------------------------------
-    # 2. RESPALDO CON yt-dlp (con opciones anti-bloqueo)
+    # 2. SEGUNDO INTENTO: SELENIUM (simula navegador)
+    # -----------------------------------------------------------------
+    if error_msgs or not api_key:
+        try:
+            # Intentar instalar selenium y webdriver-manager si no están
+            try:
+                import selenium
+                import webdriver_manager
+            except ImportError:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium", "webdriver-manager"])
+                import selenium
+                import webdriver_manager
+
+            sel_metadatos = obtener_metadatos_con_selenium(url, artistas_csv)
+            if not sel_metadatos['error']:
+                # Si Selenium funcionó, usar esos metadatos
+                metadatos.update(sel_metadatos)
+                error_msgs = []
+                return metadatos
+            else:
+                error_msgs.append(sel_metadatos['error'])
+        except Exception as e:
+            error_msgs.append(f"Selenium setup error: {str(e)}")
+
+    # -----------------------------------------------------------------
+    # 3. ÚLTIMO RECURSO: yt-dlp (con opciones anti-bloqueo)
     # -----------------------------------------------------------------
     try:
         import yt_dlp
-        # Intentar actualizar yt-dlp silenciosamente
+        # Actualizar yt-dlp silenciosamente
         try:
             subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
                            capture_output=True, check=False)
         except:
             pass
 
-        # Configuraciones de cliente a probar (android suele ser el que menos bloquea)
+        # Configuraciones de cliente a probar
         clientes = [
             {'player_client': ['android']},
             {'player_client': ['ios']},
             {'player_client': ['android', 'web']},
             {'player_client': ['web']},
-            {'extractor_args': {'youtube': {'player_client': ['android', 'web']}}}
         ]
 
         info = None
@@ -652,9 +872,8 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
                 'extractor_retries': 5,
                 'fragment_retries': 5,
                 'retry_sleep_functions': {'extractor': 2},
-                'sleep_interval': 1,           # Espera entre solicitudes
-                'sleep_interval_requests': 1,
-                'throttledratelimit': 100000,  # Evita límite de velocidad
+                'sleep_interval': 2,
+                'sleep_interval_requests': 2,
                 **opts
             }
             try:
@@ -684,7 +903,7 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
             metadatos.update(detectar_tipo_video(titulo, descripcion))
             metadatos.update(detectar_tipo_canal(channel_title))
             metadatos.update(detectar_colaboracion_artistas(titulo, artistas_csv))
-            error_msgs = []  # Reseteamos errores si yt-dlp funcionó
+            error_msgs = []
         else:
             error_msgs.append(f"yt-dlp no pudo extraer info: {ultimo_error}")
     except Exception as e:
@@ -692,7 +911,6 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
 
     if error_msgs:
         metadatos['error'] = " | ".join(error_msgs)
-        # En GitHub Actions, imprimir el error para diagnóstico
         if IN_GITHUB_ACTIONS:
             print(f"⚠️ Error en metadatos para {url}: {metadatos['error']}")
 
@@ -702,22 +920,18 @@ def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
 # FUNCIONES PARA BASES DE DATOS
 # ---------------------------------------------------------------------
 def encontrar_ultima_db():
-    """Retorna la ruta del archivo .db más reciente en INPUT_DB_DIR (orden lexicográfico inverso)."""
     if not INPUT_DB_DIR.exists():
         raise FileNotFoundError(f"El directorio {INPUT_DB_DIR} no existe.")
     archivos_db = list(INPUT_DB_DIR.glob("*.db"))
     if not archivos_db:
         raise FileNotFoundError(f"No se encontraron archivos .db en {INPUT_DB_DIR}")
-    # Orden descendente por nombre (asumimos formato con fecha/semana)
     archivos_db.sort(key=lambda p: p.name, reverse=True)
     return archivos_db[0]
 
 def leer_canciones_desde_db(ruta_db):
-    """Lee la tabla chart_data y retorna lista de diccionarios con los nombres de columna exactos."""
     conn = sqlite3.connect(ruta_db)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    # Verificar que la tabla existe
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='chart_data'")
     if not cursor.fetchone():
         conn.close()
@@ -725,9 +939,7 @@ def leer_canciones_desde_db(ruta_db):
     cursor.execute("SELECT * FROM chart_data")
     filas = cursor.fetchall()
     conn.close()
-    # Convertir a lista de diccionarios
     canciones = [dict(fila) for fila in filas]
-    # Verificar que tienen las columnas esperadas (al menos algunas)
     columnas_requeridas = {"Rank", "Artist Names", "Track Name", "YouTube URL"}
     if canciones:
         columnas_reales = set(canciones[0].keys())
@@ -844,7 +1056,7 @@ def guardar_en_sqlite(conn, fila):
 # ---------------------------------------------------------------------
 def main():
     print("="*80)
-    print("🎵 ENRIQUECIMIENTO DE CHART SEMANAL (desde SQLite)")
+    print("🎵 ENRIQUECIMIENTO DE CHART SEMANAL (API → Selenium → yt-dlp)")
     print("="*80)
 
     # 1. Encontrar última base de datos de charts
@@ -859,7 +1071,7 @@ def main():
     ruta_artistas_temp = descargar_db_artistas(URL_ARTISTAS_DB)
     artistas_dict = cargar_db_artistas_en_diccionario(ruta_artistas_temp)
 
-    # 3. Instalar/verificar yt-dlp si es necesario
+    # 3. Instalar/verificar dependencias básicas (yt-dlp se instalará si es necesario)
     try:
         import yt_dlp
         print("✅ yt-dlp disponible")
@@ -879,7 +1091,7 @@ def main():
         sys.exit(1)
 
     # 5. Preparar base de datos de salida
-    nombre_base = ruta_chart_db.stem  # sin extensión
+    nombre_base = ruta_chart_db.stem
     output_db_path = OUTPUT_DIR / f"{nombre_base}_enriched.db"
     conn_salida = sqlite3.connect(output_db_path)
     crear_tabla_resultados(conn_salida)
@@ -893,7 +1105,7 @@ def main():
 
         print(f"[{i:2d}/{len(canciones)}] {track:30}... ", end='', flush=True)
 
-        # Obtener metadatos de YouTube
+        # Obtener metadatos de YouTube (con el nuevo sistema de tres capas)
         metadatos = obtener_metadatos_especificos(url, artistas_csv, YOUTUBE_API_KEY)
 
         # Obtener info de artistas desde la DB remota
@@ -906,7 +1118,7 @@ def main():
         encontrados = sum(1 for a in artistas_info if a['pais'] is not None)
         total_arts = len(artistas_info) if artistas_info else 1
 
-        # Construir fila para SQLite (con nombres de columna normalizados)
+        # Construir fila para SQLite
         fila = {
             'rank': cancion.get('Rank'),
             'artist_names': artistas_csv,
@@ -962,7 +1174,6 @@ def main():
             error_display = metadatos['error'][:20] if metadatos['error'] else "Sin datos"
             print(f"({error_display})")
 
-        # Pequeña pausa para no saturar
         time.sleep(0.1)
 
     conn_salida.close()
@@ -998,12 +1209,10 @@ def main():
     print("\n🧹 Archivo temporal eliminado.")
     print("\n✅ PROCESO COMPLETADO")
 
-# ---------------------------------------------------------------------
 if __name__ == "__main__":
-    # Si no estamos en GitHub Actions, mostrar advertencia de API key si no está definida
     if not IN_GITHUB_ACTIONS and not YOUTUBE_API_KEY:
         print("\n⚠️  NOTA: La variable de entorno YOUTUBE_API_KEY no está definida.")
-        print("   Se usarán solo los datos de yt-dlp (sin comentarios, idioma ni restricciones).")
+        print("   Se intentará con Selenium y yt-dlp (puede ser más lento).")
         respuesta = input("¿Continuar de todas formas? (s/n): ").lower()
         if respuesta not in ['s', 'si', 'y', 'yes']:
             print("Proceso cancelado.")
