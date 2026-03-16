@@ -1201,7 +1201,16 @@ def load_chart_songs(db_path: Path) -> list:
         conn.close()
         raise Exception(f"Table 'chart_data' not found in {db_path}")
 
-    cursor.execute("SELECT * FROM chart_data")
+    # Use DISTINCT on Rank to guard against duplicate weekly runs that may have
+    # written the same chart twice into the source database (see script 1 behavior).
+    # ROW_NUMBER() picks the first occurrence per Rank and discards the rest.
+    cursor.execute("""
+        SELECT * FROM chart_data
+        WHERE rowid IN (
+            SELECT MIN(rowid) FROM chart_data GROUP BY Rank
+        )
+        ORDER BY Rank
+    """)
     rows = cursor.fetchall()
     conn.close()
 
@@ -1301,17 +1310,20 @@ def get_artist_info(artist_names: str, artist_lookup: dict) -> list:
 
 def create_output_table(conn: sqlite3.Connection):
     """
-    Create the 'enriched_songs' table and its indexes if they don't exist.
+    (Re)create the 'enriched_songs' table from scratch on every pipeline run.
 
-    Schema is intentionally wide — each column corresponds to a metadata
-    dimension that downstream analytics scripts may filter or aggregate on.
+    DROP + CREATE is intentional: this is a fully derived table. Re-running
+    the pipeline should always produce exactly 100 clean rows, never append
+    on top of a previous run.
 
     Args:
         conn: Open SQLite connection to the output database
     """
     cursor = conn.cursor()
+    # Wipe any previous run — idempotent by design
+    cursor.execute('DROP TABLE IF EXISTS enriched_songs')
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS enriched_songs (
+        CREATE TABLE enriched_songs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             rank INTEGER,
             artist_names TEXT,
@@ -1340,11 +1352,10 @@ def create_output_table(conn: sqlite3.Connection):
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Indexes that support the most common analytical query patterns
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_country ON enriched_songs(artist_country)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_genre ON enriched_songs(macro_genre)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_upload_date ON enriched_songs(upload_date)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_error ON enriched_songs(error)')
+    cursor.execute('CREATE INDEX idx_country ON enriched_songs(artist_country)')
+    cursor.execute('CREATE INDEX idx_genre ON enriched_songs(macro_genre)')
+    cursor.execute('CREATE INDEX idx_upload_date ON enriched_songs(upload_date)')
+    cursor.execute('CREATE INDEX idx_error ON enriched_songs(error)')
     conn.commit()
 
 
