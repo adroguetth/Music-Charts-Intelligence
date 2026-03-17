@@ -529,6 +529,173 @@ Al finalizar, el script muestra estadísticas detalladas:
    • Canciones sin país: 3 (3.0%)
    • Canciones con error en metadatos: 2 (2.0%)
 ```
+## ⚙️ Análisis del Workflow de GitHub Actions (`3_enrich-chart-data.yml`
 
+### **Estructura del Workflow**
+
+```yaml
+name: 3- Enrich Chart Data
+on:
+  schedule:
+    - cron: '0 14 * * 1'  # Lunes 14:00 UTC (2h después del download)
+  workflow_dispatch:       # Ejecución manual
+  push:                    # Disparador en cambios al script
+    branches:
+      - main
+    paths:
+      - 'scripts/3_enrich_chart_data.py'
+      - '.github/workflows/3_enrich-chart-data.yml'
+```
+
+### **Jobs y Pasos**
+
+#### **Job: `enrich-chart-data`**
+
+- **Sistema operativo**: Ubuntu Latest
+- **Timeout**: 60 minutos
+- **Permisos**: Acceso de escritura al repositorio
+- **Variable de entorno**: `RETENTION_WEEKS: 78` (1.5 años de retención)
+  - **Cálculo**: 78 semanas × 7 días = 546 días
+  - **Limpieza**: Automática en cada ejecución
+
+#### **Pasos Detallados:**
+
+**📚 Checkout del Repositorio**
+
+```yaml
+uses: actions/checkout@v4
+with:
+  fetch-depth: 0  # Historial completo para operaciones git
+```
+
+**🐍 Configuración de Python 3.12**
+
+```yaml
+uses: actions/setup-python@v5
+with:
+  python-version: "3.12"
+  cache: 'pip'  # Caché de dependencias para builds más rápidos
+```
+
+**📦 Instalación de Dependencias**
+
+```bash
+pip install -r requirements.txt
+```
+
+**📁 Creación de Estructura de Directorios**
+
+```bash
+mkdir -p charts_archive/1_download-chart/databases
+mkdir -p charts_archive/3_enrich-chart-data
+```
+
+ **🚀 Ejecución del Script de Enriquecimiento**
+
+```yaml
+run: |
+  python scripts/3_enrich_chart_data.py
+env:
+  YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}  # Clave API desde secrets
+  GITHUB_ACTIONS: true  # Variable de entorno para detección
+```
+
+**✅ Verificación de Resultados**
+
+- Listado de archivos generados en `charts_archive/3_enrich-chart-data/`
+- Verificación de existencia de bases enriquecidas
+- Estadísticas de tamaño de archivos
+
+**📤 Commit y Push Automático**
+
+```bash
+# Configuración de usuario automático
+git config --global user.name "github-actions[bot]"
+git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+# Solo stage de archivos enriquecidos
+git add charts_archive/3_enrich-chart-data/
+
+# Pull con rebase antes de push para evitar conflictos
+git pull --rebase origin main
+git push origin HEAD:main
+```
+
+**📦 Subida de Artefactos (solo en fallo)**
+
+```yaml
+
+if: failure()  # Solo se ejecuta si el workflow falla
+uses: actions/upload-artifact@v4
+with:
+  name: enrich-debug-${{ github.run_number }}
+  path: |
+    scripts/3_enrich_chart_data.py.log
+    charts_archive/3_enrich-chart-data/
+  retention-days: 7
+```
+
+**🧹 Limpieza de Bases Antiguas**
+
+```bash
+# Elimina archivos más antiguos que RETENTION_WEEKS (78 semanas = 546 días)
+find charts_archive/3_enrich-chart-data/ \
+  -name "*_enriched.db" \
+  -type f \
+  -mtime +$((RETENTION_WEEKS * 7)) \
+  -delete
+```
+
+**📋 Reporte Final** (siempre se ejecuta)
+
+```bash
+# Muestra:
+# - Fecha y trigger de ejecución
+# - Última base enriquecida y su tamaño
+# - Estadísticas de la base (total canciones, multi-país, errores)
+# - Total de bases almacenadas y política de retención
+```
+
+### **Programación Cron**
+
+```cron
+'0 14 * * 1'  # Minuto 0, Hora 14, Cualquier día del mes, Cualquier mes, Lunes
+```
+
+- **Ejecución**: Todos los lunes a las 14:00 UTC
+- **Diferencia**: 2 horas después del workflow de descarga (`1_download-chart.yml`)
+- **Motivo**: Esperar a que el workflow anterior complete la descarga de los nuevos charts
+
+## 🔐 Secretos Requeridos
+
+| Secreto           | Propósito                                              |
+| :---------------- | :----------------------------------------------------- |
+| `YOUTUBE_API_KEY` | Clave de API de YouTube Data v3 para obtener metadatos |
+
+## 🔄 Flujo de Integración
+
+```mermaid
+flowchart LR
+    A["1_download-chart.yml<br>Lunes 12:00 UTC"] -- espera 2h --> B["3_enrich-chart-data.yml<br>Lunes 14:00 UTC"]
+    B --> C[("Base Enriquecida")]
+    C --> D["Commit automático"] & E["Retención 78 semanas"]
+    A -- espera 1h --> n1["2_update-artist-db.yml Lunes 13:00 UTC"]
+    n1 --> B
+
+    n1@{ shape: rect}
+```
+
+## 🚀 Instalación y Configuración Local
+
+### **Requisitos Previos**
+
+- Python 3.12 o superior
+- Git instalado
+- Acceso a internet
+- Clave de API de YouTube Data v3 (opcional pero recomendada)
+
+### **Instalación Paso a Paso**
+
+**1. Clonar el Repositorio**
 
   
