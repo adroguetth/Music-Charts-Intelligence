@@ -144,7 +144,6 @@ Music-Charts-Intelligence/
 │   ├── 2_build_artist_db.py
 │   └── 3_enrich_chart_data.py
 │
-│
 ├── charts_archive/
 │   ├── 1_download-chart/
 │   │   ├── latest_chart.csv              # Most recent chart (always updated)
