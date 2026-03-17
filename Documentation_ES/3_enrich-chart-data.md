@@ -781,5 +781,353 @@ charts_archive/
     ├── youtube_charts_2025-W02_enriched.db
     └── ...
 ```
+### **Crecimiento de la Base de Datos**
 
+- **Ejecución semanal**: 100 canciones procesadas
+- **Tamaño por base**: ~200-300 KB por archivo `.db`
+- **Almacenamiento anual**: ~15-20 MB (52 semanas × 300 KB)
+- **Retención configurada**: 78 semanas (1.5 años) → ~30-40 MB máximos
+
+### **Columnas Generadas por Canción (25 campos)**
+
+| Categoría           | Campos                                                       |
+| :------------------ | :----------------------------------------------------------- |
+| **Identificadores** | `rank`, `artist_names`, `track_name`                         |
+| **Métricas Chart**  | `periods_on_chart`, `views`, `youtube_url`                   |
+| **Metadatos Video** | `duration_s`, `duration_ms`, `upload_date`, `likes`, `comment_count`, `audio_language` |
+| **Flags Video**     | `is_official_video`, `is_lyric_video`, `is_live_performance` |
+| **Contexto**        | `upload_season`, `channel_type`, `is_collaboration`, `artist_count`, `region_restricted` |
+| **Enriquecimiento** | `artist_country`, `macro_genre`, `artistas_encontrados`      |
+| **Control**         | `error`, `fecha_procesamiento`                               |
+
+## 🔧 Personalización y Configuración
+
+### **Parámetros Ajustables en el Script**
+
+```python
+# En 3_enrich_chart_data.py
+INPUT_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
+URL_ARTISTAS_DB = "https://github.com/..."  # URL de base de artistas
+OUTPUT_DIR = PROJECT_ROOT / "charts_archive" / "3_enrich-chart-data"
+
+# Timeouts y retardos
+SLEEP_BETWEEN_VIDEOS = 0.1      # Pausa entre videos (segundos)
+YT_DLP_RETRIES = 5               # Reintentos para yt-dlp
+SELENIUM_TIMEOUT = 10             # Timeout para Selenium (segundos)
+```
+
+### **Configuración del Workflow**
+
+```yaml
+# En 3_enrich-chart-data.yml
+env:
+  RETENTION_WEEKS: 78       # Semanas de retención (1.5 años)
+
+timeout-minutes: 60          # Tiempo máximo total
+```
+
+### **Añadir Nuevos Delimitadores de Artistas**
+
+```python
+# En extraer_lista_artistas()
+separadores = [
+    '&', 'feat.', 'ft.', ',', ' y ', ' and ', 
+    ' with ', ' x ', ' vs ',  # Existentes
+    ' présentation ', ' en duo avec ',  # Nuevos para francés
+    ' und ', ' & ',            # Nuevos para alemán
+    ' e ', ' com '             # Nuevos para portugués
+]
+```
+
+### **Ampliar Jerarquías de Géneros por País**
+
+```python
+# En JERARQUIA_GENEROS
+"Nuevo País": [
+    "Género Principal",      # Prioridad 1
+    "Género Secundario",      # Prioridad 2
+    "Género Terciario",       # Prioridad 3
+    "Género de nicho"         # Prioridad 4
+]
+```
+
+### **Modificar Reglas del Sistema de Pesos**
+
+```python
+# En determinar_pais_y_genero_colaboracion()
+# Ajustar umbrales o añadir nuevas reglas
+if porcentaje_mayoritario > 0.6:  # Cambiar de 0.5 a 0.6
+    # Nueva lógica...
+```
+
+## 🐛 Solución de Problemas
+### **Solución de Problemas **
+
+##### **Error: "No module named 'isodate'"**
+
+**Causa**: Falta la librería para convertir duración ISO.
+
+```bash
+pip install isodate
+```
+
+##### **Error: "Selenium: ChromeDriver not found"**
+
+**Causa**: Chrome no instalado o webdriver-manager falla.
+
+```bash
+# Instalar Chrome (Linux)
+sudo apt-get update
+sudo apt-get install -y google-chrome-stable
+
+# Instalar webdriver-manager automáticamente (lo hace el script)
+```
+
+#### **Error: "No database found"**
+
+**Solución** 
+
+```bash
+# Verificar que existe al menos una base de charts
+ls -la charts_archive/1_download-chart/databases/
+# Si no hay, ejecutar primero el workflow de descarga
+```
+
+#### **Error: "Sign in to confirm you're not a bot"**
+
+**Causa**: YouTube bloquea yt-dlp en entornos automatizados.
+
+**Soluciones**:
+
+1. ✅ **Priorizar API**: Asegurar que `YOUTUBE_API_KEY` está configurada
+2. 🔄 **Usar Selenium**: El script fallback automático a Selenium
+3. 🍪 **Exportar cookies** (último recurso):
+
+```bash
+# Exportar cookies desde navegador
+yt-dlp --cookies-from-browser chrome "URL"
+```
+
+#### **Error: "No enriched database found" en reporte final**
+
+**Causa**: El script no pudo generar ninguna base.
+
+**Verificaciones**:
+
+```bash
+# 1. ¿Existen bases de charts de entrada?
+ls -la charts_archive/1_download-chart/databases/
+
+# 2. ¿Hay archivos .db en el directorio de salida?
+ls -la charts_archive/3_enrich-chart-data/
+
+# 3. Revisar logs de error en GitHub Actions
+# Buscar la columna 'error' en ejecuciones anteriores
+```
+
+#### **Error: "API key not valid"**
+
+**Causa**: Clave API inválida o sin permisos.
+
+**Soluciones**:
+
+1. Verificar en [Google Cloud Console](https://console.cloud.google.com/)
+2. Habilitar YouTube Data API v3
+3. Regenerar clave si es necesario
+4. Verificar restricciones de IP/dominio
+
+#### **Error: "Quota exceeded" (límite de cuota excedido)**
+
+**Causa**: Demasiadas solicitudes a la API.
+
+**Soluciones**:
+
+```text
+# 1. Aumentar cuota en Google Cloud (plan de pago)
+# 2. Distribuir ejecuciones en el tiempo
+# 3. El script fallback automáticamente a Selenium
+```
+
+#### **Error en GitHub Actions: "No space left on device"**
+
+**Causa**: Demasiadas bases almacenadas.
+
+**Solución**:
+
+```bash
+# Verificar política de retención
+echo $RETENTION_WEEKS  # Debería ser 78
+
+# Limpiar manualmente si es necesario
+find charts_archive/3_enrich-chart-data -name "*_enriched.db" -mtime +546 -delete
+```
+
+#### **Problema: Procesamiento muy lento (>10 minutos)**
+
+**Causa**: API Key no configurada o fallando.
+
+**Verificaciones**:
+
+```bash
+# 1. ¿Está configurada YOUTUBE_API_KEY?
+echo $YOUTUBE_API_KEY
+
+# 2. Revisar logs: ¿qué capa se está usando?
+# Buscar "⚠️ Error en metadatos" en los logs
+```
+
+### **Comandos de Diagnóstico**
+
+```bash
+# Verificar estructura de directorios
+tree charts_archive/ -L 2
+
+# Contar bases enriquecidas
+ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l
+
+# Ver tamaño total
+du -sh charts_archive/3_enrich-chart-data/
+
+# Consultar una base específica
+sqlite3 charts_archive/3_enrich-chart-data/youtube_charts_2026-W11_enriched.db \
+  "SELECT artist_country, COUNT(*) FROM canciones_enriquecidas GROUP BY artist_country ORDER BY COUNT(*) DESC LIMIT 5;"
+
+# Ver registros con error
+sqlite3 charts_archive/3_enrich-chart-data/youtube_charts_2026-W11_enriched.db \
+  "SELECT rank, track_name, error FROM canciones_enriquecidas WHERE error != '';"
+```
+
+### **Depuración Local**
+
+```bash
+# Ejecutar con logging detallado
+export PYTHONVERBOSE=1
+python scripts/3_enrich_chart_data.py
+
+# Probar un video específico con yt-dlp
+yt-dlp --dump-json "https://youtube.com/watch?v=VIDEO_ID"
+
+# Probar API directamente
+curl -X GET "https://www.googleapis.com/youtube/v3/videos?part=snippet&id=VIDEO_ID&key=YOUR_API_KEY"
+```
+
+
+
+## 📈 Métricas de Rendimiento
+
+| Escenario              | Tiempo        | Observaciones                     |
+| :--------------------- | :------------ | :-------------------------------- |
+| **Con API Key**        | ~2 minutos    | 100 canciones, 0.3-0.8s por video |
+| **Sin API (Selenium)** | ~5-7 minutos  | Depende de velocidad de carga     |
+| **Sin API (yt-dlp)**   | ~8-10 minutos | Puede fallar por bloqueos         |
+
+## 📄 Licencia y Atribución
+
+- **Licencia**: MIT
+- **Autor**: Alfonso Droguett
+  - 🔗 **LinkedIn:** [Alfonso Droguett](https://www.linkedin.com/in/adroguetth/)
+  - 🌐 **Portafolio web:** [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/)
+  - 📧 **Correo electrónico:** adroguett.consultor@gmail.com
+
+### **Tecnologías Utilizadas**
+
+| Tecnología              | Propósito                                | Versión     |
+| :---------------------- | :--------------------------------------- | :---------- |
+| **Python**              | Lenguaje principal                       | 3.12        |
+| **YouTube Data API v3** | Metadatos de video (capa 1)              | -           |
+| **Selenium**            | Respaldo con navegador headless (capa 2) | ≥4.15.0     |
+| **yt-dlp**              | Último recurso anti-bloqueo (capa 3)     | ≥2023.10.13 |
+| **SQLite**              | Almacenamiento de resultados             | -           |
+| **GitHub Actions**      | Automatización CI/CD                     | -           |
+
+### **Atribuciones Especiales**
+
+- **yt-dlp**: Inspiración para manejo de bloqueos y rotación de clientes
+- **Comunidad Open Source**: Por las librerías que hacen posible este proyecto
+
+## 🤝 Contribución
+
+### **Cómo Contribuir**
+
+1. **Reportar problemas** con registros completos (incluir logs de error)
+2. **Proponer mejoras** con casos de uso concretos
+3. **Añadir nuevos mapeos de género** con ejemplos de artistas
+4. **Contribuir con variantes de países** (especialmente para regiones subrepresentadas)
+5. **Mantener compatibilidad** con la estructura de base de datos existente
+
+### **Guía de Contribución Rápida**
+
+```bash
+# 1. Fork el repositorio
+# 2. Clonar tu fork
+git clone https://github.com/tu-usuario/Music-Charts-Intelligence
+
+# 3. Crear rama para tu contribución
+git checkout -b feature/nueva-funcionalidad
+
+# 4. Hacer cambios y probar localmente
+python scripts/3_enrich_chart_data.py --test
+
+# 5. Commit con mensaje descriptivo
+git commit -m "Añade soporte para nuevo género X"
+
+# 6. Push y crear Pull Request
+git push origin feature/nueva-funcionalidad
+```
+
+### **Áreas Prioritarias de Contribución**
+
+- ✅ Ampliar `JERARQUIA_GENEROS` para países faltantes
+- ✅ Mejorar detección de colaboraciones con nuevos patrones
+- ✅ Optimizar selectores CSS de Selenium (cambios frecuentes en YouTube)
+- ✅ Añadir más idiomas a la detección de escritura
+- ✅ Crear tests automatizados
+
+## 🧪 Limitaciones Conocidas y Mejoras Futuras
+
+### **Limitaciones Actuales**
+
+- **Dependencia de API**: El sistema depende de YouTube Data API v3 que tiene cuota diaria (10,000 unidades)
+- **Bloqueos de YouTube**: yt-dlp puede ser bloqueado en entornos CI sin cookies/PO Tokens
+- **Selenium en CI**: Requiere Chrome instalado y puede ser más lento en entornos sin GPU
+- **Selectores CSS**: Los selectores de Selenium pueden romperse con cambios en YouTube
+- **Artistas Nuevos**: Artistas emergentes recientemente pueden no aparecer en la base de artistas
+- **Géneros Nicho**: Algunos micro-géneros pueden no tener mapeos en la jerarquía
+- **Colaboraciones Complejas**: Colaboraciones con 5+ artistas pueden ser difíciles de resolver
+
+### **Casos Conocidos con Comportamiento Especial**
+
+| Caso                                                         | Comportamiento Actual        | Mejora Propuesta               |
+| :----------------------------------------------------------- | :--------------------------- | :----------------------------- |
+| **Grupos K-Pop con miembros extranjeros**                    | País: Corea del Sur          | Detectar miembros individuales |
+| **MCs Brasileños**                                           | Género: Sertanejo (fallback) | Priorizar Funk Brasileiro      |
+| **Colaboraciones Latinas con artista principal de otro país** | Puede dar Multipais          | Analizar orden de mención      |
+| **Videos bloqueados por región**                             | `region_restricted: true`    | Intentar con proxy/vPN         |
+
+## 📊 Métricas de Éxito del Proyecto
+
+### **Logros Actuales**
+
+| Métrica                       | Valor                     |
+| :---------------------------- | :------------------------ |
+| **Tiempo de procesamiento**   | 2 minutos (100 canciones) |
+| **Tasa de éxito API**         | ~98% (con clave válida)   |
+| **Países detectados**         | 28 por semana             |
+| **Géneros distintos**         | 15 por semana             |
+| **Colaboraciones multi-país** | ~24% del total            |
+| **Artistas sin país**         | <3%                       |
+
+### **Objetivos para V2.0**
+
+| Métrica                     | Objetivo                  |
+| :-------------------------- | :------------------------ |
+| **Tiempo de procesamiento** | <1 minuto (100 canciones) |
+| **Tasa de éxito API**       | 99.5%                     |
+| **Países detectados**       | 35+ por semana            |
+| **Géneros distintos**       | 20+ por semana            |
+| **Artistas sin país**       | <1%                       |
+
+------
+
+**⭐ Si encuentras útil este proyecto, ¡considera darle una estrella en GitHub!**
 
