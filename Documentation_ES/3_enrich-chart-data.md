@@ -568,7 +568,7 @@ with:
   fetch-depth: 0  # Historial completo para operaciones git
 ```
 
-**🐍 Configuración de Python 3.12**
+1. **🐍 Configuración de Python 3.12**
 
 ```yaml
 uses: actions/setup-python@v5
@@ -577,20 +577,20 @@ with:
   cache: 'pip'  # Caché de dependencias para builds más rápidos
 ```
 
-**📦 Instalación de Dependencias**
+2. **📦 Instalación de Dependencias**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**📁 Creación de Estructura de Directorios**
+3. **📁 Creación de Estructura de Directorios**
 
 ```bash
 mkdir -p charts_archive/1_download-chart/databases
 mkdir -p charts_archive/3_enrich-chart-data
 ```
 
- **🚀 Ejecución del Script de Enriquecimiento**
+ 4. **🚀 Ejecución del Script de Enriquecimiento**
 
 ```yaml
 run: |
@@ -600,13 +600,13 @@ env:
   GITHUB_ACTIONS: true  # Variable de entorno para detección
 ```
 
-**✅ Verificación de Resultados**
+5. **✅ Verificación de Resultados**
 
 - Listado de archivos generados en `charts_archive/3_enrich-chart-data/`
 - Verificación de existencia de bases enriquecidas
 - Estadísticas de tamaño de archivos
 
-**📤 Commit y Push Automático**
+6. **📤 Commit y Push Automático**
 
 ```bash
 # Configuración de usuario automático
@@ -621,7 +621,7 @@ git pull --rebase origin main
 git push origin HEAD:main
 ```
 
-**📦 Subida de Artefactos (solo en fallo)**
+7. **📦 Subida de Artefactos (solo en fallo)**
 
 ```yaml
 
@@ -635,7 +635,7 @@ with:
   retention-days: 7
 ```
 
-**🧹 Limpieza de Bases Antiguas**
+8. **🧹 Limpieza de Bases Antiguas**
 
 ```bash
 # Elimina archivos más antiguos que RETENTION_WEEKS (78 semanas = 546 días)
@@ -646,7 +646,7 @@ find charts_archive/3_enrich-chart-data/ \
   -delete
 ```
 
-**📋 Reporte Final** (siempre se ejecuta)
+9. **📋 Reporte Final** (siempre se ejecuta)
 
 ```bash
 # Muestra:
