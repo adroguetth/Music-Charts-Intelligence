@@ -213,201 +213,247 @@ Music-Charts-Intelligence/
 | `country` | TEXT | Country of origin | `"South Korea"` |
 | `macro_genre` | TEXT | Primary genre | `"K-Pop/K-Rock"` |
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-A two-part automated system for downloading YouTube Charts data and enriching it with artist metadata (country and genre).
-
-## 📋 Overview 
-
-This repository contains two Python scripts that work together to build a comprehensive music database: <br> <br>
-Este repositorio contiene dos scripts de Python que trabajan juntos para construir una base de datos musical completa:
-| Script                   | Purpose                                                      | Key Technologies             | **🇬🇧 English Documentation**                                 | **🇪🇸 Spanish Documentation**                                 |
-| :----------------------- | :----------------------------------------------------------- | :--------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
-| **1_download.py**        | Downloads YouTube Charts weekly (100 songs) and stores in SQLite | Playwright, Pandas, SQLite   | [README](https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_EN/1_download.md) <br> [PDF](https://drive.google.com/file/d/11ANLX6PbK_eIzvHLPqL1rm9NY9rOshhD/view?usp=sharing) | [README](https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_ES/1_download.md) <br/> [PDF](https://drive.google.com/file/d/1SdLvJnxcKxmQYmLlwoYttHr2Izud4iE5/view?usp=sharing) |
-| **2_build_artist_db.py** | Enriches artists with country and genre from MusicBrainz, Wikipedia, Wikidata | Requests, SQLite, custom NLP | [README](https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_EN/2_build_artist_db.md) <br> [PDF](https://drive.google.com/file/d/1viUAxZ7k-qeYYbyvZf2OaP20AfLOgKh2/view?usp=drive_link) | [README](https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_ES/2_build_artist_db.md) <br> [PDF](https://drive.google.com/file/d/1WBHBreKeVToTBygSyCuYsHQUr_zSl3BT/view?usp=drive_link)  |
-
-
+### Script 3 Output — `enriched_songs` table (25 fields)
+ 
+| Category | Fields |
+| :------- | :----- |
+| **Identifiers** | `rank`, `artist_names`, `track_name` |
+| **Chart Metrics** | `periods_on_chart`, `views`, `youtube_url` |
+| **Video Metadata** | `duration_s`, `duration_ms`, `upload_date`, `likes`, `comment_count`, `audio_language` |
+| **Video Flags** | `is_official_video`, `is_lyric_video`, `is_live_performance`, `is_special_version` |
+| **Context** | `upload_season`, `channel_type`, `is_collaboration`, `artist_count`, `region_restricted` |
+| **Enrichment** | `artist_country`, `macro_genre`, `artists_found` |
+| **Control** | `error`, `processing_date` |
+ 
 ## 🚀 Quick Start
-
+ 
 ### Prerequisites
-
-- Python 3.7+
+ 
+- Python 3.7 or higher (3.12 recommended)
 - Git
-
+- Internet access
+- YouTube Data API v3 key (optional — only needed for Script 3 Layer 1)
+ 
 ### Installation
-
+ 
 ```bash
-# Clone repository
-git clone <your-repo-url>
-cd <repo-name>
-
-# Create virtual environment
+# Clone the repository
+git clone https://github.com/adroguetth/Music-Charts-Intelligence
+cd Music-Charts-Intelligence
+ 
+# Create and activate virtual environment
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate    # Windows
-
-# Install dependencies
+source venv/bin/activate       # Linux/Mac
+# venv\Scripts\activate        # Windows
+ 
+# Install all dependencies
 pip install -r requirements.txt
-
-# For Script 1 only (Playwright browser)
+ 
+# Install Playwright browser (Script 1 only)
 python -m playwright install chromium
+python -m playwright install-deps  # Linux only
 ```
-
-## 🔄 How It Works
-
-### Script 1: Download YouTube Charts
-
-```mermaid
-graph LR
-    A[YouTube Charts] -->|Scrape| B[CSV Download]
-    B -->|Validate| C[SQLite Database]
-    C -->|Backup| D[charts_archive/1/]
-    D -->|Auto Commit| E[GitHub Repository]
+ 
+### Running the Scripts
+ 
+```bash
+# Step 1: Download this week's YouTube Charts
+python scripts/1_download.py
+ 
+# Step 2: Enrich the artist database
+python scripts/2_build_artist_db.py
+ 
+# Step 3: Enrich chart entries with YouTube metadata
+export YOUTUBE_API_KEY="your-api-key"   # Optional but recommended
+python scripts/3_enrich_chart_data.py
 ```
-
-**What it does:**
-
-- Runs every Monday at 12:00 UTC via GitHub Actions
-- Downloads complete 100-song CSV with anti-detection measures
-- Stores weekly data in versioned SQLite databases
-- Creates automatic backups before updates
-- Falls back to sample data if scraping fails
-
-### Script 2: Enrich Artist Data
-
-```mermaid
-graph LR
-    A[Chart Database] -->|Extract Artists| B[MusicBrainz]
-    A -->|Extract Artists| C[Wikipedia]
-    A -->|Extract Artists| D[Wikidata]
-    B & C & D -->|Weighted Voting| E[Artist DB]
-    E -->|Auto Commit| F[GitHub Repository]
+ 
+Each script can be run independently. Scripts 2 and 3 depend on Script 1's output existing, and Script 3 also uses Script 2's artist database if available.
+ 
+### Environment Variables
+ 
+```bash
+# Simulate GitHub Actions environment (disables interactive prompts)
+export GITHUB_ACTIONS=true
+ 
+# YouTube Data API v3 key (Script 3, Layer 1)
+export YOUTUBE_API_KEY="your-key-here"
+ 
+# Playwright visual debugging (Script 1)
+export PWDEBUG=1
 ```
-
-**What it does:**
-
-- Runs after Script 1 completes (Monday 14:00 UTC)
-- Queries multiple APIs for each artist
-- Detects country (cities, demonyms, 30K+ terms)
-- Classifies genre (200+ macro-genres, 5K+ mappings)
-- Only updates missing data, never overwrites
-- Uses smart caching to avoid redundant calls
-
-## 📁 Output Structure
-
-```text
-charts_archive/
-├── 1_download-chart/              # Script 1 output
-│   ├── databases/
-│   │   ├── youtube_charts_2025-W01.db
-│   │   ├── youtube_charts_2025-W02.db
-│   │   └── ...
-│   └── backup/                     # Automatic backups
-└── 2_artist-countries-genres/      # Script 2 output
-    └── artist_countries_genres.db   # Enriched artist data
+ 
+## 📊 Output Sample
+ 
+After a full pipeline run, a typical weekly output looks like this:
+ 
 ```
-
-### Database Schema
-
-**Script 1 DB (`chart_data` table):**
-
-| Column       | Description         |
-| :----------- | :------------------ |
-| Rank         | Chart position      |
-| Track Name   | Song title          |
-| Artist Names | Artist(s)           |
-| Views        | View count          |
-| week_id      | ISO week identifier |
-
-**Script 2 DB (`artist` table):**
-
-| Column      | Description               | Example        |
-| :---------- | :------------------------ | :------------- |
-| name        | Artist name (primary key) | "BTS"          |
-| country     | Canonical country         | "South Korea"  |
-| macro_genre | Primary genre             | "K-Pop/K-Rock" |
-
-------
-
-## ⚙️ GitHub Actions Automation
-
-Both scripts are fully automated via GitHub Actions:
-
-### Script 1 Workflow
-
-- **Schedule**: Every Monday, 12:00 UTC
-- **Triggers**: Manual, or on script changes
-- **Timeout**: 30 minutes
-
-### Script 2 Workflow
-
-- **Schedule**: Every Monday, 14:00 UTC
-- **Triggers**: After Script 1 completes, or manual
-- **Timeout**: 60 minutes (allows for API rate limits)
-
-Both workflows automatically commit changes back to the repository.
-
-------
-
-## 🛠️ Configuration
-
-### Script 1 Parameters (`1_download.py`)
-
+✅ Script 1: YouTube Chart Update 2025-W11 — 100 songs downloaded
+✅ Script 2: Artist database updated — 23 new artists enriched (2,346 total)
+✅ Script 3: Chart enriched — 100 songs processed in 2m 04s
+ 
+📊 Weekly Stats (2025-W11):
+   • Distinct countries detected:    28
+   • Distinct genres detected:       15
+   • Multi-country collaborations:   24 (24.0%)
+   • Official music videos:          61 (61.0%)
+   • API success rate (Script 3):    98%
+```
+ 
+## 📈 Performance Reference
+ 
+| Script | Typical Runtime | Bottleneck |
+| :----- | :-------------- | :--------- |
+| Script 1 | 2–5 minutes | Page load / Playwright startup |
+| Script 2 | 10–30 minutes | API rate limits (MusicBrainz, Wikipedia) |
+| Script 3 (with API key) | ~2 minutes | YouTube API quota |
+| Script 3 (Selenium only) | ~5–7 minutes | Headless browser per video |
+| Script 3 (yt-dlp only) | ~8–10 minutes | Anti-bot delays |
+ 
+## 🔧 Configuration Reference
+ 
+### Script 1 — `1_download.py`
+ 
 ```python
-RETENTION_DAYS = 7      # Backup retention
-RETENTION_WEEKS = 52    # Database retention
-TIMEOUT = 120000        # Browser timeout (ms)
+RETENTION_DAYS = 7        # Days to keep backup files
+RETENTION_WEEKS = 52      # Weeks to keep weekly databases
+TIMEOUT = 120000          # Playwright browser timeout (ms)
 ```
-
-### Script 2 Parameters (`2_build_artist_db.py`)
-
+ 
+### Script 2 — `2_build_artist_db.py`
+ 
 ```python
-MIN_CANDIDATES = 3      # Min genre candidates before Wikipedia search
-RETRY_DELAY = 0.5       # Delay between API calls (seconds)
-DEFAULT_TIMEOUT = 10    # API timeout (seconds)
+MIN_CANDIDATES = 3        # Min genre candidates before querying Wikipedia
+RETRY_DELAY = 0.5         # Delay between API calls (seconds)
+DEFAULT_TIMEOUT = 10      # API request timeout (seconds)
 ```
-
-## 📊 Sample Output
-
-After successful runs, you'll see:
-
-- Weekly chart databases with 100 songs each
-- Artist database growing by 10-50 new artists per week
-- Automatic commits with descriptive messages
-
-```text
-✅ Script 1: YouTube Chart Update 2025-03-17 (Week 2025-W11)
-✅ Script 2: Update artist database 2025-03-17 (147 new artists)
+ 
+### Script 3 — `3_enrich_chart_data.py`
+ 
+```python
+SLEEP_BETWEEN_VIDEOS = 0.1    # Pause between videos (seconds)
+YT_DLP_RETRIES = 5             # yt-dlp retry attempts
+SELENIUM_TIMEOUT = 10          # Selenium page load timeout (seconds)
 ```
-
+ 
+### Workflow-level (`*.yml` files)
+ 
+```yaml
+# Script 1
+timeout-minutes: 30
+ 
+# Script 2
+timeout-minutes: 60
+env:
+  RETENTION_DAYS: 30
+ 
+# Script 3
+timeout-minutes: 60
+env:
+  RETENTION_WEEKS: 78
+```
+ 
+## 🧩 Extending the System
+ 
+### Adding a New Artist Delimiter (Script 2 & 3)
+ 
+```python
+separators = [
+    '&', 'feat.', 'ft.', ',', ' y ', ' and ', ' with ', ' x ', ' vs ',
+    ' présente ',      # French
+    ' und ',           # German
+    ' e ', ' com '     # Portuguese
+]
+```
+ 
+### Adding a New Genre Mapping (Script 2)
+ 
+```python
+# In GENRE_MAPPINGS
+'new subgenre name': ('Macro-Genre', 'subgenre')
+```
+ 
+### Adding a New Country Genre Hierarchy (Script 3)
+ 
+```python
+# In GENRE_HIERARCHY
+"Country Name": [
+    "Priority Genre 1",   # Selected first in tiebreaks
+    "Priority Genre 2",
+    "Priority Genre 3"
+]
+```
+ 
+### Adjusting Country Genre Bonuses (Script 2)
+ 
+```python
+# In COUNTRY_GENRE_PRIORITY
+"Country Name": [
+    "Priority Genre 1",   # 2.0× multiplier
+    "Priority Genre 2",   # 1.5× multiplier
+    "Priority Genre 3"    # 1.2× multiplier
+]
+```
+ 
+## 🐛 Common Issues
+ 
+| Error | Likely Cause | Solution |
+| :---- | :----------- | :------- |
+| `Playwright browsers not installed` | Missing Chromium binary | `python -m playwright install chromium` |
+| `No chart databases found` | Script 1 hasn't run yet | Run Script 1 first |
+| `Sign in to confirm you're not a bot` | yt-dlp blocked by YouTube | Set `YOUTUBE_API_KEY`; script auto-falls back to Selenium |
+| `Quota exceeded` | YouTube API daily limit hit | Script auto-falls back to Selenium/yt-dlp |
+| `API key not valid` | Invalid or restricted key | Verify key in Google Cloud Console |
+| `No module named 'isodate'` | Missing dependency | `pip install isodate` |
+| Very slow Script 3 (>10 min) | API key missing or failing | Check `YOUTUBE_API_KEY` is set and valid |
+ 
+For detailed troubleshooting, see the individual script documentation linked in the table at the top of this README.
+ 
+## 🧪 Known Limitations
+ 
+- **YouTube Interface Changes**: Script 1's CSS selectors may break if YouTube redesigns its Charts page. Screenshots are saved as artifacts on failure.
+- **API Quotas**: YouTube Data API v3 has a 10,000-unit daily quota. Script 3 processes 100 videos per run (~100–200 units), so a single run uses about 1–2% of the daily quota.
+- **Emerging Artists**: Script 2 relies on MusicBrainz, Wikipedia, and Wikidata. Artists who debuted recently may not yet have sufficient entries in these knowledge bases.
+- **Complex Collaborations**: Collaborations with 5+ artists from different continents are resolved as "Multicountry / Multigenre" — individual contribution weighting is not yet implemented.
+- **K-Pop Groups with Foreign Members**: Currently assigned to South Korea regardless of individual member nationalities.
+ 
+ 
 ## 📄 License and Attribution
-
-- **License**: MIT
-
-- **Author**: Alfonso Droguett
-  - 🔗 **LinkedIn:** [Alfonso Droguett](https://www.linkedin.com/in/adroguetth/)
-  - 🌐 **Web portfolio:** [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/)
-  - 📧 **Email:** [adroguett.consultor@gmail.com](mailto:adroguett.consultor@gmail.com)
----    
-
-⭐ Found this useful? Star it on GitHub!
+ 
+**License**: MIT
+ 
+**Author**: Alfonso Droguett
+- 🔗 [LinkedIn](https://www.linkedin.com/in/adroguetth/)
+- 🌐 [Portfolio](https://www.adroguett-portfolio.cl/)
+- 📧 adroguett.consultor@gmail.com
+ 
+**External Data Sources**:
+- [MusicBrainz](https://musicbrainz.org/) — GPL License
+- [Wikipedia](https://www.wikipedia.org/) — CC BY-SA
+- [Wikidata](https://www.wikidata.org/) — CC0
+- [YouTube Data API v3](https://developers.google.com/youtube/v3) — Google APIs Terms of Service
+ 
+**Key Dependencies**:
+- Playwright (Apache 2.0) — Script 1 browser automation
+- Selenium (Apache 2.0) — Script 3 fallback browser
+- yt-dlp (Unlicense) — Script 3 last-resort metadata
+- Pandas (BSD 3-Clause) — Data processing
+- Requests (Apache 2.0) — API calls
+ 
+## 🤝 Contributing
+ 
+1. **Report issues** with full logs (include the `error` column from the output database when relevant)
+2. **Propose improvements** with concrete use cases
+3. **Add genre mappings** — especially for underrepresented regions
+4. **Improve CSS selectors** for Script 1 when YouTube updates its interface
+5. **Maintain backward compatibility** with the existing database schema
+ 
+```bash
+# Standard contribution flow
+git checkout -b feature/your-feature-name
+# make changes, test locally
+git commit -m "Add: brief description of change"
+git push origin feature/your-feature-name
+# open a Pull Request
+```
+**⭐ If you find this project useful, consider giving it a star on GitHub!**
