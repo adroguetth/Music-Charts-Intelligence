@@ -2,35 +2,39 @@
 # Python Dependencies for YouTube Charts Intelligence
 # ===============================================
 
-# ---------- Web Scraping & Automation ----------
-# For downloading YouTube Charts (browser automation)
+# ---------- Script 1: Download Charts ----------
+# Playwright: Browser automation for downloading YouTube Charts
 playwright==1.48.0
 
-# For extracting video metadata without API
-yt-dlp>=2023.10.13
-
-# HTTP requests (MusicBrainz, Wikipedia, Wikidata, GitHub raw)
+# ---------- Script 2: Artist Enrichment ----------
+# Requests: HTTP calls to MusicBrainz, Wikipedia, Wikidata
 requests>=2.28.0
-
-# ---------- YouTube API Integration ----------
-# Official YouTube Data API v3 client
-google-api-python-client>=2.86.0
-
-# ---------- Data Processing ----------
-# Core data manipulation (for analysis, not required in main script)
+# Pandas: Data manipulation and analysis
 pandas==2.2.3
+# NumPy: Numerical operations (pandas dependency)
 numpy==2.1.3
 
+# ---------- Script 3: Chart Enrichment ----------
+# yt-dlp: YouTube metadata extraction (fallback method)
+yt-dlp>=2023.10.13
+# Google API Client: YouTube Data API v3 integration
+google-api-python-client>=2.86.0
+# isodate: ISO 8601 duration parsing (YouTube API)
 isodate>=0.6.1
+# Selenium: Headless browser fallback for metadata
 selenium>=4.15.0
+# WebDriver Manager: Automatic ChromeDriver management
 webdriver-manager>=4.0.1
 
 # ---------- Built-in Modules (NOT required) ----------
-# These come with Python:
-# - sqlite3     (database)
-# - re          (regex)
-# - datetime    (date/time)
-# - pathlib     (path operations)
-# - tempfile    (temporary files)
-# - os, sys     (system operations)
-# - time        (delays)
+# These come with Python, no need to install:
+# - sqlite3     → Database operations
+# - re          → Regular expressions
+# - datetime    → Date/time handling
+# - pathlib     → Cross-platform paths
+# - tempfile    → Temporary files
+# - os, sys     → System operations
+# - time        → Delays and sleep
+# - collections → Counter, defaultdict
+# - csv         → CSV parsing (legacy support)
+# - subprocess  → Installing missing dependencies
