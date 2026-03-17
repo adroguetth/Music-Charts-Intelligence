@@ -696,6 +696,90 @@ flowchart LR
 
 ### **Instalación Paso a Paso**
 
-**1. Clonar el Repositorio**
+1. **Clonar el Repositorio**
 
-  
+```bash
+git clone https://github.com/adroguetth/Music-Charts-Intelligence
+cd Music-Charts-Intelligence
+```
+
+2. **Crear Entorno Virtual (recomendado)**
+
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux/Mac
+source venv/bin/activate
+```
+
+3. **Instalar Dependencias**
+
+```bash
+pip install -r requirements.txt
+```
+
+4. **Configurar Variables de Entorno**
+
+```bash
+# Linux/Mac
+export YOUTUBE_API_KEY="tu-clave-api"
+
+# Windows PowerShell
+$env:YOUTUBE_API_KEY="tu-clave-api"
+```
+
+5. **Ejecutar el Script Manualmente**
+
+```bash
+python scripts/3_enrich_chart_data.py
+```
+
+### **Configuración para Desarrollo**
+
+**Variables de Entorno Opcionales**
+
+```bash
+# Para simular entorno de GitHub Actions
+export GITHUB_ACTIONS=true
+
+# Para ejecución sin interacción (no pide confirmación)
+export YOUTUBE_API_KEY="tu-clave-api"
+```
+
+**Ejecución con Datos de Prueba**
+
+```bash
+# Crear estructura de directorios
+mkdir -p charts_archive/1_download-chart/databases
+
+# Copiar una base de prueba (si existe)
+cp /ruta/a/una/base.db charts_archive/1_download-chart/databases/
+
+# Ejecutar script
+python scripts/3_enrich_chart_data.py
+```
+
+## 📁 Estructura de Archivos Generada
+
+```text
+charts_archive/
+├── 1_download-chart/
+│   ├── latest_chart.csv
+│   ├── databases/
+│   │   ├── youtube_charts_2025-W01.db
+│   │   ├── youtube_charts_2025-W02.db
+│   │   └── ...
+│   └── backup/
+│       └── ...
+├── 2_countries-genres-artist/
+│   └── artist_countries_genres.db       # Base de datos de artistas (país/género)
+└── 3_enrich-chart-data/                  # ← Salida de este script
+    ├── youtube_charts_2025-W01_enriched.db
+    ├── youtube_charts_2025-W02_enriched.db
+    └── ...
+```
+
+
