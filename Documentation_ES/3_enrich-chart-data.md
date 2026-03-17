@@ -8,6 +8,13 @@
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-FF6F61?style=flat-square&logo=youtube&logoColor=white)
 ![YouTube API](https://img.shields.io/badge/YouTube_API-FF0000?style=flat-square&logo=youtube&logoColor=white)
 
+## 📥 Descarga Rápida
+| Documento                  | Formato                                                       |
+| ------------------------- | ------------------------------------------------------------ |
+| **🇬🇧 Documentación en inglés** | [PDF](https://drive.google.com/file/d/1XGEx2fRBCpOhU5BfY_YjlKm6zmI41RpB/view?usp=drive_link) |
+| **🇪🇸 Documentación en español** | [PDF](https://drive.google.com/file/d/1tSFjf_gQQeArdE4n5DLL2I2G_MJW6vE3/view?usp=drive_link) |
+
+
 ## 📋 Descripción General
 Este script es el tercer componente del sistema de inteligencia de YouTube Charts. Toma la base de datos semanal de charts generada por el descargador y los metadatos de artistas del sistema de enriquecimiento y los combina con metadatos detallados de YouTube mediante un sistema inteligente de tres capas. El resultado es una base de datos completamente enriquecida lista para análisis y visualización.
 
