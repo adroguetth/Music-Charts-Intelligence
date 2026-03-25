@@ -940,6 +940,3 @@ RETRY_DELAY = 1.0
 ------
 
 **⭐ If you find this project useful, please consider starring it on GitHub!**
-
-
-**⭐ If you find this project useful, please consider starring it on GitHub!**
