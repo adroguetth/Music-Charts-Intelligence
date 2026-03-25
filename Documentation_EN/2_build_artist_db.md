@@ -1,6 +1,6 @@
 # 🎵 Script 2: Artist Country + Genre Detection System, Intelligent Enrichment
 
-![MIT](https://img.shields.io/badge/License-MIT-green) ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue) [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) [![Pandas](https://img.shields.io/badge/Pandas-150458?logo=pandas&logoColor=fff)](#) ![Requests](https://img.shields.io/badge/Requests-FF6F61?logo=python&logoColor=fff) [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) ![musicbrainz](https://img.shields.io/badge/MusicBrainz-BA478F?logo=musicbrainz&logoColor=white) ![Wikipedia](https://img.shields.io/badge/Wikipedia-000000?logo=wikipedia&logoColor=white)
+![MIT](https://img.shields.io/badge/License-MIT-green) ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue) [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) [![Pandas](https://img.shields.io/badge/Pandas-150458?logo=pandas&logoColor=fff)](#) ![Requests](https://img.shields.io/badge/Requests-FF6F61?logo=python&logoColor=fff) [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) ![musicbrainz](https://img.shields.io/badge/MusicBrainz-BA478F?logo=musicbrainz&logoColor=white) ![Wikipedia](https://img.shields.io/badge/Wikipedia-000000?logo=wikipedia&logoColor=white) [![Deepseek](https://custom-icon-badges.demolab.com/badge/Deepseek-4D6BFF?logo=deepseek&logoColor=fff)](#)
 
 ## 📥 Quick Downloads
 | Document                | Format                                                     |                                                    
@@ -15,6 +15,7 @@ This project is the second component of the YouTube Charts intelligence system. 
 ### Key Features
 
 - **Multi-Source Lookup**: Intelligent cascading queries to MusicBrainz, Wikipedia (summary & infobox), and Wikidata
+- **DeepSeek AI Fallback**: Uses DeepSeek API as last resort when all free sources fail (cost-effective, ~$0.002 per 100 artists)
 - **Smart Name Variation**: Generates up to 15 variations per artist (accents removed, prefixes stripped, etc.) for maximum match rate
 - **Geographic Intelligence**: Country detection from cities, demonyms, and regional references using a curated dictionary of 30,000+ terms
 - **Genre Classification**: 200+ macro-genres and 5,000+ subgenre mappings with weighted voting system
@@ -23,6 +24,7 @@ This project is the second component of the YouTube Charts intelligence system. 
 - **Intelligent Updates**: Only fills missing data, never overwrites existing correct information
 - **In-Memory Caching**: Avoids redundant API calls during execution
 - **CI/CD Optimized**: Specifically configured for GitHub Actions with progressive fallbacks
+- **Rate Limiting**: Built-in delays to respect API quotas and avoid throttling
 
 ## 📊 Process Flow Diagram
 
@@ -38,56 +40,6 @@ This project is the second component of the YouTube Charts intelligence system. 
 
 ### **Diagram 1: Main Flow Overview**
 
-```mermaid
-%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart TD
-    DB[("📊 Charts DB<br/>youtube_charts_YYYY-WXX.db")]
-    DB --> RSA["📄 Read & Split Artists"]
-    RSA --> GUA["👥 Get Unique Artists"]
-    GUA --> FEA{"🔄 For Each Artist..."}
-    
-    FEA --> IAD{"📋 In Artist DB?"}
-    
-    IAD -- "Yes, Complete" --> SKIP["✅ Skip"]
-    SKIP --> FEA
-    
-    IAD -- "Yes, Missing Info" --> SMF["🔍 Search Missing Fields"]
-    IAD -- "No" --> SFD["🔍 Search Full Data"]
-    
-    SMF --> CS["🌍 Country Search"]
-    SFD --> CS
-    CS --> GS["🎵 Genre Search"]
-    GS --> VS["🗳️ Voting System"]
-    VS --> UD["💾 Update Database"]
-    UD --> MA{"🔄 More Artists?"}
-    
-    MA -- "Yes" --> FEA
-    MA -- "No" --> GRC["📊 Generate Report & Commit"]
-    
-    GRC --> FIN(["✅ End"])
-
-    %% Estilos con colores suaves
-    classDef db fill:#E3F2FD,stroke:#42A5F5,stroke-width:2px,color:#0D47A1
-    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
-    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
-    classDef search fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
-    classDef vote fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef update fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
-    classDef skip fill:#E0E0E0,stroke:#9E9E9E,stroke-width:2px,color:#424242
-    classDef report fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
-
-    %% Asignación de clases
-    class DB db
-    class RSA,GUA process
-    class FEA,IAD,MA decision
-    class SMF,SFD search
-    class CS,GS search
-    class VS vote
-    class UD update
-    class SKIP skip
-    class GRC report
-    class FIN process
-```
 
 This diagram shows the **high-level pipeline** of the entire system:
 
@@ -102,52 +54,7 @@ This diagram shows the **high-level pipeline** of the entire system:
 6. **After all artists**: Generates a final report and automatically commits changes to GitHub
 
 ### **Diagram 2: Country Search (Detailed)**
-
-```mermaid
-%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart TD
-    START(["🌍 Start Country Search"])
-    
-    START --> GNV["Generate Name Variations"]
-    GNV --> CC["Check Cache"]
-    CC --> QMB["Query MusicBrainz"]
-    QMB --> F1{"Found?"}
-
-    F1 -- "No" --> QWE["Query Wikipedia EN<br/>(Summary + Infobox)"]
-    QWE --> F2{"Found?"}
-
-    F2 -- "No" --> QPL["Query Wikipedia<br/>Priority Languages*"]
-    QPL --> F3{"Found?"}
-
-    F3 -- "No" --> QWD["Query Wikidata"]
-    QWD --> F4{"Found?"}
-
-    F4 -- "Yes" --> RC["✅ Return Country"]
-    F4 -- "No" --> RU["❌ Return Unknown"]
-
-    F3 -- "Yes" --> RC
-    F2 -- "Yes" --> RC
-    F1 -- "Yes" --> RC
-
-    RC --> NGS(["Next: Genre Search"])
-    RU --> NGS
-
-    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:1.5px,color:#1B5E20
-    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:1.5px,color:#BF360C
-    classDef cache fill:#E8F5E9,stroke:#A5D6A7,stroke-width:1.5px,color:#1B5E20
-    classDef api fill:#F3E5F5,stroke:#CE93D8,stroke-width:1.5px,color:#4A148C
-    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:1.5px,color:#B71C1C
-    classDef success fill:#C8E6C9,stroke:#81C784,stroke-width:1.5px,color:#1B5E20
-    classDef unknown fill:#FFEBEE,stroke:#EF9A9A,stroke-width:1.5px,color:#B71C1C
-
-    class START,NGS start_end
-    class GNV,QWE,QPL,QWD process
-    class CC cache
-    class QMB api
-    class F1,F2,F3,F4 decision
-    class RC success
-    class RU unknown
-```
+pendiente
 This diagram details the **cascading search strategy** for detecting an artist's country:
 
 1. **Start**: Receives an artist name (may be missing info or new artist)
@@ -163,56 +70,15 @@ This diagram details the **cascading search strategy** for detecting an artist's
    - The artist's country (if already known from previous step)
    - Detected script from the artist's name (Cyrillic → Russian Wikipedia, etc.)
    - If found → returns country ✅
-7. **Wikidata**: Final attempt, queries Wikidata using properties P27 (country of citizenship) and P19 (place of birth)
-8. **Result**: Returns either a canonical country name or "Unknown"
+7. **Wikidata**: Final free source, queries Wikidata using properties P27 (country of citizenship) and P19 (place of birth)
+8. **DeepSeek AI Fallback**: Only if all free sources fail, queries DeepSeek API (cost-effective)
+   - Uses structured prompt asking for country and genre
+   - Results are normalized using the same validation functions
+   - Rate-limited to 0.5s delay between calls
+9. **Result**: Returns either a canonical country name or "Unknown"
 
 ### **Diagram 3: Genre Search (Detailed)**
 
-```mermaid
-%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart TD
-    START(["🎵 Start Genre Search"])
-    
-    START --> GNV["Generate Name Variations"]
-    GNV --> MB["🎵 MusicBrainz<br/>(genres/tags)"]
-    MB --> ACW1["Add Candidates + Weights"]
-    ACW1 --> WD[" Wikidata<br/>(Property P136)"]
-    WD --> ACW2["Add Candidates + Weights"]
-    ACW2 --> C1{"3+ Candidates?"}
-
-    C1 -- "No" --> WPP["📚 Wikipedia Priority**"]
-    WPP --> EIS["Extract from Infobox<br/>& Summary"]
-    EIS --> ACW3["Add Candidates + Weights"]
-    ACW3 --> C2{"3+ Candidates?"}
-
-    C2 -- "No" --> WOL["🌐 Wikipedia Other Languages"]
-    WOL --> EA["Extract & Add"]
-    EA --> GTV["Go to Voting"]
-
-    C2 -- "Yes" --> GTV
-    C1 -- "Yes" --> GTV
-
-    GTV --> NVS(["🗳️ Next: Voting System"])
-
-    %% Estilos con colores suaves
-    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
-    classDef api fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
-    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
-    classDef candidate fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef wiki fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
-    classDef next fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
-
-    %% Asignación de clases
-    class START start_end
-    class GNV process
-    class MB,WD api
-    class ACW1,ACW2,ACW3 candidate
-    class C1,C2 decision
-    class WPP,EIS,WOL,EA wiki
-    class GTV process
-    class NVS next
-```
 This diagram shows how the system **collects genre candidates** from multiple sources:
 
 1. **Start**: Receives artist name (and country if already detected)
@@ -231,61 +97,13 @@ This diagram shows how the system **collects genre candidates** from multiple so
    - **Infobox**: Looks for "genre", "genres", "género" fields
    - **Summary**: Uses NLP patterns like "is a [genre] singer", "known for [genre] music"
 8. **Second Check**: If still under 3 candidates, tries Wikipedia in other common languages
-9. **Final**: All candidates (with their weights and sources) go to the Voting System
+9. **DeepSeek AI Fallback**: Only if all free sources return no candidates, queries DeepSeek API
+   - Uses the country (if known) as context to improve accuracy
+   - Returns a normalized genre or raw string
+10. **Final**: All candidates (with their weights and sources) go to the Voting System
 
 ### **Diagram 4: Voting & Weight System**
 
-```mermaid
-%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart TD
-    START(["🗳️ Candidates from Search"])
-    
-    START --> NMG["🔄 Normalize to Macro-Genre"]
-    NMG --> ASW["⚖️ Apply Source Weights<br/>MB: 1.5x, WD: 1.3x, WP: 1.0-1.2x"]
-    ASW --> DNS["📝 Detect Name Script"]
-    DNS --> BST["✨ Bonus for Specific Terms<br/>K-Pop, Reggaetón, etc.<br/>+1.4x"]
-    BST --> CK{"🌍 Country Known?"}
-
-    CK -- "Yes" --> ACP["🎯 Apply Country Priority<br/>#1: 2.0x, #2: 1.5x, #3+: 1.2x"]
-    ACP --> ACR["⚙️ Apply Country Rules<br/>force_macro, map_generic_to"]
-    ACR --> SAV["📊 Sum All Votes"]
-
-    CK -- "No" --> ASB["🌐 Apply Script Bonus<br/>if region matches +1.2x"]
-    ASB --> SAV
-
-    SAV --> HW{"🏆 Have Winner?"}
-    
-    HW -- "Yes" --> RG["✅ Return Genre"]
-    
-    HW -- "No & Country Known" --> FCP["🔄 Fallback: First<br/>Country Priority Genre"]
-    FCP --> RG
-    
-    RG --> NEXT(["🎵 Next: Update Database"])
-
-    %% Estilos con colores suaves
-    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef process fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
-    classDef weight fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
-    classDef country fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
-    classDef bonus fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
-    classDef sum fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
-    classDef success fill:#C8E6C9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef fallback fill:#FFCCBC,stroke:#FF8A65,stroke-width:2px,color:#BF360C
-    classDef next fill:#E0E0E0,stroke:#9E9E9E,stroke-width:2px,color:#424242
-
-    %% Asignación de clases
-    class START start_end
-    class NMG,ASW,DNS process
-    class BST bonus
-    class CK,HW decision
-    class ACP,ACR country
-    class ASB bonus
-    class SAV sum
-    class RG success
-    class FCP fallback
-    class NEXT next
-```
 This is the **intelligent decision engine** that selects the final genre:
 
 1. **Input**: Receives all genre candidates with their raw weights and sources
@@ -315,57 +133,7 @@ This is the **intelligent decision engine** that selects the final genre:
 11. **Fallback**: If no winner and country is known, uses the first genre from country's priority list
 
 ### **Diagram 5: Database Update**
-```mermaid
-%%{init: {'flowchart': {'useMaxWidth': true, 'width': '50%', 'padding': 8, 'nodeSpacing': 30, 'rankSpacing': 30}, 'themeVariables': {'fontSize': '14px'}}}%%
-flowchart TD
-    START(["💾 Country + Genre Data"])
-    
-    START --> CDB["🔌 Connect to<br/>artist_countries_genres.db"]
-    CDB --> AE{"👤 Artist Exists?"}
 
-    AE -- "Yes" --> CMF{"🔍 Check Missing Fields"}
-    CMF --> UOM["📝 Update Only Missing<br/>Country or Genre"]
-    UOM --> DBU[("✅ Database Updated")]
-
-    AE -- "No" --> INR["➕ Insert New Record"]
-    INR --> DBU
-
-    DBU --> LS["📊 Log Statistics"]
-    LS --> MA{"🔄 More Artists?"}
-
-    MA -- "Yes" --> NA(["⏭️ Next Artist"])
-    NA --> CDB
-
-    MA -- "No" --> GFR["📋 Generate Final Report"]
-    GFR --> CPR["📤 Commit & Push to Repo"]
-    
-    CPR --> FIN(["🏁 Process Complete"])
-
-    %% Estilos con colores suaves
-    classDef start_end fill:#F1F8E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef database fill:#E3F2FD,stroke:#42A5F5,stroke-width:2px,color:#0D47A1
-    classDef decision fill:#FFEBEE,stroke:#EF9A9A,stroke-width:2px,color:#B71C1C
-    classDef update fill:#E8F5E9,stroke:#81C784,stroke-width:2px,color:#1B5E20
-    classDef insert fill:#FFF3E0,stroke:#FFB74D,stroke-width:2px,color:#BF360C
-    classDef dbstate fill:#E1F5FE,stroke:#4FC3F7,stroke-width:2px,color:#01579B
-    classDef stats fill:#FFF9C4,stroke:#FFF176,stroke-width:2px,color:#F57F17
-    classDef next fill:#F3E5F5,stroke:#CE93D8,stroke-width:2px,color:#4A148C
-    classDef report fill:#FFCCBC,stroke:#FF8A65,stroke-width:2px,color:#BF360C
-    classDef commit fill:#E0E0E0,stroke:#9E9E9E,stroke-width:2px,color:#424242
-
-    %% Asignación de clases
-    class START start_end
-    class CDB database
-    class AE,CMF,MA decision
-    class UOM update
-    class INR insert
-    class DBU dbstate
-    class LS stats
-    class NA next
-    class GFR report
-    class CPR commit
-    class FIN start_end
-```
 This diagram shows how the system **persists data intelligently**:
 
 1. **Input**: Receives final country and genre data for an artist
@@ -384,25 +152,23 @@ This diagram shows how the system **persists data intelligently**:
    - Generates final report with statistics (success rate, new artists, etc.)
 9. **GitHub Commit**: Automatically commits and pushes changes to repository
 
-
-
+---
 ## 🔍 Detailed Analysis of `2_build_artist_db.py`
 
 ### Code Structure
 
 #### **1. Configuration and Paths**
-
 ```python
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 CHARTS_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
-ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_artist_countries_genres" / "artist_countries_genres.db"
+ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_countries-genres-artist" / "artist_countries_genres.db"
 ```
 
 The script reads from the downloader's output and creates its own enriched database:
 
 - **Input**: Weekly chart databases from step 1 (`youtube_charts_YYYY-WXX.db`)
 - **Output**: Artist metadata database (`artist_countries_genres.db`)
-- **Structure**: `charts_archive/2_artist_countries_genres/`
+- **Structure**: `charts_archive/2_countries-genres-artist/`
 
 #### **2. Intelligent Name Variation System**
 
@@ -510,7 +276,7 @@ The `GENRE_MAPPINGS` dictionary contains **5,000+ genre variants** mapped to 200
 
 #### **5. Multi-Source API Queries**
 
-The script queries three knowledge bases in cascade:
+The script queries four knowledge bases in cascade (with DeepSeek as final fallback):
 
 ```python
 def search_artist_genre(artist: str, country: Optional[str] = None):
@@ -519,6 +285,7 @@ def search_artist_genre(artist: str, country: Optional[str] = None):
     1. MusicBrainz (structured, high reliability) → 1.5x weight
     2. Wikidata (semantic, medium reliability) → 1.3x weight
     3. Wikipedia in priority languages (rich text) → 1.0-1.2x weight
+    4. DeepSeek API (fallback, only when all free sources fail) → normalized result
     """
 ```
 
@@ -532,7 +299,7 @@ params = {'query': artist, 'fmt': 'json', 'limit': 1}
 
 **Wikipedia infobox extraction:**
 
-```python
+```text
 # Extracts from Infobox musical artist
 # Fields searched: genre, géneros, genres
 # Example: | genre = [[Pop music|Pop]], [[R&B]]
@@ -549,6 +316,19 @@ patterns = [
 ]
 ```
 
+**DeepSeek API fallback:**
+
+```python
+def search_deepseek_fallback(artist: str, context_country: Optional[str] = None):
+    """
+    Uses DeepSeek AI as last resort when all free sources fail.
+    - Cost: ~146-1194 tokens per request (~$0.002 per 100 artists)
+    - Rate-limited: 0.5s delay between calls
+    - Cached to avoid redundant requests
+    - Returns normalized country and genre
+    """
+```
+
 #### **6. Intelligent Caching System**
 
 ```python
@@ -561,9 +341,7 @@ _CACHE = {
     'wikipedia_genre': {},
 }
 
-_SESSION_WIKIPEDIA = requests.Session()
-_SESSION_WIKIDATA = requests.Session()
-_SESSION_MUSICBRAINZ = requests.Session()
+_DEEPSEEK_CACHE = {}  # Cache for DeepSeek results
 ```
 
 **Benefits:**
@@ -572,6 +350,7 @@ _SESSION_MUSICBRAINZ = requests.Session()
 - **Politeness**: Reduces load on external services
 - **Speed**: In-memory cache for current execution
 - **Session reuse**: Keep-alive connections for multiple queries
+- **Cost savings**: DeepSeek cache prevents duplicate paid calls
 
 #### **7. Script/Language Detection**
 
@@ -595,6 +374,7 @@ def detect_script_from_name(name: str) -> Optional[str]:
 - Prioritizing Wikipedia queries in the right language
 - Applying regional bonuses (e.g., Korean script → K-Pop)
 - Improving name variation generation
+- Providing context to DeepSeek fallback
 
 #### **8. Weighted Voting System**
 
@@ -691,6 +471,7 @@ Result: (Country: UK, Genre: Rock)  ✓ Only country updated
 | country     | `TEXT` | Canonical country name    | "South Korea"  |
 | macro_genre | `TEXT` | Primary macro-genre       | "K-Pop/K-Rock" |
 
+---
 ## ⚙️ GitHub Actions Workflow Analysis (`2-update-artist-database.yml`)
 
 ### **Workflow Structure**
@@ -700,19 +481,32 @@ name: 2- Update Artist Database
 
 on:
   schedule:
-    # Run every Monday at 14:00 UTC (2 hours after download)
-    - cron: '0 14 * * 1'
-  workflow_dispatch:       # Manual execution only
-  # NOTA: workflow_run eliminado para evitar doble ejecución
-  # El workflow se ejecuta ÚNICAMENTE a las 14:00 UTC del lunes
+    # Run every Monday at 13:00 UTC (1 hour after download)
+    - cron: '0 13 * * 1'
+  
+  # Allow manual execution
+  workflow_dispatch:
+
+env:
+  RETENTION_DAYS: 30
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Advance to Node.js 24
+
+jobs:
+  build-artist-database:
+    name: Build and Update Artist Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    permissions:
+      contents: write
 ```
 
-### **Jobs and Steps**
+### **obs and Steps**
 
 #### **Job: `build-artist-database`**
 
 - **Operating system**: Ubuntu Latest
-- **Timeout**: 60 minutes (allows for API rate limiting)
+- **Timeout**: 60 minutes (allows for API rate limiting and DeepSeek calls)
 - **Permissions**: Repository write access
 
 #### **Detailed Steps:**
@@ -746,30 +540,31 @@ run: |
 ```yaml
 run: |
   mkdir -p charts_archive/1_download-chart/databases
-  mkdir -p charts_archive/2_countries_genres_artist
+  mkdir -p charts_archive/2_countries-genres-artist
 ```
 
-5. **🚀 Main Script Execution**
+5. **🚀 Main Script Execution with DeepSeek API Key**
 
 ```yaml
 - name: 🚀 Build artist database
   run: |
     python scripts/2_build_artist_db.py
   env:
-    GITHUB_ACTIONS: true  # Environment variable for detection
+    GITHUB_ACTIONS: true
+    DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```
 
 6. **✅ Database Integrity Verification**
 
-```yaml
+```python
 - name: ✅ Verify database integrity
   run: |
     echo "📊 Verifying artist database..."
-    DB_PATH="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
+    DB_PATH="charts_archive/2_countries-genres-artist/artist_countries_genres.db"
     
     # Check directory contents
     echo "📂 Directory contents:"
-    ls -la charts_archive/2_countries_genres_artist/
+    ls -la charts_archive/2_countries-genres-artist/
     
     # Verify database exists and has size
     if [ -f "$DB_PATH" ]; then
@@ -799,7 +594,7 @@ run: |
     git config --global user.email "github-actions[bot]@users.noreply.github.com"
     
     # Stage only artist database files
-    git add charts_archive/2_countries_genres_artist/
+    git add charts_archive/2_countries-genres-artist/
     
     # Check if there are changes to commit
     if git diff --cached --quiet; then
@@ -819,6 +614,7 @@ run: |
 ```
 
 8. **📦 Artifact Upload (on failure)**
+
 
 ```yaml
 - name: 📦 Upload debug artifacts
@@ -845,29 +641,26 @@ run: |
     echo "🔗 Commit: ${{ github.sha }}"
     echo ""
     
-    DB_FILE="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
+    DB_FILE="charts_archive/2_countries-genres-artist/artist_countries_genres.db"
     if [ -f "$DB_FILE" ]; then
       SIZE=$(stat -c%s "$DB_FILE")
       echo "✅ Artist database: $((SIZE / 1024)) KB"
       
       # Count artists
       if command -v sqlite3 &> /dev/null; then
-        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artists;" 2>/dev/null || echo "N/A")
+        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artist;" 2>/dev/null || echo "N/A")
         echo "👤 Artists processed: ${ARTIST_COUNT}"
       fi
     else
       echo "⚠️ Artist database not found"
     fi
     
-    # Show trigger information
     echo ""
     echo "📊 Trigger details:"
     if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
       echo "   • Triggered by: Manual dispatch"
     elif [ "${{ github.event_name }}" = "schedule" ]; then
-      echo "   • Triggered by: Scheduled cron (Monday 14:00 UTC)"
-    else
-      echo "   • Triggered by: Push or other event"
+      echo "   • Triggered by: Scheduled cron (Monday 13:00 UTC)"
     fi
     
     echo ""
@@ -878,13 +671,22 @@ run: |
 ### **Cron Scheduling**
 
 ```cron
-'0 14 * * 1'  # Minute 0, Hour 14, Any day of month, Any month, Monday
+'0 13 * * 1'  # Minute 0, Hour 13, Any day of month, Any month, Monday
 ```
 
-- **Execution**: Every Monday at 14:00 UTC
-- **Offset**: 2 hours after the download workflow (12:00 UTC)
+- **Execution**: Every Monday at 13:00 UTC
+- **Offset**: 1 hour after the download workflow (12:00 UTC)
 - **Purpose**: Allows download workflow to complete before enrichment begins
-- **Nota**: El workflow ya no se ejecuta automáticamente al finalizar el download workflow. Solo se ejecuta según el cron programado o manualmente.
+
+---
+
+## 🔐 Required Secrets
+
+| Secret             | Purpose                                                      |
+| :----------------- | :----------------------------------------------------------- |
+| `DEEPSEEK_API_KEY` | Used by the DeepSeek AI fallback system to retrieve country and genre information when all free sources (MusicBrainz, Wikidata, Wikipedia) fail to return results. Required only for the fallback functionality; the script continues without it if not provided. |
+
+---
 
 ## 🚀 Installation and Local Setup
 
@@ -893,6 +695,7 @@ run: |
 - Python 3.7 or higher
 - Git installed
 - Internet access for API queries
+- (Optional) DeepSeek API key for fallback
 
 ### **Step-by-Step Installation**
 
@@ -922,7 +725,20 @@ pip install -r requirements.txt
 # Playwright is not required for this script
 ```
 
-4. **Run Initial Test**
+4. **Set DeepSeek API Key (optional, for fallback)**
+
+```bash
+# Linux/Mac
+export DEEPSEEK_API_KEY="your-api-key-here"
+
+# Windows (Command Prompt)
+set DEEPSEEK_API_KEY=your-api-key-here
+
+# Windows (PowerShell)
+$env:DEEPSEEK_API_KEY="your-api-key-here"
+```
+
+5. **Run Initial Test**
 
 ```bash
 python scripts/2_build_artist_db.py
@@ -938,6 +754,7 @@ export GITHUB_ACTIONS=true
 export LOG_LEVEL=DEBUG
 ```
 
+---
 
 ## 📁 Generated File Structure
 
@@ -958,11 +775,10 @@ charts_archive/
 ### **Database Growth**
 
 - Initial run: 100-200 artists
-
 - Weekly growth: 10-50 new artists (only new ones from weekly charts)
-
 - Size estimate: ~10KB per 100 artists
 
+---
 
 ## 🔧 Customization and Configuration
 
@@ -973,6 +789,7 @@ charts_archive/
 MIN_CANDIDATES = 3        # Minimum genre candidates before Wikipedia search
 RETRY_DELAY = 0.5          # Delay between API calls (seconds)
 DEFAULT_TIMEOUT = 10       # API timeout (seconds)
+DEEPSEEK_RATE_LIMIT = 0.5  # Delay between DeepSeek calls (seconds)
 ```
 
 ### **Workflow Configuration**
@@ -1011,6 +828,7 @@ timeout-minutes: 60        # Total job timeout (allows for API rate limits)
     "Priority Genre 3"    # Gets 1.2x bonus
 ]
 ```
+---
 
 ## 🐛 Troubleshooting
 
@@ -1029,13 +847,23 @@ RETRY_DELAY = 1.0
 ```
 
 3. **Error: Rate limiting from APIs**
+
    - The script includes delays between calls
    - For large batches, consider adding longer delays
    - Monitor API response headers for rate limit info
-4. **Error: Artist not found in any source**
+
+4. **Error: DeepSeek API key not set**
+
+   - Add `DEEPSEEK_API_KEY` to GitHub Secrets
+   - For local testing, set environment variable
+   - The script continues without DeepSeek if key is missing
+
+5. **Error: Artist not found in any source**
    - Check if artist name has special characters
    - Try manual search in MusicBrainz
    - Add fallback rules for the country
+   - DeepSeek may help with obscure artists
+   
 
 ### **Logs and Debugging**
 
@@ -1045,6 +873,9 @@ RETRY_DELAY = 1.0
 2. **DEBUG mode**: Shows genre candidates and voting details
 3. **GitHub Actions mode**: Enhanced logging for CI/CD
 4. **Verbose API logging**: Uncomment `print` statements in API functions
+5. **DeepSeek fallback logging**: Shows when AI fallback is used
+
+---
 
 ## 📈 Monitoring and Maintenance
 
@@ -1054,6 +885,7 @@ RETRY_DELAY = 1.0
 2. **Success rate**: Should be >90% for established artists
 3. **API response time**: <2 seconds average
 4. **Cache hit rate**: Increases over time as artists accumulate
+5. **DeepSeek usage**: Should be low (<10% of artists)
 
 ### **Performance Metrics**
 
@@ -1063,6 +895,10 @@ RETRY_DELAY = 1.0
 | Cache hit rate         | 30-70%         | Increases with database size                  |
 | Genre detection rate   | 85-95%         | Lower for very niche artists                  |
 | Country detection rate | 80-90%         | Lower for artists with little online presence |
+| DeepSeek fallback rate | <10%           | Only used when free sources fail              |
+| Cost per 100 artists   | ~$0.002        | With DeepSeek fallback                        |
+
+---
 
 ## 📄 License and Attribution
 
@@ -1075,6 +911,9 @@ RETRY_DELAY = 1.0
   - MusicBrainz (GPL License)
   - Wikipedia (CC BY-SA)
   - Wikidata (CC0)
+  - DeepSeek (Commercial API, fallback only)
+
+---
 
 ## 🤝 Contribution
 
@@ -1083,6 +922,8 @@ RETRY_DELAY = 1.0
 3. Add new genre mappings with examples
 4. Contribute country variants (especially for underrepresented regions)
 5. Maintain compatibility with existing database structure
+
+---
 
 ## 🧪 Known Limitations and Future Improvements
 
@@ -1093,17 +934,12 @@ RETRY_DELAY = 1.0
 - **Niche Genres**: Some micro-genres may not have mappings yet
 - **Brazilian MCs**: Currently receive `Sertanejo` as fallback (priority list order)
 - **Script Detection**: Heuristic-based, may occasionally misidentify
+- **DeepSeek Cost**: While minimal, requires API key and has token costs
 
-### **Planned Improvements**
-
-- Add Spotify API as additional source
-- Implement exponential backoff for rate limits
-- Create training data for ML-based genre classification
-- Add confidence scores to database entries
-- Support for group/band member country detection
-- Geographic heatmaps of music genres by region
-- Automated testing suite for API changes
 
 ------
+
+**⭐ If you find this project useful, please consider starring it on GitHub!**
+
 
 **⭐ If you find this project useful, please consider starring it on GitHub!**
