@@ -56,7 +56,9 @@ jobs:
         python scripts/2_build_artist_db.py
       env:
         GITHUB_ACTIONS: true
-        # Add API tokens as secrets if needed
+        # DeepSeek API key for fallback artist information
+        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        # Optional: Add other API tokens as secrets if needed
         # MUSICBRAINZ_TOKEN: ${{ secrets.MUSICBRAINZ_TOKEN }}
         # SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
         # SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
