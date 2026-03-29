@@ -1,4 +1,4 @@
-name: Weekly Music Charts Notebook Generator
+name: 4.1- Weekly Music Charts Notebook Generator
 
 on:
   schedule:
