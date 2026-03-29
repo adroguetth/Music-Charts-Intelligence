@@ -28,6 +28,21 @@ selenium>=4.15.0
 # WebDriver Manager: Automatic ChromeDriver management
 webdriver-manager>=4.0.1
 
+# ---------- Script 4: Notebook Generator ----------
+# Jupyter: Notebook generation and conversion
+jupyter>=1.0.0
+nbconvert>=7.16.0
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.13.0
+plotly>=5.18.0
+# Statistical analysis
+scipy>=1.11.0
+# Google Drive upload (optional, for PDF export)
+google-api-python-client>=2.86.0
+google-auth-httplib2>=0.1.0
+google-auth-oauthlib>=1.0.0
+
 # ---------- Built-in Modules (NOT required) ----------
 # These come with Python, no need to install:
 # - sqlite3     → Database operations
@@ -41,3 +56,5 @@ webdriver-manager>=4.0.1
 # - csv         → CSV parsing (legacy support)
 # - subprocess  → Installing missing dependencies
 # - json        → JSON parsing (DeepSeek responses)
+# - hashlib     → Cache key generation
+# - argparse    → CLI argument parsing
