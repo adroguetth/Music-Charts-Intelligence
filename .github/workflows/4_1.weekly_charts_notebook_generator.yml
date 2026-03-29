@@ -45,14 +45,12 @@ jobs:
           pip install --upgrade pip
           pip install pandas numpy matplotlib seaborn plotly scipy requests
           pip install jupyter nbconvert
+          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
           
       - name: Install Pandoc and LaTeX
         run: |
-          # Install Pandoc (required for nbconvert PDF conversion)
           sudo apt-get update
           sudo apt-get install -y pandoc
-          
-          # Install minimal LaTeX for PDF generation
           sudo apt-get install -y \
             texlive-xetex \
             texlive-fonts-recommended \
@@ -66,7 +64,6 @@ jobs:
             echo "week=${{ github.event.inputs.week }}" >> $GITHUB_OUTPUT
             echo "language=${{ github.event.inputs.language }}" >> $GITHUB_OUTPUT
           else
-            # Get latest week from charts_archive
             LATEST_DB=$(ls -1 charts_archive/3_enrich-chart-data/youtube_charts_*.db 2>/dev/null | sort -r | head -1)
             if [ -z "$LATEST_DB" ]; then
               echo "No database found in charts_archive"
@@ -85,11 +82,9 @@ jobs:
           
       - name: Convert notebooks to PDF
         run: |
-          # Create PDF output directories
           mkdir -p pdf_output/EN
           mkdir -p pdf_output/ES
           
-          # Convert English notebooks
           for notebook in Notebook_EN/weekly/*.ipynb; do
             if [ -f "$notebook" ]; then
               echo "Converting $notebook to PDF..."
@@ -97,7 +92,6 @@ jobs:
             fi
           done
           
-          # Convert Spanish notebooks
           for notebook in Notebook_ES/weekly/*.ipynb; do
             if [ -f "$notebook" ]; then
               echo "Converting $notebook to PDF..."
@@ -115,22 +109,18 @@ jobs:
           
       - name: Keep only last 6 notebooks locally
         run: |
-          # Keep only last 6 notebooks in EN directory
           cd Notebook_EN/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
           
-          # Keep only last 6 notebooks in ES directory
           cd Notebook_ES/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
           
-          # Keep only last 6 cache files for EN
           cd Notebook_EN/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
           
-          # Keep only last 6 cache files for ES
           cd Notebook_ES/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
