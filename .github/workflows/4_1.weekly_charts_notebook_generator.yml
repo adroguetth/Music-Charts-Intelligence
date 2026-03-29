@@ -29,24 +29,28 @@ jobs:
     timeout-minutes: 30
     
     steps:
-      - name: Checkout repository
+      # Step 1: Checkout repository
+      - name: 📚 Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           
-      - name: Setup Python
+      # Step 2: Set up Python environment
+      - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
           
-      - name: Install Python dependencies
+      # Step 3: Install Python dependencies
+      - name: 📦 Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install pandas numpy matplotlib seaborn plotly scipy requests
           pip install jupyter nbconvert
           
-      - name: Install LaTeX for PDF conversion
+      # Step 4: Install LaTeX for PDF conversion
+      - name: 🔤 Install LaTeX for PDF conversion
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -55,7 +59,8 @@ jobs:
             texlive-plain-generic \
             fonts-freefont-otf
           
-      - name: Determine week to process
+      # Step 5: Determine week to process
+      - name: 📅 Determine week to process
         id: get_week
         run: |
           if [ -n "${{ github.event.inputs.week }}" ]; then
@@ -73,13 +78,15 @@ jobs:
             echo "language=both" >> $GITHUB_OUTPUT
           fi
           
-      - name: Run notebook generator
+      # Step 6: Execute notebook generator script
+      - name: 🚀 Run notebook generator
         run: |
           python scripts/4_1.weekly_charts_notebook_generator.py \
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
           
-      - name: Convert notebooks to PDF
+      # Step 7: Convert notebooks to PDF
+      - name: 📄 Convert notebooks to PDF
         run: |
           # Create PDF output directories
           mkdir -p pdf_output/EN
@@ -101,7 +108,8 @@ jobs:
             fi
           done
           
-      - name: Upload PDFs to Google Drive
+      # Step 8: Upload PDFs to Google Drive
+      - name: ☁️ Upload PDFs to Google Drive
         env:
           GDRIVE_SERVICE_ACCOUNT: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
@@ -109,7 +117,8 @@ jobs:
         run: |
           python scripts/upload_to_drive.py
           
-      - name: Keep only last 6 notebooks locally
+      # Step 9: Keep only last 6 notebooks locally
+      - name: 🧹 Keep only last 6 notebooks locally
         run: |
           # Keep only last 6 notebooks in EN directory
           cd Notebook_EN/weekly
@@ -131,9 +140,10 @@ jobs:
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
           
-          echo "Cleaned up: Keeping only last 6 notebooks per language"
+          echo "✅ Cleanup completed: Keeping only last 6 notebooks per language"
           
-      - name: Commit and push changes
+      # Step 10: Commit and push changes to repository
+      - name: 📤 Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -141,22 +151,24 @@ jobs:
           git add Notebook_EN/weekly/ Notebook_ES/weekly/
           
           if git diff --staged --quiet; then
-            echo "No changes to commit"
+            echo "🔭 No changes to commit"
           else
             git commit -m "Weekly charts analysis - ${{ steps.get_week.outputs.week }} [skip ci]"
             git push
+            echo "✅ Changes pushed successfully"
           fi
           
-      - name: Summary
+      # Step 11: Generate final execution report
+      - name: 📋 Summary
         run: |
           echo "=========================================="
-          echo "Weekly Charts Analysis Complete!"
+          echo "🎵 WEEKLY CHARTS ANALYSIS COMPLETE!"
           echo "=========================================="
-          echo "Week: ${{ steps.get_week.outputs.week }}"
-          echo "Language: ${{ steps.get_week.outputs.language }}"
+          echo "📅 Week: ${{ steps.get_week.outputs.week }}"
+          echo "🌐 Language: ${{ steps.get_week.outputs.language }}"
           echo ""
-          echo "Generated files:"
-          echo "  - Notebooks in Notebook_EN/weekly/ and Notebook_ES/weekly/"
-          echo "  - PDFs uploaded to Google Drive"
-          echo "  - Only last 6 notebooks retained locally"
+          echo "📂 Generated files:"
+          echo "  - 📓 Notebooks in Notebook_EN/weekly/ and Notebook_ES/weekly/"
+          echo "  - 📄 PDFs uploaded to Google Drive"
+          echo "  - 🗂️ Only last 6 notebooks retained locally"
           echo "=========================================="
