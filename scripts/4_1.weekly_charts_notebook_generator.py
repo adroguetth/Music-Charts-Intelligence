@@ -743,11 +743,13 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
         })
 
     def add_markdown_cell(source: str) -> None:
-        """Add a markdown cell to the notebook."""
+        """Add a markdown cell to the notebook with preserved line breaks."""
+        # Split by newline but keep all lines including empty ones
+        lines = source.split('\n')
         notebook["cells"].append({
             "cell_type": "markdown",
             "metadata": {},
-            "source": source.strip().split('\n')
+            "source": lines
         })
 
     # Title cell
