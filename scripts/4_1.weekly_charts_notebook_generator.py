@@ -44,6 +44,9 @@ from pathlib import Path
 from typing import Tuple, Optional, Dict, Any, List
 from scipy.stats import gaussian_kde
 import warnings
+import nbformat as nbf
+from nbformat.v4 import new_notebook, new_code_cell, new_markdown_cell
+
 warnings.filterwarnings('ignore')
 
 # ============================================================
@@ -621,7 +624,7 @@ def format_number(x: float) -> str:
 
 
 # ============================================================
-# Notebook Generation
+# Notebook Generation with nbformat
 # ============================================================
 
 def get_section_titles(language: str) -> Dict[str, str]:
@@ -697,7 +700,7 @@ def get_section_titles(language: str) -> Dict[str, str]:
 def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
                       insights: Dict[str, str], output_path: Path, language: str) -> None:
     """
-    Generate a Jupyter notebook with analysis cells and AI insights.
+    Generate a Jupyter notebook with analysis cells and AI insights using nbformat.
     
     Args:
         df: DataFrame with enriched music data
@@ -710,60 +713,39 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
     db_filename = db_path.name
     titles = get_section_titles(language)
 
-    notebook = {
-        "cells": [],
-        "metadata": {
-            "kernelspec": {
-                "display_name": "Python 3",
-                "language": "python",
-                "name": "python3"
-            },
-            "language_info": {
-                "codemirror_mode": {"name": "ipython", "version": 3},
-                "file_extension": ".py",
-                "mimetype": "text/x-python",
-                "name": "python",
-                "nbconvert_exporter": "python",
-                "pygments_lexer": "ipython3",
-                "version": "3.12.3"
-            }
+    # Create new notebook with nbformat
+    nb = new_notebook()
+    
+    # Set notebook metadata
+    nb.metadata = {
+        "kernelspec": {
+            "display_name": "Python 3",
+            "language": "python",
+            "name": "python3"
         },
-        "nbformat": 4,
-        "nbformat_minor": 4
+        "language_info": {
+            "codemirror_mode": {"name": "ipython", "version": 3},
+            "file_extension": ".py",
+            "mimetype": "text/x-python",
+            "name": "python",
+            "nbconvert_exporter": "python",
+            "pygments_lexer": "ipython3",
+            "version": "3.12.3"
+        }
     }
 
-    def add_code_cell(source: str) -> None:
-        """Add a code cell to the notebook."""
-        notebook["cells"].append({
-            "cell_type": "code",
-            "execution_count": None,
-            "metadata": {},
-            "outputs": [],
-            "source": source.strip().split('\n')
-        })
-
-    def add_markdown_cell(source: str) -> None:
-        """Add a markdown cell to the notebook with preserved line breaks."""
-        # Split by newline but keep all lines including empty ones
-        lines = source.split('\n')
-        notebook["cells"].append({
-            "cell_type": "markdown",
-            "metadata": {},
-            "source": lines
-        })
-
     # Title cell
-    add_markdown_cell(f"""# {titles['title']}
+    nb.cells.append(new_markdown_cell(f"""# {titles['title']}
 
 **Data Source:** YouTube Charts enriched with country, genre, and video metrics
 **Week:** {year}-W{week}
 **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 **AI Analysis:** Powered by DeepSeek API
-""")
+"""))
 
     # Setup and Data Loading
-    add_markdown_cell(f"## {titles['setup']}")
-    add_code_cell(f"""
+    nb.cells.append(new_markdown_cell(f"## {titles['setup']}"))
+    nb.cells.append(new_code_cell(f"""
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -826,15 +808,15 @@ df['engagement'] = (df['likes'] / df['views'] * 100).round(2)
 
 print(f"Loaded {{len(df)}} songs, {{df.shape[1]}} columns")
 df.head()
-""")
+"""))
 
     # Data Preview
-    add_markdown_cell(f"## {titles['preview']}")
-    add_code_cell("df.head()")
+    nb.cells.append(new_markdown_cell(f"## {titles['preview']}"))
+    nb.cells.append(new_code_cell("df.head()"))
 
     # General Statistics
-    add_markdown_cell(f"## {titles['general_stats']}")
-    add_code_cell(f"""
+    nb.cells.append(new_markdown_cell(f"## {titles['general_stats']}"))
+    nb.cells.append(new_code_cell(f"""
 stats = pd.DataFrame({{
     'Total Songs': [{len(df)}],
     'Unique Countries': [{df['artist_country'].nunique()}],
@@ -848,19 +830,19 @@ stats = pd.DataFrame({{
 
 print("GENERAL STATISTICS")
 display(stats)
-""")
+"""))
 
     if insights.get('general_stats'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['general_stats']}
-""")
+"""))
 
     # Country Analysis - Continent Distribution
-    add_markdown_cell(f"## {titles['country_analysis']}")
-    add_markdown_cell(f"### {titles['continent']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"## {titles['country_analysis']}"))
+    nb.cells.append(new_markdown_cell(f"### {titles['continent']}"))
+    nb.cells.append(new_code_cell("""
 continents = {
     'North America': ['United States', 'Mexico', 'Canada', 'Puerto Rico'],
     'South America': ['Brazil', 'Argentina', 'Colombia', 'Chile', 'Peru', 'Venezuela'],
@@ -909,11 +891,11 @@ for autotext in autotexts:
 ax.set_title('Song Distribution by Continent', fontweight='bold', color=YT_TEXT, fontsize=14, pad=20)
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     # Top Countries by Song Count
-    add_markdown_cell(f"### {titles['top_countries_songs']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['top_countries_songs']}"))
+    nb.cells.append(new_code_cell("""
 top_countries = (df
     .groupby('artist_country')
     .agg(total_songs=('rank', 'count'), total_views=('views', 'sum'))
@@ -949,18 +931,18 @@ for bar, val in zip(bars, top_countries['total_songs']):
 
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     if insights.get('top_countries'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['top_countries']}
-""")
+"""))
 
     # Top Countries by Likes
-    add_markdown_cell(f"### {titles['top_countries_likes']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['top_countries_likes']}"))
+    nb.cells.append(new_code_cell("""
 top_likes = (df
     .groupby('artist_country')['likes']
     .sum()
@@ -1001,18 +983,18 @@ for bar, val in zip(bars, top_likes['total_likes']):
 
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     if insights.get('top_likes'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['top_likes']}
-""")
+"""))
 
     # Top 5 Songs by Country
-    add_markdown_cell(f"### {titles['top_songs_country']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['top_songs_country']}"))
+    nb.cells.append(new_code_cell("""
 print("\\n" + "="*80)
 print("TOP 5 SONGS BY COUNTRY (Views & Likes)")
 print("="*80)
@@ -1039,11 +1021,11 @@ for country in top_countries_list:
     print("   Top 5 by likes:")
     for _, row in top_likes_country.iterrows():
         print(f"      - {row['track_name']} - {row['artist_names']}: {row['likes']} likes | {row['views']} views | {row['engagement']:.1f}% engagement")
-""")
+"""))
 
     # Genre Analysis
-    add_markdown_cell(f"## {titles['genre_analysis']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"## {titles['genre_analysis']}"))
+    nb.cells.append(new_code_cell("""
 genre_stats = (df
     .groupby('macro_genre')
     .agg(
@@ -1061,11 +1043,11 @@ genre_stats['engagement_rate'] = genre_stats['engagement_rate'].fillna(0)
 
 print("\\nTOP 10 GENRES")
 display(genre_stats.head(10)[['macro_genre', 'total_songs', 'engagement_rate']])
-""")
+"""))
 
     # Treemap
-    add_markdown_cell(f"### {titles['treemap']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['treemap']}"))
+    nb.cells.append(new_code_cell("""
 fig = px.treemap(
     genre_stats,
     path=['macro_genre'],
@@ -1078,11 +1060,11 @@ fig = px.treemap(
 fig.update_traces(textinfo="label+value", textfont_size=12)
 fig.update_layout(width=1000, height=600, paper_bgcolor='white')
 fig.show()
-""")
+"""))
 
     # Engagement by Genre
-    add_markdown_cell(f"### {titles['engagement_genre']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['engagement_genre']}"))
+    nb.cells.append(new_code_cell("""
 print("="*80)
 print("ENGAGEMENT ANALYSIS BY GENRE")
 print("="*80)
@@ -1124,18 +1106,18 @@ print(f"   Average: {avg_engagement:.2f}%")
 print(f"   Median: {genre_stats['engagement_rate'].median():.2f}%")
 print(f"   Max: {genre_stats['engagement_rate'].max():.2f}% ({genre_stats.loc[genre_stats['engagement_rate'].idxmax(), 'macro_genre']})")
 print(f"   Min: {genre_stats['engagement_rate'].min():.2f}% ({genre_stats.loc[genre_stats['engagement_rate'].idxmin(), 'macro_genre']})")
-""")
+"""))
 
     if insights.get('genre_engagement'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['genre_engagement']}
-""")
+"""))
 
     # Country-Genre Heatmap
-    add_markdown_cell(f"### {titles['country_genre_heatmap']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['country_genre_heatmap']}"))
+    nb.cells.append(new_code_cell("""
 df_analysis = df[~df['artist_country'].isin(['Multi-country', 'Unknown'])]
 
 matrix = pd.crosstab(df_analysis['artist_country'], df_analysis['macro_genre'],
@@ -1175,37 +1157,37 @@ fig.update_layout(
     paper_bgcolor='white'
 )
 fig.show()
-""")
+"""))
 
     # Song Metrics
-    add_markdown_cell(f"## {titles['song_metrics']}")
-    add_markdown_cell(f"### {titles['top_views']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"## {titles['song_metrics']}"))
+    nb.cells.append(new_markdown_cell(f"### {titles['top_views']}"))
+    nb.cells.append(new_code_cell("""
 print("="*80)
 print("TOP 10 SONGS BY VIEWS")
 print("="*80)
 display(df.nlargest(10, 'views')[['rank', 'track_name', 'artist_names', 'views', 'artist_country']])
-""")
+"""))
 
-    add_markdown_cell(f"### {titles['top_likes']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['top_likes']}"))
+    nb.cells.append(new_code_cell("""
 print("="*80)
 print("TOP 10 SONGS BY LIKES")
 print("="*80)
 display(df.nlargest(10, 'likes')[['rank', 'track_name', 'artist_names', 'likes', 'artist_country']])
-""")
+"""))
 
-    add_markdown_cell(f"### {titles['top_engagement']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['top_engagement']}"))
+    nb.cells.append(new_code_cell("""
 print("="*80)
 print("TOP 10 SONGS BY ENGAGEMENT (Likes/Views %)")
 print("="*80)
 display(df.nlargest(10, 'engagement')[['rank', 'track_name', 'artist_names', 'engagement', 'artist_country']])
-""")
+"""))
 
     # Video Metrics
-    add_markdown_cell(f"## {titles['video_metrics']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"## {titles['video_metrics']}"))
+    nb.cells.append(new_code_cell("""
 video_stats = {
     'Official Videos': df['is_official_video'].sum(),
     'Lyric Videos': df['is_lyric_video'].sum(),
@@ -1218,11 +1200,11 @@ print("VIDEO METRICS")
 print("="*80)
 for k, v in video_stats.items():
     print(f"   {k}: {v} ({v/len(df)*100:.1f}%)")
-""")
+"""))
 
     # Views by Video Type
-    add_markdown_cell(f"### {titles['views_by_type']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['views_by_type']}"))
+    nb.cells.append(new_code_cell("""
 df_video = df.copy()
 conditions = [
     df_video['is_official_video'] == 1,
@@ -1261,18 +1243,18 @@ ax.set_xlabel('Video Type', fontsize=12)
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     if insights.get('video_metrics'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['video_metrics']}
-""")
+"""))
 
     # Engagement by Video Type
-    add_markdown_cell(f"### {titles['engagement_by_type']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['engagement_by_type']}"))
+    nb.cells.append(new_code_cell("""
 engagement_stats = df_video.groupby('video_type').agg(
     total_videos=('engagement', 'count'),
     engagement_rate=('engagement', 'mean'),
@@ -1302,11 +1284,11 @@ ax.set_xlabel('Video Type', fontsize=12)
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     # Duration Analysis
-    add_markdown_cell(f"### {titles['duration_analysis']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['duration_analysis']}"))
+    nb.cells.append(new_code_cell("""
 duration_minutes = df['duration_s'] / 60
 
 print("="*80)
@@ -1364,18 +1346,18 @@ print("-"*80)
 print(f"   Mean: {duration_minutes.mean():.1f} min | Median: {duration_minutes.median():.1f} min")
 print(f"   Min: {duration_minutes.min():.1f} min | Max: {duration_minutes.max():.1f} min")
 print(f"   Q1: {duration_minutes.quantile(0.25):.1f} min | Q3: {duration_minutes.quantile(0.75):.1f} min")
-""")
+"""))
 
     if insights.get('duration'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['duration']}
-""")
+"""))
 
     # Channel Type Distribution
-    add_markdown_cell(f"### {titles['channel_type']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['channel_type']}"))
+    nb.cells.append(new_code_cell("""
 channel_counts = df['channel_type'].value_counts()
 
 print("\\n" + "="*60)
@@ -1407,12 +1389,12 @@ for bar, val in zip(bars, channel_counts.values):
 
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     # Temporal Analysis
-    add_markdown_cell(f"## {titles['temporal_analysis']}")
-    add_markdown_cell(f"### {titles['views_evolution']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"## {titles['temporal_analysis']}"))
+    nb.cells.append(new_markdown_cell(f"### {titles['views_evolution']}"))
+    nb.cells.append(new_code_cell("""
 bg_color = '#F9F9F9'
 genre_palette = ['#FF0000', '#282828', '#4A4A4A', '#FFB347', '#FF6B6B']
 
@@ -1447,10 +1429,10 @@ if legend1:
 
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
-    add_markdown_cell(f"### {titles['engagement_evolution']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['engagement_evolution']}"))
+    nb.cells.append(new_code_cell("""
 fig2, ax2 = plt.subplots(figsize=(12, 6), facecolor=bg_color)
 ax2.set_facecolor(bg_color)
 
@@ -1476,17 +1458,17 @@ if legend2:
 
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     if insights.get('temporal'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['temporal']}
-""")
+"""))
 
-    add_markdown_cell(f"### {titles['release_distribution']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"### {titles['release_distribution']}"))
+    nb.cells.append(new_code_cell("""
 season_counts = df['upload_quarter'].value_counts().sort_index()
 
 fig, ax = plt.subplots(figsize=(8, 5))
@@ -1509,11 +1491,11 @@ for bar in bars:
 
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     # Collaborations Analysis
-    add_markdown_cell(f"## {titles['collaborations']}")
-    add_code_cell("""
+    nb.cells.append(new_markdown_cell(f"## {titles['collaborations']}"))
+    nb.cells.append(new_code_cell("""
 collab_stats = df.groupby('is_collaboration').agg(
     count=('track_name', 'count'),
     avg_views=('views', 'mean'),
@@ -1546,37 +1528,37 @@ axes[1].set_ylabel('Engagement (%)')
 
 plt.tight_layout()
 plt.show()
-""")
+"""))
 
     if insights.get('collaborations'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 {titles['ai_analysis']}
 
 {insights['collaborations']}
-""")
+"""))
 
     # Executive Summary
-    add_markdown_cell(f"## {titles['executive_summary']}")
+    nb.cells.append(new_markdown_cell(f"## {titles['executive_summary']}"))
 
     if insights.get('executive_summary'):
-        add_markdown_cell(f"""
+        nb.cells.append(new_markdown_cell(f"""
 ### {titles['ai_analysis'] if language == 'es' else 'AI-Generated Executive Summary'}
 
 {insights['executive_summary']}
-""")
+"""))
     else:
-        add_markdown_cell("""
+        nb.cells.append(new_markdown_cell("""
 ### Executive Summary
 
 *No AI summary available. Please configure DEEPSEEK_API_KEY to generate insights.*
-""")
+"""))
 
     # Footer
-    add_markdown_cell(titles['footer'])
+    nb.cells.append(new_markdown_cell(titles['footer']))
 
-    # Write notebook
+    # Write notebook using nbformat
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(notebook, f, indent=2, ensure_ascii=False)
+        nbf.write(nb, f)
 
     print(f"Notebook generated: {output_path}")
 
