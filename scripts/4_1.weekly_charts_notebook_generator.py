@@ -220,130 +220,130 @@ def get_ai_insight(section: str, data_summary: Dict, df: pd.DataFrame, language:
     if language == 'es':
         prompts = {
             "general_stats": f"""
-Analyze these general music statistics:
-- Total songs: {data_summary.get('total_songs', 'N/A')}
-- Unique countries: {data_summary.get('unique_countries', 'N/A')}
-- Unique genres: {data_summary.get('unique_genres', 'N/A')}
-- Total views: {data_summary.get('total_views', 0):,}
+Analiza estas estadísticas generales de música:
+- Total canciones: {data_summary.get('total_songs', 'N/A')}
+- Países únicos: {data_summary.get('unique_countries', 'N/A')}
+- Géneros únicos: {data_summary.get('unique_genres', 'N/A')}
+- Total vistas: {data_summary.get('total_views', 0):,}
 - Total likes: {data_summary.get('total_likes', 0):,}
-- Average views: {data_summary.get('avg_views', 0):,.0f}
-- Average likes: {data_summary.get('avg_likes', 0):,.0f}
+- Promedio vistas: {data_summary.get('avg_views', 0):,.0f}
+- Promedio likes: {data_summary.get('avg_likes', 0):,.0f}
 
-Provide a brief analysis (3-4 lines) in Spanish highlighting:
-- Geographic and genre diversity
-- Engagement levels
-- Key insights
+Proporciona un análisis breve (3-4 líneas) en español destacando:
+- Diversidad geográfica y de géneros
+- Niveles de engagement
+- Insights principales
 """,
 
             "top_countries": f"""
-Analyze the top countries by song count:
+Analiza los top países por cantidad de canciones:
 {data_summary.get('top_countries', 'N/A')}
 
-Provide a brief analysis (3-4 lines) in Spanish about:
-- Which countries dominate the ranking
-- Observed geographic patterns
-- Possible reasons for this distribution
+Proporciona un análisis breve (3-4 líneas) en español sobre:
+- Qué países dominan el ranking
+- Patrones geográficos observados
+- Posibles razones de esta distribución
 """,
 
             "top_likes": f"""
-Analyze the top countries by total likes:
+Analiza los top países por total de likes:
 {data_summary.get('top_likes', 'N/A')}
 
-Provide a brief analysis (3-4 lines) in Spanish about:
-- Which countries generate the most engagement
-- Differences between top by songs vs top by likes
+Proporciona un análisis breve (3-4 líneas) en español sobre:
+- Qué países generan más engagement
+- Diferencias entre top por canciones vs top por likes
 """,
 
             "genre_engagement": f"""
-Analyze engagement rates by genre:
+Analiza las tasas de engagement por género:
 {data_summary.get('genre_engagement', 'N/A')}
 
-Provide a brief analysis (3-4 lines) in Spanish about:
-- Genres with highest and lowest engagement
-- Possible explanations for these differences
-- Implications for content creators
+Proporciona un análisis breve (3-4 líneas) en español sobre:
+- Géneros con mayor y menor engagement
+- Posibles explicaciones para estas diferencias
+- Implicaciones para creadores de contenido
 """,
 
             "video_metrics": f"""
-Analyze video metrics:
-- Official videos: {data_summary.get('official_pct', 0):.1f}% ({data_summary.get('official_views', 0):,.0f} avg views)
+Analiza las métricas de video:
+- Videos oficiales: {data_summary.get('official_pct', 0):.1f}% ({data_summary.get('official_views', 0):,.0f} avg views)
 - Lyric videos: {data_summary.get('lyric_pct', 0):.1f}% ({data_summary.get('lyric_views', 0):,.0f} avg views)
 - Live performances: {data_summary.get('live_pct', 0):.1f}% ({data_summary.get('live_views', 0):,.0f} avg views)
-- Average engagement: {data_summary.get('avg_engagement', 0):.1f}%
+- Engagement promedio: {data_summary.get('avg_engagement', 0):.1f}%
 
-Provide a brief analysis (3-4 lines) in Spanish about:
-- Which video type performs best
-- Audience preferences
-- Recommendations for artists
+Proporciona un análisis breve (3-4 líneas) en español sobre:
+- Qué tipo de video funciona mejor
+- Preferencias de la audiencia
+- Recomendaciones para artistas
 """,
 
             "temporal": f"""
-Analyze temporal trends:
-- Views by quarter: {data_summary.get('quarterly_views', {})}
-- Engagement by quarter: {data_summary.get('quarterly_engagement', {})}
+Analiza las tendencias temporales:
+- Vistas por trimestre: {data_summary.get('quarterly_views', {})}
+- Engagement por trimestre: {data_summary.get('quarterly_engagement', {})}
 
-Provide a brief analysis (3-4 lines) in Spanish about:
-- Observed seasonal patterns
-- Engagement evolution
-- Relevant trends
+Proporciona un análisis breve (3-4 líneas) en español sobre:
+- Patrones estacionales observados
+- Evolución del engagement
+- Tendencias relevantes
 """,
 
             "duration": f"""
-Analyze video duration:
-- Average duration: {data_summary.get('avg_duration', 0):.1f} minutes
-- Median: {data_summary.get('median_duration', 0):.1f} minutes
-- Minimum: {data_summary.get('min_duration', 0):.1f} min
-- Maximum: {data_summary.get('max_duration', 0):.1f} min
+Analiza la duración de videos:
+- Duración promedio: {data_summary.get('avg_duration', 0):.1f} minutos
+- Mediana: {data_summary.get('median_duration', 0):.1f} minutos
+- Mínimo: {data_summary.get('min_duration', 0):.1f} min
+- Máximo: {data_summary.get('max_duration', 0):.1f} min
 
-Provide a brief analysis (3-4 lines) in Spanish about:
-- Typical duration range
-- Implications for creators
+Proporciona un análisis breve (3-4 líneas) en español sobre:
+- Rango típico de duración
+- Implicaciones para creadores
 """,
 
             "collaborations": f"""
-Analyze the impact of collaborations:
-- Solo songs: {data_summary.get('solo_count', 0)} ({data_summary.get('solo_views', 0):,.0f} avg views, {data_summary.get('solo_engagement', 0):.1f}% engagement)
-- Collaborations: {data_summary.get('collab_count', 0)} ({data_summary.get('collab_views', 0):,.0f} avg views, {data_summary.get('collab_engagement', 0):.1f}% engagement)
+Analiza el impacto de las colaboraciones:
+- Canciones solistas: {data_summary.get('solo_count', 0)} ({data_summary.get('solo_views', 0):,.0f} avg views, {data_summary.get('solo_engagement', 0):.1f}% engagement)
+- Colaboraciones: {data_summary.get('collab_count', 0)} ({data_summary.get('collab_views', 0):,.0f} avg views, {data_summary.get('collab_engagement', 0):.1f}% engagement)
 
-Provide a brief analysis (3-4 lines) in Spanish about:
-- Whether collaborations perform better
-- Possible reasons
-- Recommended strategies
+Proporciona un análisis breve (3-4 líneas) en español sobre:
+- Si las colaboraciones tienen mejor rendimiento
+- Posibles razones
+- Estrategias recomendadas
 """,
 
             "executive_summary": f"""
-Generate a detailed executive summary (10-12 lines) in Spanish of the complete music charts analysis with the following key data:
+Genera un resumen ejecutivo detallado (10-12 líneas) en español del análisis completo de charts musicales con los siguientes datos clave:
 
-GENERAL DATA:
-- Total songs: {data_summary.get('total_songs', 'N/A')}
-- Countries represented: {data_summary.get('unique_countries', 'N/A')}
-- Music genres: {data_summary.get('unique_genres', 'N/A')}
-- Total views: {data_summary.get('total_views', 0):,}
+DATOS GENERALES:
+- Total canciones: {data_summary.get('total_songs', 'N/A')}
+- Países representados: {data_summary.get('unique_countries', 'N/A')}
+- Géneros musicales: {data_summary.get('unique_genres', 'N/A')}
+- Total vistas: {data_summary.get('total_views', 0):,}
 - Total likes: {data_summary.get('total_likes', 0):,}
 
-TOP COUNTRIES BY SONGS:
+TOP PAÍSES POR CANCIONES:
 {data_summary.get('top_countries', 'N/A')}
 
-TOP COUNTRIES BY LIKES:
+TOP PAÍSES POR LIKES:
 {data_summary.get('top_likes', 'N/A')}
 
-ENGAGEMENT BY GENRE (Top 3):
+ENGAGEMENT POR GÉNERO (Top 3):
 {data_summary.get('genre_engagement_top', 'N/A')}
 
-VIDEO METRICS:
-- Most effective type: {data_summary.get('best_video_type', 'N/A')}
-- Average engagement: {data_summary.get('avg_engagement', 0):.1f}%
-- Average duration: {data_summary.get('avg_duration', 0):.1f} min
+MÉTRICAS DE VIDEO:
+- Tipo más efectivo: {data_summary.get('best_video_type', 'N/A')}
+- Engagement promedio: {data_summary.get('avg_engagement', 0):.1f}%
+- Duración promedio: {data_summary.get('avg_duration', 0):.1f} min
 
-COLLABORATIONS:
+COLABORACIONES:
 - {data_summary.get('collab_impact', 'N/A')}
 
-Provide a DETAILED executive summary (10-12 lines) in Spanish that:
-1. Summarizes main findings with concrete data points
-2. Highlights key observed trends
-3. Identifies geographic and genre patterns
-4. Analyzes content type performance
-5. Offers strategic conclusions and actionable recommendations for artists, producers, and music marketing strategies
+Proporciona un resumen ejecutivo DETALLADO (10-12 líneas) en español que:
+1. Resuma los hallazgos principales con datos concretos
+2. Destaque las tendencias clave observadas
+3. Identifique patrones geográficos y de género
+4. Analice el rendimiento por tipo de contenido
+5. Ofrezca conclusiones estratégicas y recomendaciones accionables para artistas, productores y estrategias de marketing musical
 """
         }
     else:
@@ -657,7 +657,7 @@ def get_section_titles(language: str) -> Dict[str, str]:
             "collaborations": "9. Análisis de Colaboraciones",
             "executive_summary": "10. Resumen Ejecutivo",
             "footer": "---\n**Análisis Completado** | Generado por Music Charts Intelligence | Insights de IA por DeepSeek",
-            "ai_analysis": "### Análisis de IA"
+            "ai_analysis": "### 🤖 Análisis de IA"
         }
     else:
         return {
@@ -690,13 +690,22 @@ def get_section_titles(language: str) -> Dict[str, str]:
             "collaborations": "9. Collaborations Analysis",
             "executive_summary": "10. Executive Summary",
             "footer": "---\n**Analysis Complete** | Generated by Music Charts Intelligence | AI Insights by DeepSeek",
-            "ai_analysis": "### AI Analysis"
+            "ai_analysis": "### 🤖 AI Analysis"
         }
 
 
 def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
                       insights: Dict[str, str], output_path: Path, language: str) -> None:
-    """Generate a Jupyter notebook with analysis cells and AI insights."""
+    """
+    Generate a Jupyter notebook with analysis cells and AI insights.
+    
+    Args:
+        df: DataFrame with enriched music data
+        db_info: Tuple of (database_path, year, week)
+        insights: Dictionary of AI insights by section
+        output_path: Path where notebook will be saved
+        language: Language code ('en' or 'es')
+    """
     db_path, year, week = db_info
     db_filename = db_path.name
     titles = get_section_titles(language)
@@ -724,6 +733,7 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
     }
 
     def add_code_cell(source: str) -> None:
+        """Add a code cell to the notebook."""
         notebook["cells"].append({
             "cell_type": "code",
             "execution_count": None,
@@ -733,6 +743,7 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
         })
 
     def add_markdown_cell(source: str) -> None:
+        """Add a markdown cell to the notebook."""
         notebook["cells"].append({
             "cell_type": "markdown",
             "metadata": {},
@@ -762,14 +773,15 @@ from scipy.stats import gaussian_kde
 import warnings
 warnings.filterwarnings('ignore')
 
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', 100)
-pd.set_option('display.float_format', '{{:,.0f}}'.format)
-
-plt.style.use('seaborn-v0_8-darkgrid')
-sns.set_palette("Reds")
+# Configure matplotlib for inline display in notebook
+%matplotlib inline
 plt.rcParams['figure.figsize'] = (12, 6)
 plt.rcParams['font.size'] = 12
+plt.rcParams['figure.dpi'] = 100
+
+# Set style
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("Reds")
 
 YT_RED = '#FF0000'
 YT_RED_DARK = '#CC0000'
@@ -839,6 +851,7 @@ display(stats)
     if insights.get('general_stats'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['general_stats']}
 """)
 
@@ -939,6 +952,7 @@ plt.show()
     if insights.get('top_countries'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['top_countries']}
 """)
 
@@ -990,6 +1004,7 @@ plt.show()
     if insights.get('top_likes'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['top_likes']}
 """)
 
@@ -1112,6 +1127,7 @@ print(f"   Min: {genre_stats['engagement_rate'].min():.2f}% ({genre_stats.loc[ge
     if insights.get('genre_engagement'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['genre_engagement']}
 """)
 
@@ -1248,6 +1264,7 @@ plt.show()
     if insights.get('video_metrics'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['video_metrics']}
 """)
 
@@ -1350,6 +1367,7 @@ print(f"   Q1: {duration_minutes.quantile(0.25):.1f} min | Q3: {duration_minutes
     if insights.get('duration'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['duration']}
 """)
 
@@ -1461,6 +1479,7 @@ plt.show()
     if insights.get('temporal'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['temporal']}
 """)
 
@@ -1530,6 +1549,7 @@ plt.show()
     if insights.get('collaborations'):
         add_markdown_cell(f"""
 {titles['ai_analysis']}
+
 {insights['collaborations']}
 """)
 
