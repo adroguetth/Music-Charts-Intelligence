@@ -2,7 +2,6 @@ name: Weekly Music Charts Notebook Generator
 
 on:
   schedule:
-    # Run every Monday at 15:00 UTC
     - cron: '0 15 * * 1'
   workflow_dispatch:
     inputs:
@@ -20,7 +19,6 @@ on:
           - en
           - es
 
-# Write permissions for git push
 permissions:
   contents: write
 
@@ -48,7 +46,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pandas numpy matplotlib seaborn plotly scipy requests
-          pip install jupyter nbformat
+          pip install jupyter nbformat nbconvert
 
       - name: Determine week to process
         id: get_week
@@ -67,13 +65,37 @@ jobs:
             echo "language=both" >> $GITHUB_OUTPUT
           fi
 
-      - name: Run notebook generator
+      - name: Generate notebooks (code only)
         run: |
           python scripts/4_1.weekly_charts_notebook_generator.py \
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
 
-      # Optional: Keep only last 6 notebooks locally
+      - name: Execute notebooks to embed outputs
+        run: |
+          # Change to repository root to ensure relative paths work
+          cd ${{ github.workspace }}
+
+          # Execute English notebook
+          EN_NOTEBOOK="Notebook_EN/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb"
+          if [ -f "$EN_NOTEBOOK" ]; then
+            echo "Executing English notebook..."
+            jupyter nbconvert --to notebook --execute \
+              "$EN_NOTEBOOK" \
+              --output "$(basename "$EN_NOTEBOOK")" \
+              --output-dir Notebook_EN/weekly/
+          fi
+
+          # Execute Spanish notebook
+          ES_NOTEBOOK="Notebook_ES/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb"
+          if [ -f "$ES_NOTEBOOK" ]; then
+            echo "Executing Spanish notebook..."
+            jupyter nbconvert --to notebook --execute \
+              "$ES_NOTEBOOK" \
+              --output "$(basename "$ES_NOTEBOOK")" \
+              --output-dir Notebook_ES/weekly/
+          fi
+
       - name: Keep only last 6 notebooks locally
         run: |
           # English notebooks
@@ -122,7 +144,7 @@ jobs:
           echo "Week: ${{ steps.get_week.outputs.week }}"
           echo "Language: ${{ steps.get_week.outputs.language }}"
           echo ""
-          echo "Generated files:"
+          echo "Generated files (with outputs):"
           echo "  - Notebooks in Notebook_EN/weekly/ and Notebook_ES/weekly/"
           echo "  - Only last 6 notebooks retained locally"
           echo "=========================================="
