@@ -743,7 +743,7 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
 **AI Analysis:** Powered by DeepSeek API
 """))
 
-    # Setup and Data Loading
+    # Setup and Data Loading - with corrected database path
     nb.cells.append(new_markdown_cell(f"## {titles['setup']}"))
     nb.cells.append(new_code_cell(f"""
 import pandas as pd
@@ -753,6 +753,7 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 import sqlite3
+import os
 from scipy.stats import gaussian_kde
 import warnings
 warnings.filterwarnings('ignore')
@@ -782,9 +783,11 @@ def format_number(x):
     if x >= 1_000: return f"{{x/1_000:.1f}}K"
     return f"{{x:,.0f}}"
 
-# Load data
-print(f"Loading data from: {db_filename}")
-conn = sqlite3.connect("{db_filename}")
+# Load data - using relative path from notebook directory to repo root
+# Notebook is in Notebook_EN/weekly/ or Notebook_ES/weekly/, database is in charts_archive/3_enrich-chart-data/
+db_path = "../../charts_archive/3_enrich-chart-data/{db_filename}"
+print(f"Loading data from: {{db_path}}")
+conn = sqlite3.connect(db_path)
 
 cursor = conn.cursor()
 cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -792,7 +795,7 @@ tables = cursor.fetchall()
 print(f"Tables found: {{[t[0] for t in tables]}}")
 
 if not tables:
-    raise ValueError(f"No tables found in database: {db_filename}")
+    raise ValueError(f"No tables found in database: {{db_path}}")
 
 table_name = 'enriched_songs'
 if (table_name,) not in tables:
