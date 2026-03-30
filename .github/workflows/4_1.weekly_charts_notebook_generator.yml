@@ -1,9 +1,9 @@
 name: Weekly Music Charts Notebook Generator
 
 on:
-  # schedule:
+  schedule:
     # Run every Monday at 15:00 UTC
-    # - cron: '0 15 * * 1'
+    - cron: '0 15 * * 1'
   workflow_dispatch:
     inputs:
       week:
@@ -26,7 +26,7 @@ env:
 jobs:
   generate-notebooks:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     
     steps:
       - name: Checkout repository
@@ -44,18 +44,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pandas numpy matplotlib seaborn plotly scipy requests
-          pip install jupyter nbconvert
-          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
-          
-      - name: Install Pandoc and LaTeX
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc
-          sudo apt-get install -y \
-            texlive-xetex \
-            texlive-fonts-recommended \
-            texlive-plain-generic \
-            fonts-freefont-otf
+          pip install jupyter
           
       - name: Determine week to process
         id: get_week
@@ -79,33 +68,6 @@ jobs:
           python scripts/4_1.weekly_charts_notebook_generator.py \
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
-          
-      - name: Convert notebooks to PDF
-        run: |
-          mkdir -p pdf_output/EN
-          mkdir -p pdf_output/ES
-          
-          for notebook in Notebook_EN/weekly/*.ipynb; do
-            if [ -f "$notebook" ]; then
-              echo "Converting $notebook to PDF..."
-              jupyter nbconvert --to pdf "$notebook" --output-dir=pdf_output/EN/
-            fi
-          done
-          
-          for notebook in Notebook_ES/weekly/*.ipynb; do
-            if [ -f "$notebook" ]; then
-              echo "Converting $notebook to PDF..."
-              jupyter nbconvert --to pdf "$notebook" --output-dir=pdf_output/ES/
-            fi
-          done
-          
-      - name: Upload PDFs to Google Drive
-        env:
-          GDRIVE_SERVICE_ACCOUNT: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
-          GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
-          WEEK: ${{ steps.get_week.outputs.week }}
-        run: |
-          python scripts/upload_to_drive.py
           
       - name: Keep only last 6 notebooks locally
         run: |
@@ -151,6 +113,5 @@ jobs:
           echo ""
           echo "Generated files:"
           echo "  - Notebooks in Notebook_EN/weekly/ and Notebook_ES/weekly/"
-          echo "  - PDFs uploaded to Google Drive"
           echo "  - Only last 6 notebooks retained locally"
           echo "=========================================="
