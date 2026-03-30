@@ -12,6 +12,7 @@ Features:
 - Caching system per week and language to avoid redundant API calls
 - Generates two notebooks: English and Spanish
 - Full analysis with 9 sections and 20+ visualizations
+- Notebooks are executed to embed outputs (graphs, tables) for GitHub preview
 
 Usage:
     python 4_1.weekly_charts_notebook_generator.py [--week YYYY-WXX] [--language en|es|both]
@@ -782,10 +783,10 @@ def format_number(x):
     if x >= 1_000: return f"{{x/1_000:.1f}}K"
     return f"{{x:,.0f}}"
 
-# Load data - using correct path
-db_path = "charts_archive/3_enrich-chart-data/{db_filename}"
-print(f"Loading data from: {{db_path}}")
-conn = sqlite3.connect(db_path)
+# Load data - database is in root directory after copy
+db_filename = "{db_filename}"
+print(f"Loading data from: {{db_filename}}")
+conn = sqlite3.connect(db_filename)
 
 cursor = conn.cursor()
 cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -793,7 +794,7 @@ tables = cursor.fetchall()
 print(f"Tables found: {{[t[0] for t in tables]}}")
 
 if not tables:
-    raise ValueError(f"No tables found in database: {{db_path}}")
+    raise ValueError(f"No tables found in database: {{db_filename}}")
 
 table_name = 'enriched_songs'
 if (table_name,) not in tables:
