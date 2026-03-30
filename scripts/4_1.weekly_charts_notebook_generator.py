@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-
 """
 Weekly Music Charts Analysis Notebook Generator with AI Insights
-=================================================================
-Automated generator of Jupyter notebooks with comprehensive analysis
-of YouTube music charts data, including AI-generated insights via DeepSeek API.
+
+This script automatically generates Jupyter notebooks with comprehensive analysis
+of YouTube music charts data, including AI-generated insights using DeepSeek API.
+It supports generating notebooks in both English and Spanish.
 
 Features:
 - Automatic database download from GitHub (or uses local DB)
@@ -13,29 +13,16 @@ Features:
 - Generates two notebooks: English and Spanish
 - Full analysis with 9 sections and 20+ visualizations
 
-Requirements:
-- Python 3.7+
-- playwright
-- pandas
-- numpy
-- matplotlib
-- seaborn
-- plotly
-- scipy
-- requests
-
 Usage:
-    python 1.py [--week YYYY-WXX] [--language en|es|both]
+    python 4_1.weekly_charts_notebook_generator.py [--week YYYY-WXX] [--language en|es|both]
 
 Environment Variables:
     DEEPSEEK_API_KEY: Your DeepSeek API key
 
 Output:
+    Creates notebook files in:
     - Notebook_EN/weekly/youtube_charts_YYYY-WXX.ipynb
     - Notebook_ES/weekly/youtube_charts_YYYY-WXX.ipynb
-
-Author: Alfonso Droguett
-License: MIT
 """
 
 import sqlite3
@@ -166,7 +153,6 @@ class AIInsightsCache:
         elif section == 'temporal':
             key_data = df.groupby('upload_quarter')['views'].sum().to_string()
         else:
-            # Fallback to full DataFrame for sections without specific keys
             key_data = df.to_string()
             
         return hashlib.md5(key_data.encode()).hexdigest()
@@ -216,10 +202,6 @@ def get_ai_insight(section: str, data_summary: Dict, df: pd.DataFrame, language:
     
     Returns:
         AI-generated insight text or error message
-    
-    Note:
-        Uses hash-based cache key derived from data fingerprint.
-        Cache is language-specific and week-isolated.
     """
     cache = AIInsightsCache(week, language)
 
@@ -238,130 +220,130 @@ def get_ai_insight(section: str, data_summary: Dict, df: pd.DataFrame, language:
     if language == 'es':
         prompts = {
             "general_stats": f"""
-Analiza estas estadísticas generales de música:
-- Total canciones: {data_summary.get('total_songs', 'N/A')}
-- Países únicos: {data_summary.get('unique_countries', 'N/A')}
-- Géneros únicos: {data_summary.get('unique_genres', 'N/A')}
-- Total vistas: {data_summary.get('total_views', 0):,}
+Analyze these general music statistics:
+- Total songs: {data_summary.get('total_songs', 'N/A')}
+- Unique countries: {data_summary.get('unique_countries', 'N/A')}
+- Unique genres: {data_summary.get('unique_genres', 'N/A')}
+- Total views: {data_summary.get('total_views', 0):,}
 - Total likes: {data_summary.get('total_likes', 0):,}
-- Promedio vistas: {data_summary.get('avg_views', 0):,.0f}
-- Promedio likes: {data_summary.get('avg_likes', 0):,.0f}
+- Average views: {data_summary.get('avg_views', 0):,.0f}
+- Average likes: {data_summary.get('avg_likes', 0):,.0f}
 
-Proporciona un análisis breve (3-4 líneas) destacando:
-- Diversidad geográfica y de géneros
-- Niveles de engagement
-- Insights principales
+Provide a brief analysis (3-4 lines) in Spanish highlighting:
+- Geographic and genre diversity
+- Engagement levels
+- Key insights
 """,
 
             "top_countries": f"""
-Analiza los top países por cantidad de canciones:
+Analyze the top countries by song count:
 {data_summary.get('top_countries', 'N/A')}
 
-Proporciona un análisis breve (3-4 líneas) sobre:
-- Qué países dominan el ranking
-- Patrones geográficos observados
-- Posibles razones de esta distribución
+Provide a brief analysis (3-4 lines) in Spanish about:
+- Which countries dominate the ranking
+- Observed geographic patterns
+- Possible reasons for this distribution
 """,
 
             "top_likes": f"""
-Analiza los top países por total de likes:
+Analyze the top countries by total likes:
 {data_summary.get('top_likes', 'N/A')}
 
-Proporciona un análisis breve (3-4 líneas) sobre:
-- Qué países generan más engagement
-- Diferencias entre top por canciones vs top por likes
+Provide a brief analysis (3-4 lines) in Spanish about:
+- Which countries generate the most engagement
+- Differences between top by songs vs top by likes
 """,
 
             "genre_engagement": f"""
-Analiza las tasas de engagement por género:
+Analyze engagement rates by genre:
 {data_summary.get('genre_engagement', 'N/A')}
 
-Proporciona un análisis breve (3-4 líneas) sobre:
-- Géneros con mayor y menor engagement
-- Posibles explicaciones para estas diferencias
-- Implicaciones para creadores de contenido
+Provide a brief analysis (3-4 lines) in Spanish about:
+- Genres with highest and lowest engagement
+- Possible explanations for these differences
+- Implications for content creators
 """,
 
             "video_metrics": f"""
-Analiza las métricas de video:
-- Videos oficiales: {data_summary.get('official_pct', 0):.1f}% ({data_summary.get('official_views', 0):,.0f} avg views)
+Analyze video metrics:
+- Official videos: {data_summary.get('official_pct', 0):.1f}% ({data_summary.get('official_views', 0):,.0f} avg views)
 - Lyric videos: {data_summary.get('lyric_pct', 0):.1f}% ({data_summary.get('lyric_views', 0):,.0f} avg views)
 - Live performances: {data_summary.get('live_pct', 0):.1f}% ({data_summary.get('live_views', 0):,.0f} avg views)
-- Engagement promedio: {data_summary.get('avg_engagement', 0):.1f}%
+- Average engagement: {data_summary.get('avg_engagement', 0):.1f}%
 
-Proporciona un análisis breve (3-4 líneas) sobre:
-- Qué tipo de video funciona mejor
-- Preferencias de la audiencia
-- Recomendaciones para artistas
+Provide a brief analysis (3-4 lines) in Spanish about:
+- Which video type performs best
+- Audience preferences
+- Recommendations for artists
 """,
 
             "temporal": f"""
-Analiza las tendencias temporales:
-- Vistas por trimestre: {data_summary.get('quarterly_views', {})}
-- Engagement por trimestre: {data_summary.get('quarterly_engagement', {})}
+Analyze temporal trends:
+- Views by quarter: {data_summary.get('quarterly_views', {})}
+- Engagement by quarter: {data_summary.get('quarterly_engagement', {})}
 
-Proporciona un análisis breve (3-4 líneas) sobre:
-- Patrones estacionales observados
-- Evolución del engagement
-- Tendencias relevantes
+Provide a brief analysis (3-4 lines) in Spanish about:
+- Observed seasonal patterns
+- Engagement evolution
+- Relevant trends
 """,
 
             "duration": f"""
-Analiza la duración de videos:
-- Duración promedio: {data_summary.get('avg_duration', 0):.1f} minutos
-- Mediana: {data_summary.get('median_duration', 0):.1f} minutos
-- Mínimo: {data_summary.get('min_duration', 0):.1f} min
-- Máximo: {data_summary.get('max_duration', 0):.1f} min
+Analyze video duration:
+- Average duration: {data_summary.get('avg_duration', 0):.1f} minutes
+- Median: {data_summary.get('median_duration', 0):.1f} minutes
+- Minimum: {data_summary.get('min_duration', 0):.1f} min
+- Maximum: {data_summary.get('max_duration', 0):.1f} min
 
-Proporciona un análisis breve (3-4 líneas) sobre:
-- Rango típico de duración
-- Implicaciones para creadores
+Provide a brief analysis (3-4 lines) in Spanish about:
+- Typical duration range
+- Implications for creators
 """,
 
             "collaborations": f"""
-Analiza el impacto de las colaboraciones:
-- Canciones solistas: {data_summary.get('solo_count', 0)} ({data_summary.get('solo_views', 0):,.0f} avg views, {data_summary.get('solo_engagement', 0):.1f}% engagement)
-- Colaboraciones: {data_summary.get('collab_count', 0)} ({data_summary.get('collab_views', 0):,.0f} avg views, {data_summary.get('collab_engagement', 0):.1f}% engagement)
+Analyze the impact of collaborations:
+- Solo songs: {data_summary.get('solo_count', 0)} ({data_summary.get('solo_views', 0):,.0f} avg views, {data_summary.get('solo_engagement', 0):.1f}% engagement)
+- Collaborations: {data_summary.get('collab_count', 0)} ({data_summary.get('collab_views', 0):,.0f} avg views, {data_summary.get('collab_engagement', 0):.1f}% engagement)
 
-Proporciona un análisis breve (3-4 líneas) sobre:
-- Si las colaboraciones tienen mejor rendimiento
-- Posibles razones
-- Estrategias recomendadas
+Provide a brief analysis (3-4 lines) in Spanish about:
+- Whether collaborations perform better
+- Possible reasons
+- Recommended strategies
 """,
 
             "executive_summary": f"""
-Genera un resumen ejecutivo extenso y detallado (10-12 líneas) del análisis completo de charts musicales con los siguientes datos clave:
+Generate a detailed executive summary (10-12 lines) in Spanish of the complete music charts analysis with the following key data:
 
-DATOS GENERALES:
-- Total canciones: {data_summary.get('total_songs', 'N/A')}
-- Países representados: {data_summary.get('unique_countries', 'N/A')}
-- Géneros musicales: {data_summary.get('unique_genres', 'N/A')}
-- Total vistas: {data_summary.get('total_views', 0):,}
+GENERAL DATA:
+- Total songs: {data_summary.get('total_songs', 'N/A')}
+- Countries represented: {data_summary.get('unique_countries', 'N/A')}
+- Music genres: {data_summary.get('unique_genres', 'N/A')}
+- Total views: {data_summary.get('total_views', 0):,}
 - Total likes: {data_summary.get('total_likes', 0):,}
 
-TOP PAÍSES POR CANCIONES:
+TOP COUNTRIES BY SONGS:
 {data_summary.get('top_countries', 'N/A')}
 
-TOP PAÍSES POR LIKES:
+TOP COUNTRIES BY LIKES:
 {data_summary.get('top_likes', 'N/A')}
 
-ENGAGEMENT POR GÉNERO (Top 3):
+ENGAGEMENT BY GENRE (Top 3):
 {data_summary.get('genre_engagement_top', 'N/A')}
 
-MÉTRICAS DE VIDEO:
-- Tipo más efectivo: {data_summary.get('best_video_type', 'N/A')}
-- Engagement promedio: {data_summary.get('avg_engagement', 0):.1f}%
-- Duración promedio: {data_summary.get('avg_duration', 0):.1f} min
+VIDEO METRICS:
+- Most effective type: {data_summary.get('best_video_type', 'N/A')}
+- Average engagement: {data_summary.get('avg_engagement', 0):.1f}%
+- Average duration: {data_summary.get('avg_duration', 0):.1f} min
 
-COLABORACIONES:
+COLLABORATIONS:
 - {data_summary.get('collab_impact', 'N/A')}
 
-Proporciona un resumen ejecutivo DETALLADO (10-12 líneas) que:
-1. Resuma los hallazgos principales con datos concretos
-2. Destaque las tendencias clave observadas
-3. Identifique patrones geográficos y de género
-4. Analice el rendimiento por tipo de contenido
-5. Ofrezca conclusiones estratégicas y recomendaciones accionables para artistas, productores y estrategias de marketing musical
+Provide a DETAILED executive summary (10-12 lines) in Spanish that:
+1. Summarizes main findings with concrete data points
+2. Highlights key observed trends
+3. Identifies geographic and genre patterns
+4. Analyzes content type performance
+5. Offers strategic conclusions and actionable recommendations for artists, producers, and music marketing strategies
 """
         }
     else:
@@ -459,7 +441,7 @@ Provide a brief analysis (3-4 lines) about:
 """,
 
             "executive_summary": f"""
-Generate a detailed and comprehensive executive summary (10-12 lines) of the complete music charts analysis with the following key data:
+Generate a detailed executive summary (10-12 lines) of the complete music charts analysis with the following key data:
 
 GENERAL DATA:
 - Total songs: {data_summary.get('total_songs', 'N/A')}
@@ -506,7 +488,7 @@ Provide a DETAILED executive summary (10-12 lines) that:
             json={
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": "You are an expert music data analyst. Provide concise, insightful analysis. Use a professional yet accessible tone." if language == 'en' else "Eres un analista de datos musicales experto. Proporciona análisis concisos, perspicaces y en español. Usa un tono profesional pero accesible."},
+                    {"role": "system", "content": "You are an expert music data analyst. Provide concise, insightful analysis. Use a professional yet accessible tone."},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.7,
@@ -531,15 +513,7 @@ Provide a DETAILED executive summary (10-12 lines) that:
 # ============================================================
 
 def download_latest_db() -> Tuple[Path, int, int]:
-    """
-    Download the most recent database from GitHub repository.
-    
-    Returns:
-        Tuple of (database_path, year, week)
-    
-    Raises:
-        Exception: If GitHub API access fails or no .db files found
-    """
+    """Download the most recent database from GitHub repository."""
     api_url = f"https://api.github.com/repos/{Config.REPO_OWNER}/{Config.REPO_NAME}/contents/{Config.FOLDER_PATH}"
 
     print("Searching for databases on GitHub...")
@@ -555,7 +529,6 @@ def download_latest_db() -> Tuple[Path, int, int]:
         raise Exception("No .db files found in repository")
 
     def get_year_week(filename: str) -> Tuple[int, int]:
-        """Extract year and week from filename pattern YYYY-WXX."""
         match = re.search(r'(\d{4})-W(\d+)', filename)
         if match:
             return (int(match.group(1)), int(match.group(2)))
@@ -581,24 +554,14 @@ def download_latest_db() -> Tuple[Path, int, int]:
 
 
 def get_local_db(week: Optional[str] = None) -> Tuple[Optional[Path], int, int]:
-    """
-    Find the most recent or specified database in local directory.
-    
-    Args:
-        week: Optional week identifier (YYYY-WXX) to find specific DB
-        
-    Returns:
-        Tuple of (database_path, year, week) or (None, 0, 0) if not found
-    """
+    """Find the most recent or specified database in local directory."""
     if week:
-        # Try to find specific week
         db_path = Config.CHARTS_ARCHIVE_PATH / f"youtube_charts_{week}_enriched.db"
         if db_path.exists():
             year, w = week.split('-W')
             return db_path, int(year), int(w)
         return None, 0, 0
     
-    # Find most recent
     db_files = list(Config.CHARTS_ARCHIVE_PATH.glob("youtube_charts_*.db"))
 
     if not db_files:
@@ -618,18 +581,7 @@ def get_local_db(week: Optional[str] = None) -> Tuple[Optional[Path], int, int]:
 
 
 def load_data(db_path: Path) -> pd.DataFrame:
-    """
-    Load and prepare data from SQLite database.
-    
-    Args:
-        db_path: Path to SQLite database file
-        
-    Returns:
-        DataFrame with enriched data and calculated metrics
-        
-    Note:
-        Adds upload_quarter and engagement columns
-    """
+    """Load and prepare data from SQLite database."""
     conn = sqlite3.connect(db_path)
 
     cursor = conn.cursor()
@@ -644,7 +596,6 @@ def load_data(db_path: Path) -> pd.DataFrame:
     df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     conn.close()
 
-    # Data preparation
     df['upload_date'] = pd.to_datetime(df['upload_date'], errors='coerce')
     df['upload_quarter'] = df['upload_date'].dt.quarter
     df['engagement'] = (df['likes'] / df['views'] * 100).round(2)
@@ -657,15 +608,7 @@ def load_data(db_path: Path) -> pd.DataFrame:
 # ============================================================
 
 def format_number(x: float) -> str:
-    """
-    Format large numbers with K/M/B suffixes.
-    
-    Args:
-        x: Number to format
-        
-    Returns:
-        Formatted string with appropriate suffix
-    """
+    """Format large numbers with K/M/B suffixes."""
     if pd.isna(x):
         return "N/A"
     if x >= 1_000_000_000:
@@ -682,15 +625,7 @@ def format_number(x: float) -> str:
 # ============================================================
 
 def get_section_titles(language: str) -> Dict[str, str]:
-    """
-    Get section titles in specified language.
-    
-    Args:
-        language: Language code ('en' or 'es')
-        
-    Returns:
-        Dictionary of section titles
-    """
+    """Get section titles in specified language."""
     if language == 'es':
         return {
             "title": "Análisis Enriquecido de Charts Musicales",
@@ -761,16 +696,7 @@ def get_section_titles(language: str) -> Dict[str, str]:
 
 def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
                       insights: Dict[str, str], output_path: Path, language: str) -> None:
-    """
-    Generate a Jupyter notebook with analysis cells and AI insights.
-    
-    Args:
-        df: DataFrame with enriched music data
-        db_info: Tuple of (database_path, year, week)
-        insights: Dictionary of AI insights by section
-        output_path: Path where notebook will be saved
-        language: Language code ('en' or 'es')
-    """
+    """Generate a Jupyter notebook with analysis cells and AI insights."""
     db_path, year, week = db_info
     db_filename = db_path.name
     titles = get_section_titles(language)
@@ -798,7 +724,6 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
     }
 
     def add_code_cell(source: str) -> None:
-        """Add a code cell to the notebook."""
         notebook["cells"].append({
             "cell_type": "code",
             "execution_count": None,
@@ -808,7 +733,6 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
         })
 
     def add_markdown_cell(source: str) -> None:
-        """Add a markdown cell to the notebook."""
         notebook["cells"].append({
             "cell_type": "markdown",
             "metadata": {},
@@ -866,7 +790,6 @@ def format_number(x):
 print(f"Loading data from: {db_filename}")
 conn = sqlite3.connect("{db_filename}")
 
-# Find table name
 cursor = conn.cursor()
 cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
 tables = cursor.fetchall()
@@ -883,7 +806,6 @@ if (table_name,) not in tables:
 df = pd.read_sql_query(f"SELECT * FROM {{table_name}}", conn)
 conn.close()
 
-# Prepare data
 df['upload_date'] = pd.to_datetime(df['upload_date'], errors='coerce')
 df['upload_quarter'] = df['upload_date'].dt.quarter
 df['engagement'] = (df['likes'] / df['views'] * 100).round(2)
@@ -924,7 +846,6 @@ display(stats)
     add_markdown_cell(f"## {titles['country_analysis']}")
     add_markdown_cell(f"### {titles['continent']}")
     add_code_cell("""
-# Country to continent mapping
 continents = {
     'North America': ['United States', 'Mexico', 'Canada', 'Puerto Rico'],
     'South America': ['Brazil', 'Argentina', 'Colombia', 'Chile', 'Peru', 'Venezuela'],
@@ -952,7 +873,6 @@ continent_stats = df.groupby('continent').agg(
 print("\\nCONTINENT STATISTICS:")
 display(continent_stats)
 
-# Donut chart
 fig, ax = plt.subplots(figsize=(10, 7))
 fig.patch.set_facecolor(YT_BG)
 colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(continent_stats)))
@@ -992,7 +912,6 @@ top_countries['percentage'] = (top_countries['total_songs'] / total * 100).round
 print("\\nTOP 10 COUNTRIES BY SONG COUNT")
 display(top_countries)
 
-# Horizontal bar chart
 fig, ax = plt.subplots(figsize=(10, 6))
 fig.patch.set_facecolor(YT_BG)
 ax.set_facecolor(YT_SURFACE)
@@ -1044,7 +963,6 @@ top_likes['total_likes_fmt'] = top_likes['total_likes'].apply(format_likes)
 print("\\nTOP 10 COUNTRIES BY TOTAL LIKES")
 display(top_likes[['artist_country', 'total_likes_fmt']])
 
-# Horizontal bar chart
 fig, ax = plt.subplots(figsize=(10, 6))
 fig.patch.set_facecolor(YT_BG)
 ax.set_facecolor(YT_SURFACE)
@@ -1089,7 +1007,6 @@ for country in top_countries_list:
 
     print(f"\\n{country}:")
 
-    # Top 5 by views
     top_views = df_country.nlargest(5, 'views')[['track_name', 'artist_names', 'views', 'likes', 'engagement']].copy()
     top_views['views'] = top_views['views'].apply(format_number)
     top_views['likes'] = top_views['likes'].apply(format_number)
@@ -1098,7 +1015,6 @@ for country in top_countries_list:
     for _, row in top_views.iterrows():
         print(f"      - {row['track_name']} - {row['artist_names']}: {row['views']} views | {row['likes']} likes | {row['engagement']:.1f}% engagement")
 
-    # Top 5 by likes
     top_likes_country = df_country.nlargest(5, 'likes')[['track_name', 'artist_names', 'views', 'likes', 'engagement']].copy()
     top_likes_country['views'] = top_likes_country['views'].apply(format_number)
     top_likes_country['likes'] = top_likes_country['likes'].apply(format_number)
@@ -1218,7 +1134,6 @@ print("COUNTRY vs GENRE MATRIX (Top 12 countries × Top 10 genres)")
 print("="*80)
 display(matrix_heatmap)
 
-# Interactive heatmap
 fig = go.Figure(data=go.Heatmap(
     z=matrix_heatmap.values,
     x=matrix_heatmap.columns.tolist(),
@@ -1290,7 +1205,6 @@ for k, v in video_stats.items():
     # Views by Video Type
     add_markdown_cell(f"### {titles['views_by_type']}")
     add_code_cell("""
-# Prepare data
 df_video = df.copy()
 conditions = [
     df_video['is_official_video'] == 1,
@@ -1384,11 +1298,9 @@ print(f"   Minimum: {df['duration_s'].min()} seconds")
 print(f"   Maximum: {df['duration_s'].max()} seconds")
 print(f"   Median: {df['duration_s'].median()} seconds")
 
-# Duration distribution plot
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 fig.patch.set_facecolor(YT_BG)
 
-# Histogram
 ax1 = axes[0]
 ax1.set_facecolor(YT_SURFACE)
 n, bins, patches = ax1.hist(duration_minutes, bins=15, edgecolor='white', alpha=0.7, density=True)
@@ -1410,7 +1322,6 @@ ax1.legend(loc='upper right', fontsize=9, facecolor=YT_SURFACE)
 ax1.spines[['top', 'right']].set_visible(False)
 ax1.grid(True, color=YT_GRID, linestyle='--', alpha=0.5)
 
-# Boxplot
 ax2 = axes[1]
 ax2.set_facecolor(YT_SURFACE)
 bp = ax2.boxplot(duration_minutes, vert=False, patch_artist=True, widths=0.6,
@@ -1454,7 +1365,6 @@ print("="*60)
 for ch, count in channel_counts.items():
     print(f"   - {ch}: {count} songs ({count/len(df)*100:.1f}%)")
 
-# Horizontal bar chart
 fig, ax = plt.subplots(figsize=(10, 5))
 fig.patch.set_facecolor(YT_BG)
 ax.set_facecolor(YT_SURFACE)
@@ -1483,7 +1393,6 @@ plt.show()
     add_markdown_cell(f"## {titles['temporal_analysis']}")
     add_markdown_cell(f"### {titles['views_evolution']}")
     add_code_cell("""
-# Color palette
 bg_color = '#F9F9F9'
 genre_palette = ['#FF0000', '#282828', '#4A4A4A', '#FFB347', '#FF6B6B']
 
@@ -1493,7 +1402,6 @@ df_temporal = df[df['macro_genre'].isin(top5_genres)].copy()
 temporal_views = df_temporal.groupby(['upload_quarter', 'macro_genre'])['views'].sum().reset_index()
 temporal_engagement = df_temporal.groupby(['upload_quarter', 'macro_genre'])['engagement'].mean().reset_index()
 
-# Views evolution
 fig1, ax1 = plt.subplots(figsize=(12, 6), facecolor=bg_color)
 ax1.set_facecolor(bg_color)
 
@@ -1656,18 +1564,7 @@ plt.show()
 # ============================================================
 
 def parse_week(week_str: str) -> Tuple[int, int]:
-    """
-    Parse week string into year and week number.
-    
-    Args:
-        week_str: Week string in format YYYY-WXX
-        
-    Returns:
-        Tuple of (year, week_number)
-        
-    Raises:
-        ValueError: If format is invalid
-    """
+    """Parse week string into year and week number."""
     match = re.match(r'(\d{4})-W(\d{1,2})', week_str)
     if not match:
         raise ValueError(f"Invalid week format: {week_str}. Expected YYYY-WXX")
@@ -1677,15 +1574,7 @@ def parse_week(week_str: str) -> Tuple[int, int]:
 
 
 def get_data_summaries(df: pd.DataFrame) -> Dict[str, Dict]:
-    """
-    Pre-calculate all data summaries needed for AI insights.
-    
-    Args:
-        df: DataFrame with enriched music data
-        
-    Returns:
-        Dictionary of summaries keyed by section name
-    """
+    """Pre-calculate all data summaries needed for AI insights."""
     # Top countries by song count
     top_countries_df = df['artist_country'].value_counts().head(10).reset_index()
     top_countries_df.columns = ['Country', 'Count']
@@ -1801,16 +1690,7 @@ def get_data_summaries(df: pd.DataFrame) -> Dict[str, Dict]:
 
 
 def generate_both_notebooks(df: pd.DataFrame, db_path: Path, year: int, week: int, week_str: str) -> None:
-    """
-    Generate both English and Spanish notebooks.
-    
-    Args:
-        df: DataFrame with enriched music data
-        db_path: Path to the database file
-        year: Year of the data
-        week: Week number
-        week_str: Week string in format YYYY-WXX
-    """
+    """Generate both English and Spanish notebooks."""
     db_info = (db_path, year, week)
     
     # Pre-calculate summaries once
@@ -1903,12 +1783,10 @@ def main():
     week_str = ""
     
     if args.db_path:
-        # Use specified database
         db_path = Path(args.db_path)
         if not db_path.exists():
             print(f"Error: Database file not found: {db_path}")
             sys.exit(1)
-        # Extract week from filename
         match = re.search(r'(\d{4})-W(\d+)', db_path.name)
         if match:
             year = int(match.group(1))
@@ -1918,7 +1796,6 @@ def main():
             print(f"Warning: Could not extract week from filename: {db_path.name}")
             week_str = "unknown"
     elif args.week:
-        # Download or find specific week
         week_str = args.week
         year, week = parse_week(week_str)
         db_path = Config.CHARTS_ARCHIVE_PATH / f"youtube_charts_{week_str}_enriched.db"
@@ -1926,15 +1803,12 @@ def main():
             print(f"Local database not found: {db_path}")
             print("Attempting to download from GitHub...")
             try:
-                # This would need modification to download specific week
-                # For now, download latest and hope it matches
                 db_path, year, week = download_latest_db()
                 week_str = f"{year}-W{week:02d}"
             except Exception as e:
                 print(f"Failed to download: {e}")
                 sys.exit(1)
     else:
-        # Use latest database
         print("\nLooking for latest database...")
         db_path, year, week = get_local_db()
         if db_path is None:
@@ -1958,7 +1832,6 @@ def main():
     if args.language == 'both':
         generate_both_notebooks(df, db_path, year, week, week_str)
     elif args.language == 'en':
-        # Generate only English notebook
         summaries = get_data_summaries(df)
         sections = [
             "general_stats", "top_countries", "top_likes", "genre_engagement",
@@ -1972,8 +1845,7 @@ def main():
         output_path.parent.mkdir(parents=True, exist_ok=True)
         generate_notebook(df, (db_path, year, week), insights, output_path, 'en')
         print(f"\nEnglish notebook generated: {output_path}")
-    else:  # 'es'
-        # Generate only Spanish notebook
+    else:
         summaries = get_data_summaries(df)
         sections = [
             "general_stats", "top_countries", "top_likes", "genre_engagement",
