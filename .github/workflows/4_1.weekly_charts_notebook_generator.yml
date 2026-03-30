@@ -71,6 +71,10 @@ jobs:
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
 
+      - name: Copy database to root for notebook execution
+        run: |
+          cp charts_archive/3_enrich-chart-data/youtube_charts_${{ steps.get_week.outputs.week }}_enriched.db .
+
       - name: Execute notebooks to generate outputs
         run: |
           # Execute English notebook
