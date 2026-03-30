@@ -1,4 +1,4 @@
-name: 4.1- Weekly Music Charts Notebook Generator
+name: Weekly Music Charts Notebook Generator
 
 on:
   schedule:
@@ -27,25 +27,25 @@ jobs:
   generate-notebooks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-          
+
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install pandas numpy matplotlib seaborn plotly scipy requests
           pip install jupyter
-          
+
       - name: Determine week to process
         id: get_week
         run: |
@@ -62,47 +62,53 @@ jobs:
             echo "week=$WEEK" >> $GITHUB_OUTPUT
             echo "language=both" >> $GITHUB_OUTPUT
           fi
-          
+
       - name: Run notebook generator
         run: |
           python scripts/4_1.weekly_charts_notebook_generator.py \
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
-          
+
       - name: Keep only last 6 notebooks locally
         run: |
+          # English notebooks
           cd Notebook_EN/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
-          
+
+          # Spanish notebooks
           cd Notebook_ES/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
-          
+
+          # English cache (create dir if not exists)
+          mkdir -p Notebook_EN/weekly/cache
           cd Notebook_EN/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
-          
+
+          # Spanish cache (create dir if not exists)
+          mkdir -p Notebook_ES/weekly/cache
           cd Notebook_ES/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
-          
+
           echo "Cleaned up: Keeping only last 6 notebooks per language"
-          
+
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git add Notebook_EN/weekly/ Notebook_ES/weekly/
-          
+
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Weekly charts analysis - ${{ steps.get_week.outputs.week }} [skip ci]"
             git push
           fi
-          
+
       - name: Summary
         run: |
           echo "=========================================="
