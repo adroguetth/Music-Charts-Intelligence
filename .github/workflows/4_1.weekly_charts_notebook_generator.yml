@@ -65,15 +65,24 @@ jobs:
             echo "language=both" >> $GITHUB_OUTPUT
           fi
 
+      - name: Verify database has enriched_songs table
+        run: |
+          DB_PATH="charts_archive/3_enrich-chart-data/youtube_charts_${{ steps.get_week.outputs.week }}_enriched.db"
+          echo "Checking database: $DB_PATH"
+          sqlite3 "$DB_PATH" ".tables"
+          TABLES=$(sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table';")
+          if ! echo "$TABLES" | grep -q "enriched_songs"; then
+            echo "ERROR: Table 'enriched_songs' not found in database!"
+            echo "Found tables: $TABLES"
+            exit 1
+          fi
+          echo "Table 'enriched_songs' found."
+
       - name: Run notebook generator
         run: |
           python scripts/4_1.weekly_charts_notebook_generator.py \
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
-
-      - name: Copy database to root for notebook execution
-        run: |
-          cp charts_archive/3_enrich-chart-data/youtube_charts_${{ steps.get_week.outputs.week }}_enriched.db .
 
       - name: Execute notebooks to generate outputs
         run: |
