@@ -1,9 +1,9 @@
 name: Weekly Music Charts Notebook Generator
 
 on:
-  schedule:
+  # schedule:
     # Run every Monday at 15:00 UTC
-    - cron: '0 15 * * 1'
+    # - cron: '0 15 * * 1'
   workflow_dispatch:
     inputs:
       week:
