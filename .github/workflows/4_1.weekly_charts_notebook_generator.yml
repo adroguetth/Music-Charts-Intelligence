@@ -77,7 +77,6 @@ jobs:
 
       - name: Execute notebooks to generate outputs
         run: |
-          # Execute English notebook
           for notebook in Notebook_EN/weekly/*.ipynb; do
             if [ -f "$notebook" ]; then
               echo "Executing $notebook..."
@@ -85,7 +84,6 @@ jobs:
             fi
           done
           
-          # Execute Spanish notebook
           for notebook in Notebook_ES/weekly/*.ipynb; do
             if [ -f "$notebook" ]; then
               echo "Executing $notebook..."
@@ -95,23 +93,19 @@ jobs:
 
       - name: Keep only last 6 notebooks locally
         run: |
-          # English notebooks
           cd Notebook_EN/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
 
-          # Spanish notebooks
           cd Notebook_ES/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
 
-          # English cache (create dir if not exists)
           mkdir -p Notebook_EN/weekly/cache
           cd Notebook_EN/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
 
-          # Spanish cache (create dir if not exists)
           mkdir -p Notebook_ES/weekly/cache
           cd Notebook_ES/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
