@@ -20,7 +20,6 @@ on:
           - en
           - es
 
-# Add write permissions for git push
 permissions:
   contents: write
 
@@ -48,7 +47,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pandas numpy matplotlib seaborn plotly scipy requests
-          pip install jupyter nbformat
+          pip install jupyter nbformat nbconvert
 
       - name: Determine week to process
         id: get_week
@@ -73,6 +72,24 @@ jobs:
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
 
+      - name: Execute notebooks to embed outputs
+        run: |
+          # Execute English notebook
+          if [ -f "Notebook_EN/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb" ]; then
+            jupyter nbconvert --to notebook --execute \
+              "Notebook_EN/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb" \
+              --output "youtube_charts_${{ steps.get_week.outputs.week }}.ipynb" \
+              --output-dir Notebook_EN/weekly/
+          fi
+
+          # Execute Spanish notebook
+          if [ -f "Notebook_ES/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb" ]; then
+            jupyter nbconvert --to notebook --execute \
+              "Notebook_ES/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb" \
+              --output "youtube_charts_${{ steps.get_week.outputs.week }}.ipynb" \
+              --output-dir Notebook_ES/weekly/
+          fi
+
       - name: Keep only last 6 notebooks locally
         run: |
           # English notebooks
@@ -85,13 +102,13 @@ jobs:
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
 
-          # English cache (create dir if not exists)
+          # English cache
           mkdir -p Notebook_EN/weekly/cache
           cd Notebook_EN/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
 
-          # Spanish cache (create dir if not exists)
+          # Spanish cache
           mkdir -p Notebook_ES/weekly/cache
           cd Notebook_ES/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
@@ -122,6 +139,6 @@ jobs:
           echo "Language: ${{ steps.get_week.outputs.language }}"
           echo ""
           echo "Generated files:"
-          echo "  - Notebooks in Notebook_EN/weekly/ and Notebook_ES/weekly/"
+          echo "  - Notebooks in Notebook_EN/weekly/ and Notebook_ES/weekly/ (executed)"
           echo "  - Only last 6 notebooks retained locally"
           echo "=========================================="
