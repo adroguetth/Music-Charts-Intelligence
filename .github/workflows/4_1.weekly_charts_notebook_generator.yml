@@ -2,7 +2,6 @@ name: Weekly Music Charts Notebook Generator
 
 on:
   schedule:
-    # Run every Monday at 15:00 UTC
     - cron: '0 15 * * 1'
   workflow_dispatch:
     inputs:
@@ -20,7 +19,6 @@ on:
           - en
           - es
 
-# Add write permissions for git push
 permissions:
   contents: write
 
@@ -30,7 +28,7 @@ env:
 jobs:
   generate-notebooks:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -48,7 +46,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pandas numpy matplotlib seaborn plotly scipy requests
-          pip install jupyter nbformat
+          pip install jupyter nbformat nbconvert ipykernel
 
       - name: Determine week to process
         id: get_week
@@ -72,6 +70,24 @@ jobs:
           python scripts/4_1.weekly_charts_notebook_generator.py \
             --week ${{ steps.get_week.outputs.week }} \
             --language ${{ steps.get_week.outputs.language }}
+
+      - name: Execute notebooks to generate outputs
+        run: |
+          # Execute English notebook
+          for notebook in Notebook_EN/weekly/*.ipynb; do
+            if [ -f "$notebook" ]; then
+              echo "Executing $notebook..."
+              jupyter nbconvert --to notebook --execute "$notebook" --output "$notebook" --inplace
+            fi
+          done
+          
+          # Execute Spanish notebook
+          for notebook in Notebook_ES/weekly/*.ipynb; do
+            if [ -f "$notebook" ]; then
+              echo "Executing $notebook..."
+              jupyter nbconvert --to notebook --execute "$notebook" --output "$notebook" --inplace
+            fi
+          done
 
       - name: Keep only last 6 notebooks locally
         run: |
@@ -123,5 +139,6 @@ jobs:
           echo ""
           echo "Generated files:"
           echo "  - Notebooks in Notebook_EN/weekly/ and Notebook_ES/weekly/"
+          echo "  - Notebooks executed with outputs (graphs and tables included)"
           echo "  - Only last 6 notebooks retained locally"
           echo "=========================================="
