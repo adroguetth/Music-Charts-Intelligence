@@ -12,6 +12,7 @@
 
 This project is the second component of the YouTube Charts intelligence system. It takes the raw artist names extracted by the downloader and **enriches them with geographic and genre metadata** by querying multiple open knowledge bases. The result is a structured database of artists with their country of origin and primary music genre.
 
+
 ### Key Features
 
 - **Multi-Source Lookup**: Intelligent cascading queries to MusicBrainz, Wikipedia (summary & infobox), and Wikidata
@@ -82,9 +83,7 @@ This diagram details the **cascading search strategy** for detecting an artist's
 
 ### **Diagram 3: Genre Search (Detailed)**
 
-<img src="https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0" alt="Country Search" width="250">
-
-https://drive.google.com/file/d/173wJP4u30DDEN27HaFb52A3nhS1VCg0_/view?usp=drive_link
+<img src="https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0_" alt="Country Search" width="350">
 
 This diagram shows how the system **collects genre candidates** from multiple sources:
 
@@ -142,6 +141,7 @@ This is the **intelligent decision engine** that selects the final genre:
 11. **Fallback**: If no winner and country is known, uses the first genre from country's priority list
 
 ### **Diagram 5: Database Update**
+<img src="https://drive.google.com/uc?export=view&id=1zU7GwiHW3DYDlY7kGLnwC6HqY99SRF5m" alt="Country Search" width="350">
 
 This diagram shows how the system **persists data intelligently**:
 
@@ -836,7 +836,6 @@ timeout-minutes: 60        # Total job timeout (allows for API rate limits)
     "Priority Genre 2",   # Gets 1.5x bonus
     "Priority Genre 3"    # Gets 1.2x bonus
 ]
-```
 ---
 
 ## 🐛 Troubleshooting
