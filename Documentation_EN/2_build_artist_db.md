@@ -40,6 +40,7 @@ This project is the second component of the YouTube Charts intelligence system. 
 
 ### **Diagram 1: Main Flow Overview**
 
+<img src="https://drive.google.com/uc?export=view&id=18uJf6B1ihQs5b3Hv1MZuqnwQs9DNjMjA" alt="Country Search" width="350">
 
 This diagram shows the **high-level pipeline** of the entire system:
 
@@ -54,7 +55,9 @@ This diagram shows the **high-level pipeline** of the entire system:
 6. **After all artists**: Generates a final report and automatically commits changes to GitHub
 
 ### **Diagram 2: Country Search (Detailed)**
-pendiente
+
+<img src="https://drive.google.com/uc?export=view&id=1mQx2lJ4bltmssN9VBTnkiFxwQXSJiz7y" alt="Country Search" width="250">
+
 This diagram details the **cascading search strategy** for detecting an artist's country:
 
 1. **Start**: Receives an artist name (may be missing info or new artist)
@@ -78,6 +81,10 @@ This diagram details the **cascading search strategy** for detecting an artist's
 9. **Result**: Returns either a canonical country name or "Unknown"
 
 ### **Diagram 3: Genre Search (Detailed)**
+
+<img src="https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0" alt="Country Search" width="250">
+
+https://drive.google.com/file/d/173wJP4u30DDEN27HaFb52A3nhS1VCg0_/view?usp=drive_link
 
 This diagram shows how the system **collects genre candidates** from multiple sources:
 
@@ -103,6 +110,8 @@ This diagram shows how the system **collects genre candidates** from multiple so
 10. **Final**: All candidates (with their weights and sources) go to the Voting System
 
 ### **Diagram 4: Voting & Weight System**
+
+<img src="https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN" alt="Country Search" width="250">
 
 This is the **intelligent decision engine** that selects the final genre:
 
@@ -501,7 +510,7 @@ jobs:
       contents: write
 ```
 
-### **obs and Steps**
+### **Jobs and Steps**
 
 #### **Job: `build-artist-database`**
 
