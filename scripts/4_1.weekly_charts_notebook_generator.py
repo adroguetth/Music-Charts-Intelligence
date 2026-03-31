@@ -10,7 +10,7 @@ Features:
 - AI-generated insights for each analysis section with language support
 - Caching system per week and language to avoid redundant API calls
 - Generates two notebooks: English and Spanish
-- Full analysis with 9 sections and 20+ visualizations
+- Full analysis with 9 sections + introduction + attribution + 20+ visualizations
 
 Usage:
     python 4_1.weekly_charts_notebook_generator.py [--week YYYY-WXX] [--language en|es|both]
@@ -157,6 +157,9 @@ class AIInsightsCache:
             key_data = df.groupby('macro_genre')['engagement'].mean().to_string()
         elif section == 'temporal':
             key_data = df.groupby('upload_quarter')['views'].sum().to_string()
+        elif section == 'introduction':
+            # Use a broader fingerprint for intro to capture overall dataset character
+            key_data = f"{len(df)}_{df['views'].sum()}_{df['likes'].sum()}_{df['artist_country'].nunique()}_{df['macro_genre'].nunique()}"
         else:
             key_data = df.to_string()
             
@@ -224,6 +227,26 @@ def get_ai_insight(section: str, data_summary: Dict, df: pd.DataFrame, language:
     # Language-specific prompts
     if language == 'es':
         prompts = {
+            "introduction": f"""
+Escribe una introducción atractiva y personalizada para un informe semanal de charts musicales de YouTube, basada en estos datos:
+
+- Total canciones analizadas: {data_summary.get('total_songs', 'N/A')}
+- Países representados: {data_summary.get('unique_countries', 'N/A')}
+- Géneros musicales: {data_summary.get('unique_genres', 'N/A')}
+- Total de vistas: {data_summary.get('total_views', 0):,}
+- Total de likes: {data_summary.get('total_likes', 0):,}
+- Promedio de vistas por canción: {data_summary.get('avg_views', 0):,.0f}
+- Promedio de likes por canción: {data_summary.get('avg_likes', 0):,.0f}
+
+La introducción debe:
+- Ser persuasiva, invitando al lector a explorar el informe.
+- Destacar la riqueza y diversidad de los datos (geográfica, de géneros, volumen de interacción).
+- Mencionar brevemente qué tipo de insights se encontrarán (tendencias por país, engagement por género, rendimiento de colaboraciones, etc.).
+- Ser original y variar cada semana (no un texto genérico).
+- Tener una extensión de 6-8 líneas en español.
+
+No uses títulos ni markdown, solo texto plano en un solo párrafo.
+""",
             "general_stats": f"""
 Analiza estas estadísticas generales de música:
 - Total canciones: {data_summary.get('total_songs', 'N/A')}
@@ -317,7 +340,7 @@ Proporciona un análisis breve (3-4 líneas) en español sobre:
 """,
 
             "executive_summary": f"""
-Genera un resumen ejecutivo detallado (15-18 líneas) en español del análisis completo de charts musicales con los siguientes datos clave:
+Genera un resumen ejecutivo detallado (20-25 líneas) en español del análisis completo de charts musicales con los siguientes datos clave:
 
 DATOS GENERALES:
 - Total canciones: {data_summary.get('total_songs', 'N/A')}
@@ -343,16 +366,36 @@ MÉTRICAS DE VIDEO:
 COLABORACIONES:
 - {data_summary.get('collab_impact', 'N/A')}
 
-Proporciona un resumen ejecutivo DETALLADO (15-18 líneas) en español que:
+Proporciona un resumen ejecutivo DETALLADO (20-25 líneas) en español que:
 1. Resuma los hallazgos principales con datos concretos
-2. Destaque las tendencias clave observadas
-3. Identifique patrones geográficos y de género
-4. Analice el rendimiento por tipo de contenido
-5. Ofrezca conclusiones estratégicas y recomendaciones accionables para artistas, productores y estrategias de marketing musical
+2. Destaque las tendencias clave observadas (geográficas, de género, temporales)
+3. Analice el rendimiento por tipo de contenido (video, colaboraciones)
+4. Ofrezca conclusiones estratégicas y recomendaciones accionables para artistas, productores y estrategias de marketing musical
+5. Sea rico en contenido, con un tono profesional pero accesible.
 """
         }
     else:
         prompts = {
+            "introduction": f"""
+Write an engaging and personalized introduction for a weekly YouTube music charts report, based on this data:
+
+- Total songs analyzed: {data_summary.get('total_songs', 'N/A')}
+- Countries represented: {data_summary.get('unique_countries', 'N/A')}
+- Music genres: {data_summary.get('unique_genres', 'N/A')}
+- Total views: {data_summary.get('total_views', 0):,}
+- Total likes: {data_summary.get('total_likes', 0):,}
+- Average views per song: {data_summary.get('avg_views', 0):,.0f}
+- Average likes per song: {data_summary.get('avg_likes', 0):,.0f}
+
+The introduction should:
+- Be persuasive, inviting the reader to explore the report.
+- Highlight the richness and diversity of the data (geographic, genre, interaction volume).
+- Briefly mention what kind of insights will be found (country trends, genre engagement, collaboration performance, etc.).
+- Be original and vary each week (not generic text).
+- Be 6-8 lines long in English.
+
+Do not use titles or markdown, just plain text in a single paragraph.
+""",
             "general_stats": f"""
 Analyze these general music statistics:
 - Total songs: {data_summary.get('total_songs', 'N/A')}
@@ -446,7 +489,7 @@ Provide a brief analysis (3-4 lines) about:
 """,
 
             "executive_summary": f"""
-Generate a detailed executive summary (15-18 lines) of the complete music charts analysis with the following key data:
+Generate a detailed executive summary (20-25 lines) of the complete music charts analysis with the following key data:
 
 GENERAL DATA:
 - Total songs: {data_summary.get('total_songs', 'N/A')}
@@ -472,18 +515,24 @@ VIDEO METRICS:
 COLLABORATIONS:
 - {data_summary.get('collab_impact', 'N/A')}
 
-Provide a DETAILED executive summary (15-18 lines) that:
+Provide a DETAILED executive summary (20-25 lines) that:
 1. Summarizes main findings with concrete data points
-2. Highlights key observed trends
-3. Identifies geographic and genre patterns
-4. Analyzes content type performance
-5. Offers strategic conclusions and actionable recommendations for artists, producers, and music marketing strategies
+2. Highlights key observed trends (geographic, genre, temporal)
+3. Analyzes content type performance (video, collaborations)
+4. Offers strategic conclusions and actionable recommendations for artists, producers, and music marketing strategies
+5. Is rich in content, with a professional yet accessible tone.
 """
         }
 
     prompt = prompts.get(section, f"Analyze this music data: {data_summary}")
 
     try:
+        # Set max_tokens higher for introduction and executive_summary
+        if section in ["introduction", "executive_summary"]:
+            max_tokens = 1500
+        else:
+            max_tokens = 500
+            
         response = requests.post(
             Config.DEEPSEEK_API_URL,
             headers={
@@ -497,7 +546,7 @@ Provide a DETAILED executive summary (15-18 lines) that:
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 1200 if section == "executive_summary" else 500
+                "max_tokens": max_tokens
             },
             timeout=30
         )
@@ -634,7 +683,7 @@ def get_section_titles(language: str) -> Dict[str, str]:
     if language == 'es':
         return {
             "title": "Análisis Enriquecido de Charts Musicales",
-            "introduction": "## 1. Introducción\n\nEste informe presenta un análisis detallado de los charts musicales de YouTube, explorando tendencias por país, género, métricas de video y colaboraciones. Los datos han sido enriquecidos con información de país, género y tipo de video, y los insights son generados mediante la API de DeepSeek.",
+            "introduction": "## 1. Introducción",
             "setup": "## 2. Configuración y Carga de Datos",
             "preview": "## 3. Vista Previa de los Datos",
             "general_stats": "## 4. Estadísticas Generales",
@@ -661,12 +710,13 @@ def get_section_titles(language: str) -> Dict[str, str]:
             "engagement_evolution": "### 9.2. Evolución del Engagement por Trimestre",
             "release_distribution": "### 9.3. Distribución de Lanzamientos por Trimestre",
             "collaborations": "## 10. Análisis de Colaboraciones",
-            "executive_summary": "## 11. Resumen Ejecutivo"
+            "executive_summary": "## 11. Resumen Ejecutivo",
+            "attribution": "## 12. Información y Atribución"
         }
     else:
         return {
             "title": "Enriched Music Charts Analysis",
-            "introduction": "## 1. Introduction\n\nThis report presents a detailed analysis of YouTube music charts, exploring trends by country, genre, video metrics, and collaborations. The data has been enriched with country, genre, and video type information, and insights are generated using the DeepSeek API.",
+            "introduction": "## 1. Introduction",
             "setup": "## 2. Setup and Data Loading",
             "preview": "## 3. Data Preview",
             "general_stats": "## 4. General Statistics",
@@ -693,7 +743,8 @@ def get_section_titles(language: str) -> Dict[str, str]:
             "engagement_evolution": "### 9.2. Engagement Evolution by Quarter",
             "release_distribution": "### 9.3. Release Distribution by Quarter",
             "collaborations": "## 10. Collaborations Analysis",
-            "executive_summary": "## 11. Executive Summary"
+            "executive_summary": "## 11. Executive Summary",
+            "attribution": "## 12. Information and Attribution"
         }
 
 
@@ -738,8 +789,12 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
     nb.cells.append(new_markdown_cell(f"""# {titles['title']}
 """))
 
-    # Introduction (with AI-generated intro could be added later, but we'll keep static for now)
+    # Introduction (AI-generated)
     nb.cells.append(new_markdown_cell(titles['introduction']))
+    if insights.get('introduction'):
+        nb.cells.append(new_markdown_cell(insights['introduction']))
+    else:
+        nb.cells.append(new_markdown_cell("*No AI introduction available. Please configure DEEPSEEK_API_KEY to generate an engaging introduction.*"))
 
     # Setup and Data Loading
     nb.cells.append(new_markdown_cell(titles['setup']))
@@ -1508,8 +1563,13 @@ plt.show()
 
     # Executive Summary
     nb.cells.append(new_markdown_cell(titles['executive_summary']))
+    if insights.get('executive_summary'):
+        nb.cells.append(new_markdown_cell(insights['executive_summary']))
+    else:
+        nb.cells.append(new_markdown_cell("*No AI summary available. Please configure DEEPSEEK_API_KEY to generate insights.*"))
 
-    # Metadata table for executive summary
+    # Attribution section (metadata table)
+    nb.cells.append(new_markdown_cell(titles['attribution']))
     meta_table = f"""
 | | |
 |---|---|
@@ -1523,13 +1583,6 @@ plt.show()
 | **🤖 AI Analysis** | Powered by DeepSeek API |
 """
     nb.cells.append(new_markdown_cell(meta_table))
-
-    if insights.get('executive_summary'):
-        nb.cells.append(new_markdown_cell(insights['executive_summary']))
-    else:
-        nb.cells.append(new_markdown_cell("*No AI summary available. Please configure DEEPSEEK_API_KEY to generate insights.*"))
-
-    # No footer line - removed as requested
 
     # Write notebook using nbformat
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -1612,6 +1665,15 @@ def get_data_summaries(df: pd.DataFrame) -> Dict[str, Dict]:
     quarterly_engagement = df.groupby('upload_quarter')['engagement'].mean().to_dict()
 
     return {
+        "introduction": {
+            "total_songs": len(df),
+            "unique_countries": df['artist_country'].nunique(),
+            "unique_genres": df['macro_genre'].nunique(),
+            "total_views": int(df['views'].sum()),
+            "total_likes": int(df['likes'].sum()),
+            "avg_views": float(df['views'].mean()),
+            "avg_likes": float(df['likes'].mean())
+        },
         "general_stats": {
             "total_songs": len(df),
             "unique_countries": df['artist_country'].nunique(),
@@ -1677,6 +1739,7 @@ def generate_both_notebooks(df: pd.DataFrame, db_path: Path, year: int, week: in
     
     # Define sections to generate
     sections = [
+        "introduction",
         "general_stats",
         "top_countries",
         "top_likes",
@@ -1813,6 +1876,7 @@ def main():
     elif args.language == 'en':
         summaries = get_data_summaries(df)
         sections = [
+            "introduction",
             "general_stats", "top_countries", "top_likes", "genre_engagement",
             "video_metrics", "temporal", "duration", "collaborations", "executive_summary"
         ]
@@ -1827,6 +1891,7 @@ def main():
     else:
         summaries = get_data_summaries(df)
         sections = [
+            "introduction",
             "general_stats", "top_countries", "top_likes", "genre_engagement",
             "video_metrics", "temporal", "duration", "collaborations", "executive_summary"
         ]
