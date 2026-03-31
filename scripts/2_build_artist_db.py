@@ -10060,6 +10060,175 @@ def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Opt
     return None, "Genre not found"
 
 # ============================================================================
+# GENRE VOTING SYSTEM
+# ============================================================================
+
+def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str]],
+                         country: Optional[str] = None, detected_lang: Optional[str] = None) -> Optional[str]:
+    """
+    Select the primary genre using a weighted voting system and regional mapping.
+
+    Args:
+        artist: Artist name (unused but kept for potential future logging)
+        genre_candidates: List of (subgenre, weight, source) tuples
+        country: Optional country name (used for country-specific bonuses)
+        detected_lang: Optional language code from script detection
+
+    Returns:
+        Selected macro-genre string or None if no candidates
+    """
+    if not genre_candidates:
+        return None
+
+    # Map each candidate to its macro-genre
+    macro_votes = defaultdict(float)
+    detailed_info = []
+
+    for subgenre, weight, source in genre_candidates:
+        macro, _ = normalize_genre(subgenre)          # Normalize to macro-genre
+        if macro:
+            final_weight = weight
+
+            # Source-based bonuses
+            if 'musicbrainz' in source:
+                final_weight *= 1.5
+            if 'infobox' in source:
+                final_weight *= 1.2
+            if 'wikidata' in source:
+                final_weight *= 1.3
+
+            # Specific term bonuses (help identify subgenres)
+            sub_lower = subgenre.lower()
+            # Latino
+            if any(term in sub_lower for term in ['reggaeton', 'reggaetón', 'regueton', 'reguetón', 'trap latino', 'urbano', 'dembow', 'perreo']):
+                final_weight *= 1.4
+                if macro != 'Reggaetón/Trap Latino':
+                    macro = 'Reggaetón/Trap Latino'
+            # Korea
+            if any(term in sub_lower for term in ['k-pop', 'kpop', 'korean pop', 'k-rap', 'k-r&b']):
+                final_weight *= 1.4
+                if macro != 'K-Pop/K-Rock':
+                    macro = 'K-Pop/K-Rock'
+            # Japan
+            if any(term in sub_lower for term in ['j-pop', 'jpop', 'japanese pop']):
+                final_weight *= 1.4
+                if macro != 'J-Pop/J-Rock':
+                    macro = 'J-Pop/J-Rock'
+            # India / South Asia
+            if any(term in sub_lower for term in ['indian', 'bollywood', 'punjabi', 'bhangra']):
+                final_weight *= 1.3
+            if any(term in sub_lower for term in ['pakistani pop', 'urdu', 'lollywood']):
+                final_weight *= 1.3
+            if any(term in sub_lower for term in ['bangladeshi pop', 'bengali']):
+                final_weight *= 1.3
+            # Brazil
+            if any(term in sub_lower for term in ['sertanejo', 'funk brasileiro', 'funk carioca', 'funk']):
+                final_weight *= 1.4
+            # Africa
+            if any(term in sub_lower for term in ['afrobeats', 'naija', 'amapiano']):
+                final_weight *= 1.4
+
+            macro_votes[macro] += final_weight
+            detailed_info.append(f"{subgenre}→{macro} ({source}:{final_weight:.1f})")
+        else:
+            # If not mapped, check if it's a known macro
+            for known_macro in MACRO_GENRES:
+                if subgenre.lower() == known_macro.lower():
+                    macro_votes[known_macro] += weight
+                    detailed_info.append(f"{subgenre}→{known_macro} ({source})")
+                    break
+
+    # --- MAP GENERIC GENRES TO REGIONAL ONES ---
+    if country and country in COUNTRY_SPECIFIC_RULES:
+        rule = COUNTRY_SPECIFIC_RULES[country]
+        map_to = rule.get("map_generic_to")
+        if map_to:
+            for subgenre, weight, source in genre_candidates:
+                macro, _ = normalize_genre(subgenre)
+                if macro and macro in GENERIC_MACROS:
+                    macro_votes[map_to] += weight
+                    detailed_info.append(f"map_generic: {subgenre}→{map_to} (weight {weight:.1f})")
+
+    # --- APPLY COUNTRY PRIORITY BONUS ---
+    if country and macro_votes:
+        priority = COUNTRY_GENRE_PRIORITY.get(country, DEFAULT_GENRE_PRIORITY)
+        for macro in list(macro_votes.keys()):
+            if macro in priority:
+                idx = priority.index(macro)
+                if idx == 0:
+                    macro_votes[macro] *= 2.0
+                elif idx == 1:
+                    macro_votes[macro] *= 1.5
+                else:
+                    macro_votes[macro] *= 1.2
+
+    # --- APPLY COUNTRY-SPECIFIC RULES (keywords, force_macro, prefer_genre) ---
+    if country and macro_votes and country in COUNTRY_SPECIFIC_RULES:
+        rule = COUNTRY_SPECIFIC_RULES[country]
+        for macro in list(macro_votes.keys()):
+            for subgenre, _, _ in genre_candidates:
+                sub_lower = subgenre.lower()
+                if any(kw in sub_lower for kw in rule["keywords"]):
+                    if "force_macro" in rule and macro != rule["force_macro"]:
+                        peso = macro_votes.pop(macro)
+                        macro_votes[rule["force_macro"]] += peso * rule["bonus_extra"]
+                    elif "prefer_genre" in rule and macro == rule["prefer_genre"]:
+                        macro_votes[macro] *= rule["bonus_extra"]
+                    else:
+                        macro_votes[macro] *= rule["bonus_extra"]
+                    break
+
+    # --- BONUS BASED ON DETECTED SCRIPT AND COUNTRY ---
+    if detected_lang and country:
+        # South Asia
+        if detected_lang in ['hi', 'ta', 'te', 'ml', 'kn', 'gu', 'or', 'bn'] and country in ['India', 'Pakistan', 'Bangladesh']:
+            for m in ['Indian Pop', 'Pakistani Pop', 'Bangladeshi Pop/Rock']:
+                if m in macro_votes:
+                    macro_votes[m] *= 1.2
+        # Korea
+        if detected_lang == 'ko' and country == 'South Korea':
+            if 'K-Pop/K-Rock' in macro_votes:
+                macro_votes['K-Pop/K-Rock'] *= 1.2
+        # Japan
+        if detected_lang == 'ja' and country == 'Japan':
+            if 'J-Pop/J-Rock' in macro_votes:
+                macro_votes['J-Pop/J-Rock'] *= 1.2
+        # China
+        if detected_lang == 'zh' and country == 'China':
+            if 'C-Pop/C-Rock' in macro_votes:
+                macro_votes['C-Pop/C-Rock'] *= 1.2
+        # Mongolia
+        if detected_lang == 'mn' and country == 'Mongolia':
+            if 'Mongolian Pop/Rock/Metal' in macro_votes:
+                macro_votes['Mongolian Pop/Rock/Metal'] *= 1.2
+        # Arab world
+        if detected_lang == 'ar' and country in ['Egypt', 'Saudi Arabia', 'UAE', 'Morocco', 'Algeria', 'Tunisia']:
+            if 'Arabic Pop/Rock' in macro_votes:
+                macro_votes['Arabic Pop/Rock'] *= 1.2
+        # Turkey
+        if detected_lang == 'tr' and country == 'Turkey':
+            if 'Turkish Pop/Rock' in macro_votes:
+                macro_votes['Turkish Pop/Rock'] *= 1.2
+        # Kazakhstan
+        if detected_lang == 'kk' and country == 'Kazakhstan':
+            if 'Q-pop/Q-rock' in macro_votes:
+                macro_votes['Q-pop/Q-rock'] *= 1.2
+
+    # Log candidates in debug mode
+    if detailed_info and logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"Candidates for {len(genre_candidates)} sources: {', '.join(detailed_info)}")
+
+    if macro_votes:
+        primary_macro = max(macro_votes.items(), key=lambda x: x[1])[0]
+        if len(macro_votes) > 1 and logger.isEnabledFor(logging.DEBUG):
+            sorted_votes = sorted(macro_votes.items(), key=lambda x: x[1], reverse=True)
+            if sorted_votes[0][1] / sorted_votes[1][1] < 1.5:
+                logger.debug(f"  📊 Multiple genres detected: {dict(sorted_votes)}")
+        return primary_macro
+
+    return None
+
+# ============================================================================
 # COUNTRY FUNCTIONS (with cache)
 # ============================================================================
 
