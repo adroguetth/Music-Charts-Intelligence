@@ -634,64 +634,66 @@ def get_section_titles(language: str) -> Dict[str, str]:
     if language == 'es':
         return {
             "title": "Análisis Enriquecido de Charts Musicales",
-            "setup": "1. Configuración y Carga de Datos",
-            "preview": "2. Vista Previa de los Datos",
-            "general_stats": "3. Estadísticas Generales",
-            "country_analysis": "4. Análisis por País",
-            "continent": "4.1. Distribución por Continente",
-            "top_countries_songs": "4.2. Top Países por Cantidad de Canciones",
-            "top_countries_likes": "4.3. Top Países por Total de Likes",
-            "top_songs_country": "4.4. Top 5 Canciones por País",
-            "genre_analysis": "5. Análisis por Género",
-            "treemap": "5.1. Treemap de Distribución de Géneros",
-            "engagement_genre": "5.2. Tasa de Engagement por Género",
-            "country_genre_heatmap": "5.3. Heatmap País-Género",
-            "song_metrics": "6. Métricas de Canciones",
-            "top_views": "6.1. Top Canciones por Vistas",
-            "top_likes": "6.2. Top Canciones por Likes",
-            "top_engagement": "6.3. Top Canciones por Engagement",
-            "video_metrics": "7. Métricas de Video",
-            "views_by_type": "7.1. Vistas por Tipo de Video",
-            "engagement_by_type": "7.2. Engagement por Tipo de Video",
-            "duration_analysis": "7.3. Análisis de Duración",
-            "channel_type": "7.4. Distribución por Tipo de Canal",
-            "temporal_analysis": "8. Análisis Temporal",
-            "views_evolution": "8.1. Evolución de Vistas por Trimestre",
-            "engagement_evolution": "8.2. Evolución del Engagement por Trimestre",
-            "release_distribution": "8.3. Distribución de Lanzamientos por Trimestre",
-            "collaborations": "9. Análisis de Colaboraciones",
-            "executive_summary": "10. Resumen Ejecutivo"
+            "introduction": "## 1. Introducción\n\nEste informe presenta un análisis detallado de los charts musicales de YouTube, explorando tendencias por país, género, métricas de video y colaboraciones. Los datos han sido enriquecidos con información de país, género y tipo de video, y los insights son generados mediante la API de DeepSeek.",
+            "setup": "## 2. Configuración y Carga de Datos",
+            "preview": "## 3. Vista Previa de los Datos",
+            "general_stats": "## 4. Estadísticas Generales",
+            "country_analysis": "## 5. Análisis por País",
+            "continent": "### 5.1. Distribución por Continente",
+            "top_countries_songs": "### 5.2. Top Países por Cantidad de Canciones",
+            "top_countries_likes": "### 5.3. Top Países por Total de Likes",
+            "top_songs_country": "### 5.4. Top 5 Canciones por País",
+            "genre_analysis": "## 6. Análisis por Género",
+            "treemap": "### 6.1. Treemap de Distribución de Géneros",
+            "engagement_genre": "### 6.2. Tasa de Engagement por Género",
+            "country_genre_heatmap": "### 6.3. Heatmap País-Género",
+            "song_metrics": "## 7. Métricas de Canciones",
+            "top_views": "### 7.1. Top Canciones por Vistas",
+            "top_likes": "### 7.2. Top Canciones por Likes",
+            "top_engagement": "### 7.3. Top Canciones por Engagement",
+            "video_metrics": "## 8. Métricas de Video",
+            "views_by_type": "### 8.1. Vistas por Tipo de Video",
+            "engagement_by_type": "### 8.2. Engagement por Tipo de Video",
+            "duration_analysis": "### 8.3. Análisis de Duración",
+            "channel_type": "### 8.4. Distribución por Tipo de Canal",
+            "temporal_analysis": "## 9. Análisis Temporal",
+            "views_evolution": "### 9.1. Evolución de Vistas por Trimestre",
+            "engagement_evolution": "### 9.2. Evolución del Engagement por Trimestre",
+            "release_distribution": "### 9.3. Distribución de Lanzamientos por Trimestre",
+            "collaborations": "## 10. Análisis de Colaboraciones",
+            "executive_summary": "## 11. Resumen Ejecutivo"
         }
     else:
         return {
             "title": "Enriched Music Charts Analysis",
-            "setup": "1. Setup and Data Loading",
-            "preview": "2. Data Preview",
-            "general_stats": "3. General Statistics",
-            "country_analysis": "4. Country Analysis",
-            "continent": "4.1. Continent Distribution",
-            "top_countries_songs": "4.2. Top Countries by Song Count",
-            "top_countries_likes": "4.3. Top Countries by Total Likes",
-            "top_songs_country": "4.4. Top 5 Songs by Country",
-            "genre_analysis": "5. Genre Analysis",
-            "treemap": "5.1. Genre Distribution Treemap",
-            "engagement_genre": "5.2. Engagement Rate by Genre",
-            "country_genre_heatmap": "5.3. Country-Genre Distribution Heatmap",
-            "song_metrics": "6. Song Metrics",
-            "top_views": "6.1. Top Songs by Views",
-            "top_likes": "6.2. Top Songs by Likes",
-            "top_engagement": "6.3. Top Songs by Engagement",
-            "video_metrics": "7. Video Metrics",
-            "views_by_type": "7.1. Views by Video Type",
-            "engagement_by_type": "7.2. Engagement by Video Type",
-            "duration_analysis": "7.3. Video Duration Analysis",
-            "channel_type": "7.4. Channel Type Distribution",
-            "temporal_analysis": "8. Temporal Analysis",
-            "views_evolution": "8.1. Views Evolution by Quarter",
-            "engagement_evolution": "8.2. Engagement Evolution by Quarter",
-            "release_distribution": "8.3. Release Distribution by Quarter",
-            "collaborations": "9. Collaborations Analysis",
-            "executive_summary": "10. Executive Summary"
+            "introduction": "## 1. Introduction\n\nThis report presents a detailed analysis of YouTube music charts, exploring trends by country, genre, video metrics, and collaborations. The data has been enriched with country, genre, and video type information, and insights are generated using the DeepSeek API.",
+            "setup": "## 2. Setup and Data Loading",
+            "preview": "## 3. Data Preview",
+            "general_stats": "## 4. General Statistics",
+            "country_analysis": "## 5. Country Analysis",
+            "continent": "### 5.1. Continent Distribution",
+            "top_countries_songs": "### 5.2. Top Countries by Song Count",
+            "top_countries_likes": "### 5.3. Top Countries by Total Likes",
+            "top_songs_country": "### 5.4. Top 5 Songs by Country",
+            "genre_analysis": "## 6. Genre Analysis",
+            "treemap": "### 6.1. Genre Distribution Treemap",
+            "engagement_genre": "### 6.2. Engagement Rate by Genre",
+            "country_genre_heatmap": "### 6.3. Country-Genre Distribution Heatmap",
+            "song_metrics": "## 7. Song Metrics",
+            "top_views": "### 7.1. Top Songs by Views",
+            "top_likes": "### 7.2. Top Songs by Likes",
+            "top_engagement": "### 7.3. Top Songs by Engagement",
+            "video_metrics": "## 8. Video Metrics",
+            "views_by_type": "### 8.1. Views by Video Type",
+            "engagement_by_type": "### 8.2. Engagement by Video Type",
+            "duration_analysis": "### 8.3. Video Duration Analysis",
+            "channel_type": "### 8.4. Channel Type Distribution",
+            "temporal_analysis": "## 9. Temporal Analysis",
+            "views_evolution": "### 9.1. Views Evolution by Quarter",
+            "engagement_evolution": "### 9.2. Engagement Evolution by Quarter",
+            "release_distribution": "### 9.3. Release Distribution by Quarter",
+            "collaborations": "## 10. Collaborations Analysis",
+            "executive_summary": "## 11. Executive Summary"
         }
 
 
@@ -732,25 +734,15 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
         }
     }
 
-    # Title cell with enhanced metadata (includes author info)
+    # Title cell
     nb.cells.append(new_markdown_cell(f"""# {titles['title']}
-
-| | |
-|---|---|
-| **📁 Data Source** | YouTube Charts enriched with country, genre, and video metrics |
-| **📅 Week** | {year}-W{week} |
-| **🕐 Generated** | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} |
-| **👤 Author** | Alfonso Droguett |
-| **🔗 LinkedIn** | [adroguetth](https://www.linkedin.com/in/adroguetth/) |
-| **🌐 Portfolio** | [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/) |
-| **📧 Email** | adroguett.consultor@gmail.com |
-| **🤖 AI Analysis** | Powered by DeepSeek API |
-
----
 """))
 
-    # Setup and Data Loading - with corrected database path
-    nb.cells.append(new_markdown_cell(f"## {titles['setup']}"))
+    # Introduction (with AI-generated intro could be added later, but we'll keep static for now)
+    nb.cells.append(new_markdown_cell(titles['introduction']))
+
+    # Setup and Data Loading
+    nb.cells.append(new_markdown_cell(titles['setup']))
     nb.cells.append(new_code_cell(f"""
 import pandas as pd
 import numpy as np
@@ -820,11 +812,11 @@ df.head()
 """))
 
     # Data Preview
-    nb.cells.append(new_markdown_cell(f"## {titles['preview']}"))
+    nb.cells.append(new_markdown_cell(titles['preview']))
     nb.cells.append(new_code_cell("df.head()"))
 
     # General Statistics
-    nb.cells.append(new_markdown_cell(f"## {titles['general_stats']}"))
+    nb.cells.append(new_markdown_cell(titles['general_stats']))
     nb.cells.append(new_code_cell(f"""
 stats = pd.DataFrame({{
     'Total Songs': [{len(df)}],
@@ -842,13 +834,11 @@ display(stats)
 """))
 
     if insights.get('general_stats'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['general_stats']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['general_stats']))
 
     # Country Analysis - Continent Distribution
-    nb.cells.append(new_markdown_cell(f"## {titles['country_analysis']}"))
-    nb.cells.append(new_markdown_cell(f"### {titles['continent']}"))
+    nb.cells.append(new_markdown_cell(titles['country_analysis']))
+    nb.cells.append(new_markdown_cell(titles['continent']))
     nb.cells.append(new_code_cell("""
 continents = {
     'North America': ['United States', 'Mexico', 'Canada', 'Puerto Rico'],
@@ -901,7 +891,7 @@ plt.show()
 """))
 
     # Top Countries by Song Count
-    nb.cells.append(new_markdown_cell(f"### {titles['top_countries_songs']}"))
+    nb.cells.append(new_markdown_cell(titles['top_countries_songs']))
     nb.cells.append(new_code_cell("""
 top_countries = (df
     .groupby('artist_country')
@@ -941,12 +931,10 @@ plt.show()
 """))
 
     if insights.get('top_countries'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['top_countries']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['top_countries']))
 
     # Top Countries by Likes
-    nb.cells.append(new_markdown_cell(f"### {titles['top_countries_likes']}"))
+    nb.cells.append(new_markdown_cell(titles['top_countries_likes']))
     nb.cells.append(new_code_cell("""
 top_likes = (df
     .groupby('artist_country')['likes']
@@ -991,12 +979,10 @@ plt.show()
 """))
 
     if insights.get('top_likes'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['top_likes']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['top_likes']))
 
     # Top 5 Songs by Country
-    nb.cells.append(new_markdown_cell(f"### {titles['top_songs_country']}"))
+    nb.cells.append(new_markdown_cell(titles['top_songs_country']))
     nb.cells.append(new_code_cell("""
 print("\\n" + "="*80)
 print("TOP 5 SONGS BY COUNTRY (Views & Likes)")
@@ -1027,7 +1013,7 @@ for country in top_countries_list:
 """))
 
     # Genre Analysis
-    nb.cells.append(new_markdown_cell(f"## {titles['genre_analysis']}"))
+    nb.cells.append(new_markdown_cell(titles['genre_analysis']))
     nb.cells.append(new_code_cell("""
 genre_stats = (df
     .groupby('macro_genre')
@@ -1049,7 +1035,7 @@ display(genre_stats.head(10)[['macro_genre', 'total_songs', 'engagement_rate']])
 """))
 
     # Treemap
-    nb.cells.append(new_markdown_cell(f"### {titles['treemap']}"))
+    nb.cells.append(new_markdown_cell(titles['treemap']))
     nb.cells.append(new_code_cell("""
 fig = px.treemap(
     genre_stats,
@@ -1066,7 +1052,7 @@ fig.show()
 """))
 
     # Engagement by Genre
-    nb.cells.append(new_markdown_cell(f"### {titles['engagement_genre']}"))
+    nb.cells.append(new_markdown_cell(titles['engagement_genre']))
     nb.cells.append(new_code_cell("""
 print("="*80)
 print("ENGAGEMENT ANALYSIS BY GENRE")
@@ -1112,12 +1098,10 @@ print(f"   Min: {genre_stats['engagement_rate'].min():.2f}% ({genre_stats.loc[ge
 """))
 
     if insights.get('genre_engagement'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['genre_engagement']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['genre_engagement']))
 
     # Country-Genre Heatmap
-    nb.cells.append(new_markdown_cell(f"### {titles['country_genre_heatmap']}"))
+    nb.cells.append(new_markdown_cell(titles['country_genre_heatmap']))
     nb.cells.append(new_code_cell("""
 df_analysis = df[~df['artist_country'].isin(['Multi-country', 'Unknown'])]
 
@@ -1161,8 +1145,8 @@ fig.show()
 """))
 
     # Song Metrics
-    nb.cells.append(new_markdown_cell(f"## {titles['song_metrics']}"))
-    nb.cells.append(new_markdown_cell(f"### {titles['top_views']}"))
+    nb.cells.append(new_markdown_cell(titles['song_metrics']))
+    nb.cells.append(new_markdown_cell(titles['top_views']))
     nb.cells.append(new_code_cell("""
 print("="*80)
 print("TOP 10 SONGS BY VIEWS")
@@ -1170,7 +1154,7 @@ print("="*80)
 display(df.nlargest(10, 'views')[['rank', 'track_name', 'artist_names', 'views', 'artist_country']])
 """))
 
-    nb.cells.append(new_markdown_cell(f"### {titles['top_likes']}"))
+    nb.cells.append(new_markdown_cell(titles['top_likes']))
     nb.cells.append(new_code_cell("""
 print("="*80)
 print("TOP 10 SONGS BY LIKES")
@@ -1178,7 +1162,7 @@ print("="*80)
 display(df.nlargest(10, 'likes')[['rank', 'track_name', 'artist_names', 'likes', 'artist_country']])
 """))
 
-    nb.cells.append(new_markdown_cell(f"### {titles['top_engagement']}"))
+    nb.cells.append(new_markdown_cell(titles['top_engagement']))
     nb.cells.append(new_code_cell("""
 print("="*80)
 print("TOP 10 SONGS BY ENGAGEMENT (Likes/Views %)")
@@ -1187,7 +1171,7 @@ display(df.nlargest(10, 'engagement')[['rank', 'track_name', 'artist_names', 'en
 """))
 
     # Video Metrics
-    nb.cells.append(new_markdown_cell(f"## {titles['video_metrics']}"))
+    nb.cells.append(new_markdown_cell(titles['video_metrics']))
     nb.cells.append(new_code_cell("""
 video_stats = {
     'Official Videos': df['is_official_video'].sum(),
@@ -1204,7 +1188,7 @@ for k, v in video_stats.items():
 """))
 
     # Views by Video Type
-    nb.cells.append(new_markdown_cell(f"### {titles['views_by_type']}"))
+    nb.cells.append(new_markdown_cell(titles['views_by_type']))
     nb.cells.append(new_code_cell("""
 df_video = df.copy()
 conditions = [
@@ -1247,12 +1231,10 @@ plt.show()
 """))
 
     if insights.get('video_metrics'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['video_metrics']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['video_metrics']))
 
     # Engagement by Video Type
-    nb.cells.append(new_markdown_cell(f"### {titles['engagement_by_type']}"))
+    nb.cells.append(new_markdown_cell(titles['engagement_by_type']))
     nb.cells.append(new_code_cell("""
 engagement_stats = df_video.groupby('video_type').agg(
     total_videos=('engagement', 'count'),
@@ -1286,7 +1268,7 @@ plt.show()
 """))
 
     # Duration Analysis
-    nb.cells.append(new_markdown_cell(f"### {titles['duration_analysis']}"))
+    nb.cells.append(new_markdown_cell(titles['duration_analysis']))
     nb.cells.append(new_code_cell("""
 duration_minutes = df['duration_s'] / 60
 
@@ -1348,12 +1330,10 @@ print(f"   Q1: {duration_minutes.quantile(0.25):.1f} min | Q3: {duration_minutes
 """))
 
     if insights.get('duration'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['duration']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['duration']))
 
     # Channel Type Distribution
-    nb.cells.append(new_markdown_cell(f"### {titles['channel_type']}"))
+    nb.cells.append(new_markdown_cell(titles['channel_type']))
     nb.cells.append(new_code_cell("""
 channel_counts = df['channel_type'].value_counts()
 
@@ -1389,8 +1369,8 @@ plt.show()
 """))
 
     # Temporal Analysis
-    nb.cells.append(new_markdown_cell(f"## {titles['temporal_analysis']}"))
-    nb.cells.append(new_markdown_cell(f"### {titles['views_evolution']}"))
+    nb.cells.append(new_markdown_cell(titles['temporal_analysis']))
+    nb.cells.append(new_markdown_cell(titles['views_evolution']))
     nb.cells.append(new_code_cell("""
 bg_color = '#F9F9F9'
 genre_palette = ['#FF0000', '#282828', '#4A4A4A', '#FFB347', '#FF6B6B']
@@ -1428,7 +1408,7 @@ plt.tight_layout()
 plt.show()
 """))
 
-    nb.cells.append(new_markdown_cell(f"### {titles['engagement_evolution']}"))
+    nb.cells.append(new_markdown_cell(titles['engagement_evolution']))
     nb.cells.append(new_code_cell("""
 fig2, ax2 = plt.subplots(figsize=(12, 6), facecolor=bg_color)
 ax2.set_facecolor(bg_color)
@@ -1458,11 +1438,9 @@ plt.show()
 """))
 
     if insights.get('temporal'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['temporal']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['temporal']))
 
-    nb.cells.append(new_markdown_cell(f"### {titles['release_distribution']}"))
+    nb.cells.append(new_markdown_cell(titles['release_distribution']))
     nb.cells.append(new_code_cell("""
 season_counts = df['upload_quarter'].value_counts().sort_index()
 
@@ -1489,7 +1467,7 @@ plt.show()
 """))
 
     # Collaborations Analysis
-    nb.cells.append(new_markdown_cell(f"## {titles['collaborations']}"))
+    nb.cells.append(new_markdown_cell(titles['collaborations']))
     nb.cells.append(new_code_cell("""
 collab_stats = df.groupby('is_collaboration').agg(
     count=('track_name', 'count'),
@@ -1526,21 +1504,30 @@ plt.show()
 """))
 
     if insights.get('collaborations'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['collaborations']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['collaborations']))
 
     # Executive Summary
-    nb.cells.append(new_markdown_cell(f"## {titles['executive_summary']}"))
+    nb.cells.append(new_markdown_cell(titles['executive_summary']))
+
+    # Metadata table for executive summary
+    meta_table = f"""
+| | |
+|---|---|
+| **📁 Data Source** | YouTube Charts enriched with country, genre, and video metrics |
+| **📅 Week** | {year}-W{week} |
+| **🕐 Generated** | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} |
+| **👤 Author** | Alfonso Droguett |
+| **🔗 LinkedIn** | [adroguetth](https://www.linkedin.com/in/adroguetth/) |
+| **🌐 Portfolio** | [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/) |
+| **📧 Email** | adroguett.consultor@gmail.com |
+| **🤖 AI Analysis** | Powered by DeepSeek API |
+"""
+    nb.cells.append(new_markdown_cell(meta_table))
 
     if insights.get('executive_summary'):
-        nb.cells.append(new_markdown_cell(f"""
-{insights['executive_summary']}
-"""))
+        nb.cells.append(new_markdown_cell(insights['executive_summary']))
     else:
-        nb.cells.append(new_markdown_cell("""
-*No AI summary available. Please configure DEEPSEEK_API_KEY to generate insights.*
-"""))
+        nb.cells.append(new_markdown_cell("*No AI summary available. Please configure DEEPSEEK_API_KEY to generate insights.*"))
 
     # No footer line - removed as requested
 
