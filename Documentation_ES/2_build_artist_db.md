@@ -1,207 +1,200 @@
-# Script 2: Artist Country + Genre Detection System, Enriquecimiento Inteligente
-![MIT](https://img.shields.io/badge/License-MIT-green) ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue) [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) [![Pandas](https://img.shields.io/badge/Pandas-150458?logo=pandas&logoColor=fff)](#) ![Requests](https://img.shields.io/badge/Requests-FF6F61?logo=python&logoColor=fff) [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) ![musicbrainz](https://img.shields.io/badge/MusicBrainz-BA478F?logo=musicbrainz&logoColor=white) ![Wikipedia](https://img.shields.io/badge/Wikipedia-000000?logo=wikipedia&logoColor=white)
+# 🎵 Script 2: Artist Country + Genre Detection System, Intelligent Enrichment
 
-## 📥 Descarga Rápida
-| Documento                  | Formato                                                       |
+![MIT](https://img.shields.io/badge/License-MIT-green) ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue) [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) [![Pandas](https://img.shields.io/badge/Pandas-150458?logo=pandas&logoColor=fff)](#) ![Requests](https://img.shields.io/badge/Requests-FF6F61?logo=python&logoColor=fff) [![SQLite](https://img.shields.io/badge/SQLite-%2307405e.svg?logo=sqlite&logoColor=white)](#) ![musicbrainz](https://img.shields.io/badge/MusicBrainz-BA478F?logo=musicbrainz&logoColor=white) ![Wikipedia](https://img.shields.io/badge/Wikipedia-000000?logo=wikipedia&logoColor=white) [![Deepseek](https://custom-icon-badges.demolab.com/badge/Deepseek-4D6BFF?logo=deepseek&logoColor=fff)](#)
+
+## 📥 Quick Downloads
+| Document                | Format                                                     |                                                    
 | ------------------------- | ------------------------------------------------------------ |
-| **🇬🇧 Documentación en inglés** | [PDF](https://drive.google.com/file/d/1viUAxZ7k-qeYYbyvZf2OaP20AfLOgKh2/view?usp=drive_link) |
-| **🇪🇸 Documentación en español** | [PDF](https://drive.google.com/file/d/1WBHBreKeVToTBygSyCuYsHQUr_zSl3BT/view?usp=drive_link) |
+| **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1viUAxZ7k-qeYYbyvZf2OaP20AfLOgKh2/view?usp=drive_link) |
+| **🇪🇸 Spanish Documentation**  | [PDF](https://drive.google.com/file/d/1WBHBreKeVToTBygSyCuYsHQUr_zSl3BT/view?usp=drive_link) |
 
-## 📋 Descripción General
+## 📋 General Description
 
-Este proyecto es el segundo componente del sistema de inteligencia de YouTube Charts. Toma los nombres de artistas en bruto extraídos por el descargador y los **enriquece con metadatos geográficos y de género** consultando múltiples bases de conocimiento abiertas. El resultado es una base de datos estructurada de artistas con su país de origen y género musical principal.
+This project is the second component of the YouTube Charts intelligence system. It takes the raw artist names extracted by the downloader and **enriches them with geographic and genre metadata** by querying multiple open knowledge bases. The result is a structured database of artists with their country of origin and primary music genre.
 
-### Características Principales
 
-- **Búsqueda Multi-Fuente**: Consultas inteligentes en cascada a MusicBrainz, Wikipedia (resumen e infobox) y Wikidata
-- **Variación Inteligente de Nombres**: Genera hasta 15 variaciones por artista (sin acentos, prefijos eliminados, etc.) para máxima tasa de coincidencia
-- **Inteligencia Geográfica**: Detección de país a partir de ciudades, gentilicios y referencias regionales usando un diccionario curado de más de 30.000 términos
-- **Clasificación de Géneros**: Más de 200 macro-géneros y 5.000+ mapeos de subgéneros con sistema de votación ponderada
-- **Reglas Específicas por País**: Manejo especial para más de 50 países (ej. K-Pop para Corea del Sur, Sertanejo para Brasil)
-- **Detección de Escritura**: Detección automática de idioma para escrituras no latinas (cirílico, devanagari, árabe, hangul, etc.)
-- **Actualizaciones Inteligentes**: Solo completa datos faltantes, nunca sobrescribe información correcta existente
-- **Caché en Memoria**: Evita llamadas API redundantes durante la ejecución
-- **Optimizado para CI/CD**: Configurado específicamente para GitHub Actions con fallbacks progresivos
+### Key Features
 
-## 📊 Diagrama de Flujo del Proceso
+- **Multi-Source Lookup**: Intelligent cascading queries to MusicBrainz, Wikipedia (summary & infobox), and Wikidata
+- **DeepSeek AI Fallback**: Uses DeepSeek API as last resort when all free sources fail (cost-effective, ~$0.002 per 100 artists)
+- **Smart Name Variation**: Generates up to 15 variations per artist (accents removed, prefixes stripped, etc.) for maximum match rate
+- **Geographic Intelligence**: Country detection from cities, demonyms, and regional references using a curated dictionary of 30,000+ terms
+- **Genre Classification**: 200+ macro-genres and 5,000+ subgenre mappings with weighted voting system
+- **Country-Specific Rules**: Special handling for 50+ countries (e.g., K-Pop for South Korea, Sertanejo for Brazil)
+- **Script Detection**: Automatic language detection for non-Latin scripts (Cyrillic, Devanagari, Arabic, Hangul, etc.)
+- **Intelligent Updates**: Only fills missing data, never overwrites existing correct information
+- **In-Memory Caching**: Avoids redundant API calls during execution
+- **CI/CD Optimized**: Specifically configured for GitHub Actions with progressive fallbacks
+- **Rate Limiting**: Built-in delays to respect API quotas and avoid throttling
 
-```mermaid
-graph TD
-    classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef process fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-    classDef api fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
-    classDef cache fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px;
-    classDef decision fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
-    classDef output fill:#e0f2f1,stroke:#004d40,stroke-width:2px;
-    A[(Base de Datos de Charts<br/>youtube_charts_YYYY-WXX.db)] --> B[Leer artistas del chart]
-    B --> C["Separar artistas<br/>(manejar feat., &, etc.)"]
-    C --> D{Obtener lista de<br/>artistas únicos}
-    D --> E[Por cada artista...]
-    E --> F{¿El artista ya existe<br/>en artist_countries_genres.db?}
-    F -->|"__p65__"| G[Mostrar ✅ y continuar]
-    F -->|"__p66__"| H[Buscar solo información faltante]
-    F -->|"__p67__"| I[Buscar país y género completos]
-    H --> J[Iniciar búsqueda de país]
-    I --> J
-    
-    subgraph Búsqueda_País["__p9__"]
-        J --> K[Generar variaciones<br/>de nombre]
-        K --> L["Consultar MusicBrainz<br/>(caché)"]
-        L --> M{¿País encontrado?}
-        M -->|"__p68__"| N[✅ País detectado]
-        M -->|"__p69__"| O["Consultar Wikipedia EN<br/>(resumen + infobox)"]
-        O --> P{¿País encontrado?}
-        P -->|"__p70__"| N
-        P -->|"__p71__"| Q[Consultar Wikipedia en<br/>idiomas prioritarios*]
-        Q --> R{¿País encontrado?}
-        R -->|"__p72__"| N
-        R -->|"__p73__"| S[Consultar Wikidata]
-        S --> T{¿País encontrado?}
-        T -->|"__p74__"| N
-        T -->|"__p75__"| U[País = Desconocido]
-    end
-    N --> V[Iniciar búsqueda de género]
-    U --> V
-    
-    subgraph Búsqueda_Género["__p18__"]
-        V --> W[Generar variaciones<br/>de nombre]
-        W --> X["MusicBrainz<br/>(géneros/etiquetas)"]
-        X --> Y[Añadir candidatos<br/>con pesos]
-        Y --> Z["Wikidata<br/>(propiedad P136)"]
-        Z --> AA[Añadir candidatos<br/>con pesos]
-        
-        AA --> AB{¿Ya tenemos<br/>3+ candidatos?}
-        AB -->|"__p76__"| AC[Wikipedia en idiomas<br/>prioritarios**]
-        AC --> AD[Extraer de infobox<br/>y resumen usando patrones]
-        AD --> AE[Añadir candidatos<br/>con pesos]
-        
-        AE --> AF{¿Ya tenemos<br/>3+ candidatos?}
-        AF -->|"__p77__"| AG[Wikipedia en otros<br/>idiomas comunes]
-        AG --> AH[Extraer y añadir]
-        
-        AB -->|"__p78__"| AI[Seleccionar género<br/>principal]
-        AF -->|"__p79__"| AI
-        AH --> AI
-    end
-    subgraph Votación["__p30__"]
-        AI --> AJ[Recibir todos<br/>los candidatos con pesos]
-        AJ --> AK[Normalizar a<br/>macro-género]
-        AK --> AL[Aplicar pesos por fuente]
-        AL --> AM[Detectar escritura<br/>del nombre]
-        AM --> AN[Bonus por términos<br/>específicos]
-        AN --> AO{¿País<br/>detectado?}
-        
-        AO -->|"__p80__"| AP["Aplicar prioridad de país<br/>(2.0x, 1.5x, 1.2x)"]
-        AP --> AQ["Aplicar reglas específicas<br/>del país (force_macro, etc.)"]
-        
-        AO -->|"__p81__"| AR[Aplicar bonus por escritura<br/>si corresponde]
-        AQ --> AS[Sumar votos y<br/>seleccionar ganador]
-        AR --> AS
-        
-        AS --> AT[Fallback: primer género<br/>de prioridad del país]
-    end
-    AT --> AU{¿Hay un género<br/>ganador?}
-    AU -->|"__p82__"| AV[Preparar datos finales]
-    AU -->|"__p83__"| AW[Conectar a<br/>artist_countries_genres.db]
-    AV --> AW
-    AW --> AX[Actualizar solo<br/>campos faltantes]
-    N --> AX
-    U --> AX
-    
-    AX --> AY[Insertar nuevo registro]
-    
-    AY --> AZ{¿El artista<br/>ya existe?}
-    AZ -->|"__p84__"| BA[(artist.db<br/>actualizada)]
-    AZ -->|"__p85__"| BB[Registrar estadísticas<br/>y continuar al siguiente artista]
-    
-    BA --> BC[Todos los artistas procesados]
-    BB --> BC
-    BC --> BD[Generar reporte final<br/>con estadísticas]
-    BD --> E
-    E --> BE[Hacer commit y push<br/>al repositorio]
-    BE --> BF["(* Idiomas prioritarios: basados en país y escritura detectada"]
-    BF --> BG[** ej. Corea → ko, en; India → hi, ta, te, en; etc.]
-    class A input;
-    class BC output;
-    class J,W process;
-    class L,X,Z,AC,AG api;
-    class AL,AM,AN,AP,AQ,AS,AT votación;
-    class F,AZ,AO,AU decisión;
-    class N,AW,BG output;
-    N1[s53]
-    N2[s54]
-    
-    N1 -.-> Q
-    N2 -.-> AC
-```
+## 📊 Process Flow Diagram
 
-### **Leyenda**
+### **Legend**
+| Color        | Type     | Description                   |
+| :----------- | :------- | :---------------------------- |
+| 🔵 Blue       | Input    | Source data (charts database) |
+| 🟠 Orange     | Process  | Internal processing logic     |
+| 🟣 Purple     | API      | External service queries      |
+| 🟢 Green      | Cache    | In-memory temporary storage   |
+| 🔴 Red        | Decision | Conditional branching points  |
+| 🟢 Dark Green | Output   | Results and final database    |
 
-| Color          | Tipo     | Descripción                               |
-| :------------- | :------- | :---------------------------------------- |
-| 🔵 Azul         | Entrada  | Datos de origen (base de datos de charts) |
-| 🟠 Naranja      | Proceso  | Lógica de procesamiento interno           |
-| 🟣 Púrpura      | API      | Consultas a servicios externos            |
-| 🟢 Verde        | Caché    | Almacenamiento temporal en memoria        |
-| 🔴 Rojo         | Decisión | Puntos de bifurcación condicional         |
-| 🟢 Verde Oscuro | Salida   | Resultados y base de datos final          |
+### **Diagram 1: Main Flow Overview**
 
-### **Flujo Simplificado**
+<img src="https://drive.google.com/uc?export=view&id=18uJf6B1ihQs5b3Hv1MZuqnwQs9DNjMjA" alt="Country Search" width="350">
 
-1. **Entrada**: Lee la base de datos semanal de charts (`youtube_charts_YYYY-WXX.db`)
-2. **Extracción**: Obtiene y separa los nombres de artistas (maneja feat., &, etc.)
-3. **Deduplicación**: Crea lista de artistas únicos
-4. **Por cada artista**:
-   - Verifica si ya existe en `artist_countries_genres.db`
-   - Si está completo → salta
-   - Si falta información → busca solo los campos faltantes
-   - Si es nuevo → busca país y género completos
-5. **Búsqueda de País**: MusicBrainz → Wikipedia EN → Wikipedia otros idiomas → Wikidata
-6. **Búsqueda de Género**: MusicBrainz → Wikidata → Wikipedia (con detección de idioma)
-7. **Sistema de Votación**:
-   - Normaliza candidatos a macro-géneros
-   - Aplica pesos por fuente
-   - Bonus por términos específicos
-   - Aplica prioridad de país (2.0x, 1.5x, 1.2x)
-   - Aplica reglas específicas por país (force_macro, map_generic_to)
-   - Bonus por detección de escritura
-8. **Actualización de Base de Datos**: Inserta o actualiza con lógica parcial (solo campos faltantes)
-9. **Reporte**: Estadísticas finales y commit automático
+This diagram shows the **high-level pipeline** of the entire system:
 
-## 🔍 Análisis Detallado de `2_build_artist_db.py`
+1. **Input**: Reads the weekly YouTube Charts database (`youtube_charts_YYYY-WXX.db`)
+2. **Extraction**: Reads artist names and splits them (handles "feat.", "&", commas, etc.)
+3. **Deduplication**: Creates a list of unique artists to avoid redundant processing
+4. **Per-Artist Loop**: For each artist, checks if they already exist in the enriched database
+   - **If complete** (country + genre known): Skips to next artist ✅
+   - **If missing info**: Searches only the missing fields (country or genre)
+   - **If new**: Performs full country and genre search
+5. **Country Search** → **Genre Search** → **Voting System** → **Database Update**
+6. **After all artists**: Generates a final report and automatically commits changes to GitHub
 
-### Estructura del Código
+### **Diagram 2: Country Search (Detailed)**
 
-#### **1. Configuración y Rutas**
+<img src="https://drive.google.com/uc?export=view&id=1mQx2lJ4bltmssN9VBTnkiFxwQXSJiz7y" alt="Country Search" width="250">
 
+This diagram details the **cascading search strategy** for detecting an artist's country:
+
+1. **Start**: Receives an artist name (may be missing info or new artist)
+2. **Name Variations**: Generates up to 15 variations (no accents, no prefixes, etc.)
+3. **Cache Check**: First checks in-memory cache to avoid repeat API calls
+4. **MusicBrainz**: Queries MusicBrainz API (structured data, high reliability)
+   - If found → returns country ✅
+5. **Wikipedia English**: If not found, queries Wikipedia English:
+   - First checks summary (first paragraph) for patterns like "born in...", "from..."
+   - Then checks infobox for fields like "origin", "birth_place", "location"
+   - If found → returns country ✅
+6. **Wikipedia Priority Languages**: If still not found, tries Wikipedia in languages based on:
+   - The artist's country (if already known from previous step)
+   - Detected script from the artist's name (Cyrillic → Russian Wikipedia, etc.)
+   - If found → returns country ✅
+7. **Wikidata**: Final free source, queries Wikidata using properties P27 (country of citizenship) and P19 (place of birth)
+8. **DeepSeek AI Fallback**: Only if all free sources fail, queries DeepSeek API (cost-effective)
+   - Uses structured prompt asking for country and genre
+   - Results are normalized using the same validation functions
+   - Rate-limited to 0.5s delay between calls
+9. **Result**: Returns either a canonical country name or "Unknown"
+
+### **Diagram 3: Genre Search (Detailed)**
+
+<img src="https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0_" alt="Country Search" width="350">
+
+This diagram shows how the system **collects genre candidates** from multiple sources:
+
+1. **Start**: Receives artist name (and country if already detected)
+2. **Name Variations**: Same variation system for maximum match rate
+3. **MusicBrainz**: First source, extracts genre tags and their counts
+   - Adds candidates with base weight (1.5x for MusicBrainz)
+4. **Wikidata**: Second source, queries property P136 (genre)
+   - Adds candidates with base weight (1.3x for Wikidata)
+5. **Candidate Check**: Checks if we already have at least 3 genre candidates
+   - **If yes**: Proceeds directly to voting system
+   - **If no**: Continues to Wikipedia search
+6. **Wikipedia Priority Languages**: Queries Wikipedia in languages prioritized by:
+   - Country (e.g., Korean artists → Korean Wikipedia)
+   - Detected script (e.g., Arabic name → Arabic Wikipedia)
+7. **Extraction**: Uses pattern matching to extract genres from:
+   - **Infobox**: Looks for "genre", "genres", "género" fields
+   - **Summary**: Uses NLP patterns like "is a [genre] singer", "known for [genre] music"
+8. **Second Check**: If still under 3 candidates, tries Wikipedia in other common languages
+9. **DeepSeek AI Fallback**: Only if all free sources return no candidates, queries DeepSeek API
+   - Uses the country (if known) as context to improve accuracy
+   - Returns a normalized genre or raw string
+10. **Final**: All candidates (with their weights and sources) go to the Voting System
+
+### **Diagram 4: Voting & Weight System**
+
+<img src="https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN" alt="Country Search" width="250">
+
+This is the **intelligent decision engine** that selects the final genre:
+
+1. **Input**: Receives all genre candidates with their raw weights and sources
+2. **Normalization**: Maps each specific subgenre to a macro-genre using the `GENRE_MAPPINGS` dictionary
+   - Example: "synth pop", "synth-pop", "synthpop" all → "Pop"
+3. **Source Weights**: Applies multipliers based on source reliability:
+   - MusicBrainz: ×1.5 (structured, reliable)
+   - Wikidata: ×1.3 (semantic, medium reliability)
+   - Wikipedia Infobox: ×1.2 (semi-structured)
+   - Wikipedia Summary: ×1.0 (free text, lower confidence)
+   - Wikipedia Keywords: ×0.5 (lowest confidence)
+4. **Script Detection**: Analyzes the artist's name to detect writing system (Cyrillic, Hangul, Arabic, etc.)
+5. **Term Bonuses**: Multiplies weight by 1.4x if specific keywords are found:
+   - "reggaeton", "trap latino" → boosts Latin genres
+   - "k-pop", "korean pop" → boosts K-Pop
+   - "sertanejo", "funk brasileiro" → boosts Brazilian genres
+6. **Country Priority** (if country known): Applies additional multipliers based on country's genre priority list:
+   - 1st priority genre: ×2.0
+   - 2nd priority genre: ×1.5
+   - 3rd+ priority genres: ×1.2
+7. **Country-Specific Rules**: Applies special rules for certain countries:
+   - **force_macro**: Forces a specific macro-genre (e.g., Puerto Rico → Reggaetón/Trap Latino)
+   - **map_generic_to**: Maps generic genres (Pop, Rock) to regional ones (e.g., Korea → K-Pop/K-Rock)
+8. **Script Bonus**: If detected script matches the country's dominant language, applies ×1.2 bonus
+9. **Vote Summation**: Adds all weighted votes for each macro-genre
+10. **Winner Selection**: Chooses macro-genre with highest total votes
+11. **Fallback**: If no winner and country is known, uses the first genre from country's priority list
+
+### **Diagram 5: Database Update**
+<img src="https://drive.google.com/uc?export=view&id=1zU7GwiHW3DYDlY7kGLnwC6HqY99SRF5m" alt="Country Search" width="350">
+
+This diagram shows how the system **persists data intelligently**:
+
+1. **Input**: Receives final country and genre data for an artist
+2. **Connect**: Opens connection to `artist_countries_genres.db`
+3. **Existence Check**: Queries if artist already exists in database
+4. **If Artist Exists**:
+   - **Check Missing Fields**: Compares existing data with new data
+   - **Update Only Missing**: Updates country only if existing is NULL/Unknown and new is known
+   - Updates genre only if existing is NULL/Unknown and new is known
+   - **Never overwrites** existing correct data!
+5. **If Artist is New**:
+   - Inserts complete new record with country and genre
+6. **Log Statistics**: Records success/failure for reporting
+7. **Loop Check**: If more artists remain, returns to main loop
+8. **All Artists Processed**:
+   - Generates final report with statistics (success rate, new artists, etc.)
+9. **GitHub Commit**: Automatically commits and pushes changes to repository
+
+---
+## 🔍 Detailed Analysis of `2_build_artist_db.py`
+
+### Code Structure
+
+#### **1. Configuration and Paths**
 ```python
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 CHARTS_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
-ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_artist_countries_genres" / "artist_countries_genres.db"
+ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_countries-genres-artist" / "artist_countries_genres.db"
 ```
 
-El script lee la salida del descargador y crea su propia base de datos enriquecida:
+The script reads from the downloader's output and creates its own enriched database:
 
-- **Entrada**: Bases de datos semanales de charts del paso 1 (`youtube_charts_YYYY-WXX.db`)
-- **Salida**: Base de datos de metadatos de artistas (`artist_countries_genres.db`)
-- **Estructura**: `charts_archive/2_artist_countries_genres/`
+- **Input**: Weekly chart databases from step 1 (`youtube_charts_YYYY-WXX.db`)
+- **Output**: Artist metadata database (`artist_countries_genres.db`)
+- **Structure**: `charts_archive/2_countries-genres-artist/`
 
-#### **2. Sistema Inteligente de Variación de Nombres**
+#### **2. Intelligent Name Variation System**
 
 ```python
 def generate_all_variations(name: str) -> List[str]:
     """
-    Genera hasta 15 variaciones del nombre de un artista:
+    Generates up to 15 variations of an artist name:
     - Original
-    - Sin acentos
-    - Sin puntos
-    - Sin guiones
-    - Sin prefijos (DJ, MC, Lil, The, etc.)
-    - Combinaciones de los anteriores
+    - Without accents
+    - Without dots
+    - Without hyphens
+    - Without prefixes (DJ, MC, Lil, The, etc.)
+    - Combinations of the above
     """
 ```
 
-**Ejemplo para "Lil Wayne":**
+**Example for "Lil Wayne":**
 
 ```python
 Lil Wayne
@@ -209,10 +202,10 @@ Wayne
 Lil Wayne
 Lil Wayne
 Wayne
-... (hasta 15 variaciones)
+... (up to 15 variations)
 ```
 
-**El diccionario de prefijos incluye:**
+**Prefix dictionary includes:**
 
 ```python
 ARTIST_PREFIXES = {
@@ -229,109 +222,123 @@ ARTIST_PREFIXES = {
 }
 ```
 
-#### **3. Sistema de Inteligencia Geográfica**
+#### **3. Geographic Intelligence System**
 
-El corazón de la detección de país es el diccionario `COUNTRIES_CANONICAL`, una base de conocimiento curada con **más de 30.000 términos** que mapean a más de 200 países.
+The heart of country detection is the `COUNTRIES_CANONICAL` dictionary, a curated knowledge base with **30,000+ terms** mapping to 200+ countries.
 
-**Ejemplo de estructura para Estados Unidos:**
+**Structure example for United States:**
 
 ```python
 'United States': {
-    # Nombres de país
+    # Country names
     'united states', 'usa', 'us', 'u.s.', 'u.s.a.', 'america',
     'estados unidos', 'ee.uu.', 'eeuu', 'estadosunidos',
-    # Gentilicios
+    # Demonyms
     'american', 'americano', 'americanos', 'estadounidense', 'estadounidenses',
-    # Ciudades — Los 50 estados cubiertos
+    # Cities — All 50 states covered
     'new york', 'nyc', 'brooklyn', 'los angeles', 'la', 'chicago',
     'houston', 'phoenix', 'philadelphia', 'san antonio', 'san diego',
-    'dallas', 'austin', 'miami', 'atlanta', 'boston', ... (más de 500 ciudades)
+    'dallas', 'austin', 'miami', 'atlanta', 'boston', ... (500+ cities)
 }
 ```
 
-**Proceso de detección:**
+**Detection process:**
 
-1. **Coincidencia directa**: "canadiense" → Canadá
-2. **Mención de ciudad**: "de Toronto" → Canadá
-3. **Referencia regional**: "nacido en Brooklyn" → Estados Unidos
-4. **Gentilicio**: "cantante argentino" → Argentina
+1. **Direct match**: "canadian" → Canada
+2. **City mention**: "from Toronto" → Canada
+3. **Regional reference**: "born in Brooklyn" → United States
+4. **Demonym**: "argentine singer" → Argentina
 
-#### **4. Ontología de Clasificación de Géneros**
+#### **4. Genre Classification Ontology**
 
-El diccionario `GENRE_MAPPINGS` contiene **más de 5.000 variantes de género** mapeadas a más de 200 macro-géneros.
+The `GENRE_MAPPINGS` dictionary contains **5,000+ genre variants** mapped to 200+ macro-genres.
 
-**Ejemplo de mapeo para música Electrónica:**
+**Example mapping for Electronic music:**
 
 ```python
-# Variantes de House
+# House variants
 'house': ('Electrónica/Dance', 'house'),
 'deep house': ('Electrónica/Dance', 'deep house'),
 'progressive house': ('Electrónica/Dance', 'progressive house'),
 'tech house': ('Electrónica/Dance', 'tech house'),
 'tropical house': ('Electrónica/Dance', 'tropical house'),
 
-# Variantes de Techno
+# Techno variants
 'techno': ('Electrónica/Dance', 'techno'),
 'detroit techno': ('Electrónica/Dance', 'detroit techno'),
 'minimal techno': ('Electrónica/Dance', 'minimal techno'),
 
-# Variantes de Trance
+# Trance variants
 'trance': ('Electrónica/Dance', 'trance'),
 'psytrance': ('Electrónica/Dance', 'psytrance'),
 'goa trance': ('Electrónica/Dance', 'goa trance'),
 ```
 
-**Categorías de macro-géneros (más de 200):**
+**Macro-genre categories (200+):**
 
-- **Globales**: `Pop`, `Rock`, `Hip-Hop/Rap`, `R&B/Soul`, `Electrónica/Dance`
-- **América Regional**: `Reggaetón/Trap Latino`, `Bachata`, `Cumbia`, `Sertanejo`, `Funk Brasileiro`, `Regional Mexicano`, `Vallenato`
-- **Asia Regional**: `K-Pop/K-Rock`, `J-Pop/J-Rock`, `C-Pop/C-Rock`, `T-Pop/T-Rock`, `V-Pop/V-Rock`, `OPM`, `Indonesian Pop/Dangdut`, `Pakistani Pop`
-- **África Regional**: `Afrobeats`, `Amapiano`, `Bongo Flava`, `Zim Dancehall`, `Kuduro`, `Kizomba/Zouk`
-- **Europa Regional**: `Turbo-folk`, `Manele`, `Schlager`, `Chanson`, `Flamenco / Copla`, `Canzone Italiana`
-- **Indígenas**: `Māori Pop/Rock`, `Aboriginal Australian Pop/Rock`, `Siberian Indigenous Pop/Rock`, `Hawaiian Pop/Rock`
+- **Global**: `Pop`, `Rock`, `Hip-Hop/Rap`, `R&B/Soul`, `Electrónica/Dance`
+- **Regional America**: `Reggaetón/Trap Latino`, `Bachata`, `Cumbia`, `Sertanejo`, `Funk Brasileiro`, `Regional Mexicano`, `Vallenato`
+- **Regional Asia**: `K-Pop/K-Rock`, `J-Pop/J-Rock`, `C-Pop/C-Rock`, `T-Pop/T-Rock`, `V-Pop/V-Rock`, `OPM`, `Indonesian Pop/Dangdut`, `Pakistani Pop`
+- **Regional Africa**: `Afrobeats`, `Amapiano`, `Bongo Flava`, `Zim Dancehall`, `Kuduro`, `Kizomba/Zouk`
+- **Regional Europe**: `Turbo-folk`, `Manele`, `Schlager`, `Chanson`, `Flamenco / Copla`, `Canzone Italiana`
+- **Indigenous**: `Māori Pop/Rock`, `Aboriginal Australian Pop/Rock`, `Siberian Indigenous Pop/Rock`, `Hawaiian Pop/Rock`
 
-#### **5. Consultas API Multi-Fuente**
+#### **5. Multi-Source API Queries**
 
-El script consulta tres bases de conocimiento en cascada:
+The script queries four knowledge bases in cascade (with DeepSeek as final fallback):
 
 ```python
 def search_artist_genre(artist: str, country: Optional[str] = None):
     """
-    Flujo de búsqueda optimizado:
-    1. MusicBrainz (estructurado, alta confiabilidad) → peso 1.5x
-    2. Wikidata (semántico, confiabilidad media) → peso 1.3x
-    3. Wikipedia en idiomas prioritarios (texto enriquecido) → peso 1.0-1.2x
+    Optimized search flow:
+    1. MusicBrainz (structured, high reliability) → 1.5x weight
+    2. Wikidata (semantic, medium reliability) → 1.3x weight
+    3. Wikipedia in priority languages (rich text) → 1.0-1.2x weight
+    4. DeepSeek API (fallback, only when all free sources fail) → normalized result
     """
 ```
 
-**Consulta a MusicBrainz:**
+**MusicBrainz query:**
 
 ```python
 url = "https://musicbrainz.org/ws/2/artist/"
 params = {'query': artist, 'fmt': 'json', 'limit': 1}
-# Devuelve etiquetas de género estructuradas con puntuaciones de confianza
+# Returns structured genre tags with confidence scores
 ```
 
-**Extracción de infobox de Wikipedia:**
+**Wikipedia infobox extraction:**
 
-```python
-# Extrae de Infobox musical artist
-# Campos buscados: genre, géneros, genres
-# Ejemplo: | genre = [[Pop music|Pop]], [[R&B]]
+```text
+# Extracts from Infobox musical artist
+# Fields searched: genre, géneros, genres
+# Example: | genre = [[Pop music|Pop]], [[R&B]]
 ```
 
-**Extracción de resumen de Wikipedia con patrones NLP:**
+**Wikipedia summary extraction with NLP patterns:**
 
 ```python
 patterns = [
-    r'es\s+(?:un|una)\s+([a-záéíóúñ\s\-]+?)\s+(?:cantante|rapero|músico)',
-    r'son\s+(?:un|una)\s+([a-záéíóúñ\s\-]+?)\s+(?:banda|grupo)',
-    r'conocidos?\s+por\s+su\s+música\s+([a-záéíóúñ\s\-]+?)',
-    r'género\s+(?:musical\s+)?es\s+([a-záéíóúñ\s\-]+?)(?:\.|,|$)'
+    r'is\s+(?:a|an)\s+([a-z\s\-]+?)\s+(?:singer|rapper|musician)',
+    r'are\s+(?:a|an)\s+([a-z\s\-]+?)\s+(?:band|group)',
+    r'known\s+for\s+their\s+([a-z\s\-]+?)\s+music',
+    r'genre\s+is\s+([a-z\s\-]+?)(?:\.|,|$)'
 ]
 ```
 
-#### **6. Sistema Inteligente de Caché**
+**DeepSeek API fallback:**
+
+```python
+def search_deepseek_fallback(artist: str, context_country: Optional[str] = None):
+    """
+    Uses DeepSeek AI as last resort when all free sources fail.
+    - Cost: ~146-1194 tokens per request (~$0.002 per 100 artists)
+    - Rate-limited: 0.5s delay between calls
+    - Cached to avoid redundant requests
+    - Returns normalized country and genre
+    """
+```
+
+#### **6. Intelligent Caching System**
 
 ```python
 _CACHE = {
@@ -343,78 +350,78 @@ _CACHE = {
     'wikipedia_genre': {},
 }
 
-_SESSION_WIKIPEDIA = requests.Session()
-_SESSION_WIKIDATA = requests.Session()
-_SESSION_MUSICBRAINZ = requests.Session()
+_DEEPSEEK_CACHE = {}  # Cache for DeepSeek results
 ```
 
-**Beneficios:**
+**Benefits:**
 
-- **Rendimiento**: Evita llamadas API redundantes para el mismo artista
-- **Cortesía**: Reduce la carga en servicios externos
-- **Velocidad**: Caché en memoria para la ejecución actual
-- **Reutilización de sesiones**: Conexiones persistentes para múltiples consultas
+- **Performance**: Avoids redundant API calls for the same artist
+- **Politeness**: Reduces load on external services
+- **Speed**: In-memory cache for current execution
+- **Session reuse**: Keep-alive connections for multiple queries
+- **Cost savings**: DeepSeek cache prevents duplicate paid calls
 
-#### **7. Detección de Escritura/Idioma**
+#### **7. Script/Language Detection**
 
 ```python
 def detect_script_from_name(name: str) -> Optional[str]:
     """
-    Detecta el sistema de escritura y devuelve código de idioma ISO 639-1.
+    Detects writing system and returns ISO 639-1 language code.
     
-    Rangos detectados:
+    Ranges detected:
     - Devanagari (hi, ne) → India/Nepal
-    - Tamil (ta) → India del Sur/Sri Lanka
-    - Árabe/Urdu (ar/ur) → Medio Oriente/Pakistán
-    - Cirílico (ru/uk/bg/sr) → Europa del Este
-    - Hangul (ko) → Corea
-    - Hanzi/Kanji (zh/ja) → China/Japón
+    - Tamil (ta) → South India/Sri Lanka
+    - Arabic/Urdu (ar/ur) → Middle East/Pakistan
+    - Cyrillic (ru/uk/bg/sr) → Eastern Europe
+    - Hangul (ko) → Korea
+    - Hanzi/Kanji (zh/ja) → China/Japan
     """
 ```
 
-**Utilizado para:**
+**Used for:**
 
-- Priorizar consultas a Wikipedia en el idioma correcto
-- Aplicar bonificaciones regionales (ej. escritura coreana → K-Pop)
-- Mejorar la generación de variaciones de nombre
+- Prioritizing Wikipedia queries in the right language
+- Applying regional bonuses (e.g., Korean script → K-Pop)
+- Improving name variation generation
+- Providing context to DeepSeek fallback
 
-#### **8. Sistema de Votación Ponderada**
+#### **8. Weighted Voting System**
 
-La función `select_primary_genre` implementa un sofisticado algoritmo de votación:
+The `select_primary_genre` function implements a sophisticated voting algorithm:
 
 ```python
 def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str]],
                          country: Optional[str] = None, detected_lang: Optional[str] = None):
     """
-    Sistema de votación ponderada:
-    - Peso base por fuente (MusicBrainz 1.5x, Infobox 1.2x, Wikidata 1.3x)
-    - Bonificaciones por términos específicos (K-Pop, Reggaetón, etc.) 1.4x
-    - Bonificación por prioridad de país (género top 2.0x, segundo 1.5x)
-    - Reglas específicas por país (force_macro, map_generic_to)
-    - Bonificación por detección de escritura (1.2x para región coincidente)
+    Weighted voting system:
+    - Base weight from source (MusicBrainz 1.5x, Infobox 1.2x, Wikidata 1.3x)
+    - Term bonuses for specific genres (K-Pop, Reggaetón, etc.) 1.4x
+    - Country priority bonus (top genre 2.0x, second 1.5x)
+    - Country-specific rules (force_macro, map_generic_to)
+    - Script detection bonus (1.2x for matching region)
     """
 ```
 
-**Ejemplo para un artista de Corea del Sur:**
+**Example for a South Korean artist:**
 
 ```python
-Candidatos de género detectados:
-- "k-pop" de MusicBrainz (peso 1.5) → K-Pop/K-Rock
-- "pop" de Wikipedia (peso 1.0) → Pop
-- "dance" de Wikipedia (peso 0.5) → Electrónica/Dance
+Candidate genres detected:
+- "k-pop" from MusicBrainz (weight 1.5) → K-Pop/K-Rock
+- "pop" from Wikipedia (weight 1.0) → Pop
+- "dance" from Wikipedia (weight 0.5) → Electrónica/Dance
 
-País = Corea del Sur (prioridad: K-Pop/K-Rock #1 → bonus 2.0x)
-Escritura detectada = Coreano (bonus 1.2x para K-Pop/K-Rock)
+Country = South Korea (priority: K-Pop/K-Rock #1 → 2.0x bonus)
+Detected script = Korean (1.2x bonus for K-Pop/K-Rock)
 
-Votos finales:
+Final votes:
 - K-Pop/K-Rock: (1.5 × 2.0 × 1.2) = 3.6
 - Pop: (1.0 × 1.2) = 1.2
 - Electrónica/Dance: (0.5 × 1.2) = 0.6
 
-Ganador: K-Pop/K-Rock ✓
+Winner: K-Pop/K-Rock ✓
 ```
 
-#### **9. Reglas Específicas por País**
+#### **9. Country-Specific Rules**
 
 ```python
 COUNTRY_SPECIFIC_RULES = {
@@ -422,7 +429,7 @@ COUNTRY_SPECIFIC_RULES = {
         "keywords": ["k-pop", "kpop", "korean pop", "idol group"],
         "bonus_extra": 1.5,
         "force_macro": "K-Pop/K-Rock",
-        "map_generic_to": "K-Pop/K-Rock"  # Mapea "pop" → K-Pop
+        "map_generic_to": "K-Pop/K-Rock"  # Maps "pop" → K-Pop
     },
     "Brazil": {
         "keywords": ["sertanejo", "funk brasileiro", "funk carioca", "brazilian funk"],
@@ -437,199 +444,189 @@ COUNTRY_SPECIFIC_RULES = {
         "bonus_extra": 2.0,
         "force_macro": "Reggaetón/Trap Latino"
     },
-    # ... más de 50 países con reglas específicas
+    # ... 50+ countries with specific rules
 }
 ```
 
-#### **10. Actualizaciones Inteligentes de Base de Datos**
+#### **10. Smart Database Updates**
 
 ```python
 def insert_artist(artist: str, country: str, genre: Optional[str] = None, source: str = ""):
     """
-    Upsert inteligente:
-    - Si el artista existe, solo actualiza campos faltantes
-    - Nunca sobrescribe datos correctos existentes
-    - Rastrea la fuente de información para transparencia
+    Intelligent upsert:
+    - If artist exists, only update missing fields
+    - Never overwrite existing correct data
+    - Track source of information for transparency
     """
 ```
 
-**Escenarios de ejemplo:**
+**Example scenarios:**
 
 ```python
-Artista ya en DB: (País: EE.UU., Género: null)
-Nueva búsqueda encuentra: (País: null, Género: Hip-Hop)
-Resultado: (País: EE.UU., Género: Hip-Hop)  ✓ Solo se actualizó el género
+Artist already in DB: (Country: USA, Genre: null)
+New search finds: (Country: null, Genre: Hip-Hop)
+Result: (Country: USA, Genre: Hip-Hop)  ✓ Only genre updated
 
-Artista ya en DB: (País: null, Género: Rock)
-Nueva búsqueda encuentra: (País: Reino Unido, Género: Rock)
-Resultado: (País: Reino Unido, Género: Rock)  ✓ Solo se actualizó el país
+Artist already in DB: (Country: null, Genre: Rock)
+New search finds: (Country: UK, Genre: Rock)
+Result: (Country: UK, Genre: Rock)  ✓ Only country updated
 ```
 
-### **Estructura de la Tabla `artist`**
+### **`artist` Table Structure**
 
-| Columna     | Tipo   | Descripción                         | Ejemplo         |
-| :---------- | :----- | :---------------------------------- | :-------------- |
-| name        | `TEXT` | Nombre del artista (clave primaria) | "BTS"           |
-| country     | `TEXT` | Nombre canónico del país            | "Corea del Sur" |
-| macro_genre | `TEXT` | Macro-género principal              | "K-Pop/K-Rock"  |
+| Column      | Type   | Description               | Example        |
+| :---------- | :----- | :------------------------ | :------------- |
+| name        | `TEXT` | Artist name (primary key) | "BTS"          |
+| country     | `TEXT` | Canonical country name    | "South Korea"  |
+| macro_genre | `TEXT` | Primary macro-genre       | "K-Pop/K-Rock" |
 
-## ⚙️ Análisis del Workflow de GitHub Actions (`2-update-artist-database.yml`)
-### **Estructura del Workflow**
+---
+## ⚙️ GitHub Actions Workflow Analysis (`2-update-artist-database.yml`)
+
+### **Workflow Structure**
 
 ```yaml
 name: 2- Update Artist Database
 
 on:
   schedule:
-    # Se ejecuta cada lunes a las 14:00 UTC (2 horas después de la descarga)
-    - cron: '0 14 * * 1'
-  workflow_dispatch:       # Solo ejecución manual
+    # Run every Monday at 13:00 UTC (1 hour after download)
+    - cron: '0 13 * * 1'
+  
+  # Allow manual execution
+  workflow_dispatch:
+
+env:
+  RETENTION_DAYS: 30
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Advance to Node.js 24
+
+jobs:
+  build-artist-database:
+    name: Build and Update Artist Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    permissions:
+      contents: write
 ```
 
-### **Trabajos y Pasos**
+### **Jobs and Steps**
 
-#### **Trabajo: `build-artist-database`**
+#### **Job: `build-artist-database`**
 
-- **Sistema operativo**: Ubuntu Latest
-- **Tiempo máximo**: 60 minutos (permite límites de tasa de API)
-- **Permisos**: Acceso de escritura al repositorio
+- **Operating system**: Ubuntu Latest
+- **Timeout**: 60 minutes (allows for API rate limiting and DeepSeek calls)
+- **Permissions**: Repository write access
 
-#### **Pasos Detallados:**
+#### **Detailed Steps:**
 
-1. **📚 Checkout del Repositorio**
+1. **📚 Repository Checkout**
 
 ```yaml
 uses: actions/checkout@v4
 with:
-  fetch-depth: 0  # Historial completo para operaciones git
+  fetch-depth: 0  # Full history for git operations
 ```
 
-2. **🐍 Configuración de Python 3.12**
+2. **🐍 Python 3.12 Setup**
 
 ```yaml
 uses: actions/setup-python@v5
 with:
-  cache: 'pip'  # Caché de dependencias
+  cache: 'pip'  # Dependency caching
 ```
 
-3. **📦 Instalación de Dependencias**
+3. **📦 Dependency Installation**
 
 ```yaml
 run: |
   pip install -r requirements.txt
-  # Playwright no es necesario para este script
+  # Playwright not needed for this script
 ```
 
-<div style="page-break-after: always;"></div>
-
-4. **📁 Creación de Estructura de Directorios**
+4. **📁 Directory Structure Creation**
 
 ```yaml
 run: |
   mkdir -p charts_archive/1_download-chart/databases
-  mkdir -p charts_archive/2_artist_countries_genres
+  mkdir -p charts_archive/2_countries-genres-artist
 ```
 
-5. **🚀 Ejecución del Script Principal**
+5. **🚀 Main Script Execution with DeepSeek API Key**
 
 ```yaml
 - name: 🚀 Build artist database
   run: |
     python scripts/2_build_artist_db.py
   env:
-    GITHUB_ACTIONS: true  # Variable de entorno para detección
+    GITHUB_ACTIONS: true
+    DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```
 
-6. **✅ Verificación de Integridad de la Base de Datos**
+6. **✅ Database Integrity Verification**
 
-```yaml
-- name: ✅ Verificar integridad de la base de datos
+```python
+- name: ✅ Verify database integrity
   run: |
-    echo "📊 Verificando base de datos de artistas..."
-    DB_PATH="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
+    echo "📊 Verifying artist database..."
+    DB_PATH="charts_archive/2_countries-genres-artist/artist_countries_genres.db"
     
-    # Verificar contenido del directorio
-    echo "📂 Contenido del directorio:"
-    ls -la charts_archive/2_countries_genres_artist/
+    # Check directory contents
+    echo "📂 Directory contents:"
+    ls -la charts_archive/2_countries-genres-artist/
     
-    # Verificar que la base de datos existe y tiene tamaño
+    # Verify database exists and has size
     if [ -f "$DB_PATH" ]; then
       SIZE=$(stat -c%s "$DB_PATH")
-      echo "✅ Base de datos encontrada: $((SIZE / 1024)) KB"
+      echo "✅ Database found: $((SIZE / 1024)) KB"
       
-      # Opcional: Verificar integridad de la base de datos con sqlite3
+      # Optional: Verify database integrity with sqlite3
       if command -v sqlite3 &> /dev/null; then
-        echo "🔍 Verificando integridad de la base de datos..."
+        echo "🔍 Checking database integrity..."
         sqlite3 "$DB_PATH" "PRAGMA integrity_check;"
       fi
     else
-      echo "❌ ¡Base de datos no encontrada!"
+      echo "❌ Database not found!"
       exit 1
     fi
 ```
 
-<div style="page-break-after: always;"></div>
-
-7. **📤 Commit y Push Automático**
+7. **📤 Automatic Commit and Push**
 
 ```yaml
-- name: 📤 Commit y push de cambios
+- name: 📤 Commit and push changes
   run: |
-    echo "📝 Preparando commit..."
+    echo "📝 Preparing commit..."
     
-    # Configurar usuario de git para commits automatizados
+    # Configure git user for automated commits
     git config --global user.name "github-actions[bot]"
     git config --global user.email "github-actions[bot]@users.noreply.github.com"
     
-    # Añadir solo archivos de la base de datos de artistas
-    git add charts_archive/2_countries_genres_artist/
+    # Stage only artist database files
+    git add charts_archive/2_countries-genres-artist/
     
-    # Verificar si hay cambios para commit
+    # Check if there are changes to commit
     if git diff --cached --quiet; then
-      echo "🔭 No hay cambios para commit"
+      echo "🔭 No changes to commit"
     else
       DATE=$(date +'%Y-%m-%d')
-      git commit -m "🤖 Actualizar base de datos de artistas ${DATE} [Automático]"
+      git commit -m "🤖 Update artist database ${DATE} [Automated]"
       
-      # Obtener últimos cambios con rebase para evitar commits de merge
-      echo "⬇️ Obteniendo últimos cambios con rebase..."
+      # Pull latest changes with rebase to avoid merge commits
+      echo "⬇️ Pulling latest changes with rebase..."
       git pull --rebase origin main
       
-      echo "⬆️ Subiendo cambios al repositorio..."
+      echo "⬆️ Pushing changes to repository..."
       git push origin HEAD:main
-      echo "✅ Cambios subidos exitosamente"
-    fi- name: 📤 Commit and push changes
-  run: |
-    echo "📝 Preparando commit..."
-    
-    # Configurar usuario de git para commits automatizados
-    git config --global user.name "github-actions[bot]"
-    git config --global user.email "github-actions[bot]@users.noreply.github.com"
-    
-    # Añadir solo archivos de la base de datos de artistas
-    git add charts_archive/2_artist_countries_genres/
-    
-    # Verificar si hay cambios para commit
-    if git diff --cached --quiet; then
-      echo "🔭 No hay cambios para commit"
-    else
-      DATE=$(date +'%Y-%m-%d')
-      git commit -m "🤖 Actualizar base de datos de artistas ${DATE} [Automático]"
-      
-      # Obtener últimos cambios con rebase para evitar commits de merge
-      echo "⬇️ Obteniendo últimos cambios con rebase..."
-      git pull --rebase origin main
-      
-      echo "⬆️ Subiendo cambios al repositorio..."
-      git push origin HEAD:main
-      echo "✅ Cambios subidos exitosamente"
+      echo "✅ Changes pushed successfully"
     fi
 ```
 
-8. **📦 Subida de Artefactos (en caso de fallo)**
+8. **📦 Artifact Upload (on failure)**
+
 
 ```yaml
-- name: 📦 Subir artefactos de depuración
+- name: 📦 Upload debug artifacts
   if: failure()
   uses: actions/upload-artifact@v4
   with:
@@ -639,80 +636,86 @@ run: |
     retention-days: 7
 ```
 
-<div style="page-break-after: always;"></div>
-
-9. **📋 Reporte Final**
+9. **📋 Final Report**
 
 ```yaml
-- name: 📋 Generar informe final
+- name: 📋 Generate final report
   if: always()
   run: |
     echo "========================================"
-    echo "🎵 INFORME FINAL DE EJECUCIÓN"
+    echo "🎵 FINAL EXECUTION REPORT"
     echo "========================================"
-    echo "📅 Fecha: $(date)"
-    echo "📌 Disparador: ${{ github.event_name }}"
+    echo "📅 Date: $(date)"
+    echo "📌 Trigger: ${{ github.event_name }}"
     echo "🔗 Commit: ${{ github.sha }}"
     echo ""
     
-    DB_FILE="charts_archive/2_countries_genres_artist/artist_countries_genres.db"
+    DB_FILE="charts_archive/2_countries-genres-artist/artist_countries_genres.db"
     if [ -f "$DB_FILE" ]; then
       SIZE=$(stat -c%s "$DB_FILE")
-      echo "✅ Base de datos de artistas: $((SIZE / 1024)) KB"
+      echo "✅ Artist database: $((SIZE / 1024)) KB"
       
-      # Contar artistas
+      # Count artists
       if command -v sqlite3 &> /dev/null; then
-        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artists;" 2>/dev/null || echo "N/A")
-        echo "👤 Artistas procesados: ${ARTIST_COUNT}"
+        ARTIST_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM artist;" 2>/dev/null || echo "N/A")
+        echo "👤 Artists processed: ${ARTIST_COUNT}"
       fi
     else
-      echo "⚠️ Base de datos de artistas no encontrada"
+      echo "⚠️ Artist database not found"
     fi
     
-    # Mostrar información del disparador
     echo ""
-    echo "📊 Detalles del disparador:"
+    echo "📊 Trigger details:"
     if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-      echo "   • Disparado por: Ejecución manual"
+      echo "   • Triggered by: Manual dispatch"
     elif [ "${{ github.event_name }}" = "schedule" ]; then
-      echo "   • Disparado por: Programación cron (Lunes 14:00 UTC)"
-    else
-      echo "   • Disparado por: Push u otro evento"
+      echo "   • Triggered by: Scheduled cron (Monday 13:00 UTC)"
     fi
     
     echo ""
-    echo "✅ Proceso completado"
+    echo "✅ Process completed"
     echo "========================================"
 ```
 
-### **Programación Cron**
+### **Cron Scheduling**
 
-```crom
-'0 13 * * 1'  # Minuto 0, Hora 13, Cualquier día del mes, Cualquier mes, Lunes
+```cron
+'0 13 * * 1'  # Minute 0, Hour 13, Any day of month, Any month, Monday
 ```
 
-- **Ejecución**: Cada lunes a las 11:00 UTC
-- **Desfase**: 1 hora después del workflow de descarga (12:00 UTC)
-- **Propósito**: Permite que el workflow de descarga se complete antes de comenzar el enriquecimiento
+- **Execution**: Every Monday at 13:00 UTC
+- **Offset**: 1 hour after the download workflow (12:00 UTC)
+- **Purpose**: Allows download workflow to complete before enrichment begins
 
-## 🚀 Instalación y Configuración Local
+---
 
-### **Requisitos Previos**
+## 🔐 Required Secrets
 
-- Python 3.7 o superior
-- Git instalado
-- Acceso a Internet para consultas API
+| Secret             | Purpose                                                      |
+| :----------------- | :----------------------------------------------------------- |
+| `DEEPSEEK_API_KEY` | Used by the DeepSeek AI fallback system to retrieve country and genre information when all free sources (MusicBrainz, Wikidata, Wikipedia) fail to return results. Required only for the fallback functionality; the script continues without it if not provided. |
 
-### **Instalación Paso a Paso**
+---
 
-1. **Clonar el Repositorio**
+## 🚀 Installation and Local Setup
+
+### **Prerequisites**
+
+- Python 3.7 or higher
+- Git installed
+- Internet access for API queries
+- (Optional) DeepSeek API key for fallback
+
+### **Step-by-Step Installation**
+
+1. **Clone the Repository**
 
 ```bash
-git clone <url-del-repositorio>
-cd <directorio-del-proyecto>
+git clone <repository-url>
+cd <project-directory>
 ```
 
-2. **Crear Entorno Virtual (recomendado)**
+2. **Create Virtual Environment (recommended)**
 
 ```bash
 python -m venv venv
@@ -724,30 +727,45 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-3. **Instalar Dependencias**
+3. **Install Dependencies**
 
 ```bash
 pip install -r requirements.txt
-# Playwright no es necesario para este script
+# Playwright is not required for this script
 ```
 
-4. **Ejecutar Prueba Inicial**
+4. **Set DeepSeek API Key (optional, for fallback)**
+
+```bash
+# Linux/Mac
+export DEEPSEEK_API_KEY="your-api-key-here"
+
+# Windows (Command Prompt)
+set DEEPSEEK_API_KEY=your-api-key-here
+
+# Windows (PowerShell)
+$env:DEEPSEEK_API_KEY="your-api-key-here"
+```
+
+5. **Run Initial Test**
 
 ```bash
 python scripts/2_build_artist_db.py
 ```
 
-### **Configuración de Desarrollo**
+### **Development Configuration**
 
 ```bash
-# Para simular entorno de GitHub Actions
+# To simulate GitHub Actions environment
 export GITHUB_ACTIONS=true
 
-# Para depuración detallada (muestra candidatos de género)
+# For detailed debugging (shows genre candidates)
 export LOG_LEVEL=DEBUG
 ```
 
-## 📁 Estructura de Archivos Generada
+---
+
+## 📁 Generated File Structure
 
 ```text
 charts_archive/
@@ -759,155 +777,174 @@ charts_archive/
 │   │   └── ...
 │   └── backup/
 │       └── ...
-└── 2_countries-genres-artist/          # ← Salida de este script
-    └── artist_countries_genres.db       # Base de datos de artistas enriquecida
+└── 2_countries-genres-artist/          # ← This script's output
+    └── artist_countries_genres.db       # Enriched artist database
 ```
 
-### **Crecimiento de la Base de Datos**
+### **Database Growth**
 
-- Ejecución inicial: 100-200 artistas
-- Crecimiento semanal: 10-50 nuevos artistas (solo los nuevos de charts semanales)
-- Tamaño estimado: ~10KB por cada 100 artistas
+- Initial run: 100-200 artists
+- Weekly growth: 10-50 new artists (only new ones from weekly charts)
+- Size estimate: ~10KB per 100 artists
 
-## 🔧 Personalización y Configuración
+---
 
-### **Parámetros Ajustables en el Script**
+## 🔧 Customization and Configuration
+
+### **Adjustable Parameters in Script**
 
 ```python
-# En 2_build_artist_db.py
-MIN_CANDIDATES = 3        # Mínimo de candidatos de género antes de búsqueda en Wikipedia
-RETRY_DELAY = 0.5         # Retraso entre llamadas API (segundos)
-DEFAULT_TIMEOUT = 10      # Tiempo de espera de API (segundos)
+# In 2_build_artist_db.py
+MIN_CANDIDATES = 3        # Minimum genre candidates before Wikipedia search
+RETRY_DELAY = 0.5          # Delay between API calls (seconds)
+DEFAULT_TIMEOUT = 10       # API timeout (seconds)
+DEEPSEEK_RATE_LIMIT = 0.5  # Delay between DeepSeek calls (seconds)
 ```
 
-### **Configuración del Workflow**
+### **Workflow Configuration**
 
 ```yaml
-# En 2-update-artist-database.yml
+# In 2-update-artist-database.yml
 env:
-  RETENTION_DAYS: 30       # Días para artefactos
+  RETENTION_DAYS: 30       # Days for artifacts
 
-timeout-minutes: 60        # Tiempo máximo total del trabajo (permite límites de tasa de API)
+timeout-minutes: 60        # Total job timeout (allows for API rate limits)
 ```
 
-### **Añadir Nuevos Países**
+### **Adding New Countries**
 
 ```python
-# Extender COUNTRIES_CANONICAL
-'Nuevo País': {
-    'nombre del país', 'gentilicios', 'capital', 'ciudades principales'
+# Extend COUNTRIES_CANONICAL
+'New Country': {
+    'country name', 'demonyms', 'capital', 'major cities'
 }
 ```
 
-### **Añadir Nuevos Mapeos de Género**
+### **Adding New Genre Mappings**
 
 ```python
-# Extender GENRE_MAPPINGS
-'nuevo subgénero': ('Macro-Género', 'subgénero')
+# Extend GENRE_MAPPINGS
+'new subgenre': ('Macro-Genre', 'subgenre')
 ```
 
-### **Ajustar Prioridades de País**
+### **Adjusting Country Priorities**
 
 ```python
-# Modificar COUNTRY_GENRE_PRIORITY
-"Nombre del País": [
-    "Género Prioritario 1",   # Obtiene bonus 2.0x
-    "Género Prioritario 2",   # Obtiene bonus 1.5x
-    "Género Prioritario 3"    # Obtiene bonus 1.2x
+# Modify COUNTRY_GENRE_PRIORITY
+"Country Name": [
+    "Priority Genre 1",   # Gets 2.0x bonus
+    "Priority Genre 2",   # Gets 1.5x bonus
+    "Priority Genre 3"    # Gets 1.2x bonus
 ]
-```
+---
 
-## 🐛 Solución de Problemas
+## 🐛 Troubleshooting
+
+### **Common Issues and Solutions**
 
 1. **Error: "No chart databases found"**
-   - Ejecutar primero el workflow de descarga (script 1)
-   - Verificar si `charts_archive/1_download-chart/databases/` existe
-   - Verificar permisos de archivos
-2. **Error: Tiempos de espera de API en GitHub Actions**
+   - Run the download workflow (script 1) first
+   - Check if `charts_archive/1_download-chart/databases/` exists
+   - Verify file permissions
+2. **Error: API timeouts in GitHub Actions**
 
 ```bash
-# Aumentar tiempos de espera en el script
+# Increase timeouts in script
 DEFAULT_TIMEOUT = 20
 RETRY_DELAY = 1.0
 ```
 
-3. **Error: Límites de tasa de las APIs**
-   - El script incluye retrasos entre llamadas
-   - Para lotes grandes, considerar añadir retrasos más largos
-   - Monitorear cabeceras de respuesta de API para información de límites de tasa
-4. **Error: Artista no encontrado en ninguna fuente**
+3. **Error: Rate limiting from APIs**
+
+   - The script includes delays between calls
+   - For large batches, consider adding longer delays
+   - Monitor API response headers for rate limit info
+
+4. **Error: DeepSeek API key not set**
+
+   - Add `DEEPSEEK_API_KEY` to GitHub Secrets
+   - For local testing, set environment variable
+   - The script continues without DeepSeek if key is missing
+
+5. **Error: Artist not found in any source**
+   - Check if artist name has special characters
+   - Try manual search in MusicBrainz
+   - Add fallback rules for the country
+   - DeepSeek may help with obscure artists
    
-   - Verificar si el nombre del artista tiene caracteres especiales
-   - Probar búsqueda manual en MusicBrainz
-   - Añadir reglas de fallback para el país
-   
-   ### **Registros y Depuración**
-   
-   **Niveles de registro disponibles:**
-   
-   1. **Información básica**: Muestra progreso y resultados
-   2. **Modo DEBUG**: Muestra candidatos de género y detalles de votación
-   3. **Modo GitHub Actions**: Registro mejorado para CI/CD
-   4. **Registro de API detallado**: Descomentar declaraciones `print` en funciones API
 
-## 📈 Monitoreo y Mantenimiento
+### **Logs and Debugging**
 
-### **Indicadores de Salud**
+**Available log levels:**
 
-1. **Tamaño de la base de datos**: Crece ~10-50 registros/semana
-2. **Tasa de éxito**: Debería ser >90% para artistas establecidos
-3. **Tiempo de respuesta de API**: <2 segundos promedio
-4. **Tasa de acierto de caché**: Aumenta con el tiempo a medida que se acumulan artistas
+1. **Basic information**: Shows progress and results
+2. **DEBUG mode**: Shows genre candidates and voting details
+3. **GitHub Actions mode**: Enhanced logging for CI/CD
+4. **Verbose API logging**: Uncomment `print` statements in API functions
+5. **DeepSeek fallback logging**: Shows when AI fallback is used
 
-### **Métricas de Rendimiento**
+---
 
-| Métrica                     | Rango Esperado | Notas                                           |
-| :-------------------------- | :------------- | :---------------------------------------------- |
-| Artistas procesados/hora    | 500-1000       | Depende de los tiempos de respuesta de API      |
-| Tasa de acierto de caché    | 30-70%         | Aumenta con el tamaño de la base de datos       |
-| Tasa de detección de género | 85-95%         | Menor para artistas muy nicho                   |
-| Tasa de detección de país   | 80-90%         | Menor para artistas con poca presencia en línea |
+## 📈 Monitoring and Maintenance
 
-## 📄 Licencia y Atribución
+### **Health Indicators**
 
-- **Licencia**: MIT
-- **Autor**: Alfonso Droguett
+1. **Database size**: Grows by ~10-50 records/week
+2. **Success rate**: Should be >90% for established artists
+3. **API response time**: <2 seconds average
+4. **Cache hit rate**: Increases over time as artists accumulate
+5. **DeepSeek usage**: Should be low (<10% of artists)
+
+### **Performance Metrics**
+
+| Metric                 | Expected Range | Notes                                         |
+| :--------------------- | :------------- | :-------------------------------------------- |
+| Artists processed/hour | 500-1000       | Depends on API response times                 |
+| Cache hit rate         | 30-70%         | Increases with database size                  |
+| Genre detection rate   | 85-95%         | Lower for very niche artists                  |
+| Country detection rate | 80-90%         | Lower for artists with little online presence |
+| DeepSeek fallback rate | <10%           | Only used when free sources fail              |
+| Cost per 100 artists   | ~$0.002        | With DeepSeek fallback                        |
+
+---
+
+## 📄 License and Attribution
+
+- **License**: MIT
+- **Author**: Alfonso Droguett
   - 🔗 **LinkedIn:** [Alfonso Droguett](https://www.linkedin.com/in/adroguetth/)
-  - 🌐 **Portafolio web:** [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/)
-  - 📧 **Correo electrónico:** adroguett.consultor@gmail.com
-- **Fuentes de Datos**:
-  - MusicBrainz (Licencia GPL)
+  - 🌐 **Web portfolio:** [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/)
+  - 📧 **Email:** adroguett.consultor@gmail.com
+- **Data Sources**:
+  - MusicBrainz (GPL License)
   - Wikipedia (CC BY-SA)
   - Wikidata (CC0)
+  - DeepSeek (Commercial API, fallback only)
 
-## 🤝 Contribución
+---
 
-1. Reportar problemas con registros completos
-2. Proponer mejoras con casos de uso
-3. Añadir nuevos mapeos de género con ejemplos
-4. Contribuir con variantes de países (especialmente para regiones subrepresentadas)
-5. Mantener compatibilidad con la estructura de base de datos existente
+## 🤝 Contribution
 
-## 🧪 Limitaciones Conocidas y Mejoras Futuras
+1. Report issues with complete logs
+2. Propose improvements with use cases
+3. Add new genre mappings with examples
+4. Contribute country variants (especially for underrepresented regions)
+5. Maintain compatibility with existing database structure
 
-### **Limitaciones Actuales**
+---
 
-- **Dependencia de API**: El sistema depende de servicios externos que pueden cambiar o tener límites de tasa
-- **Artistas Nuevos**: Artistas emergentes recientemente pueden no aparecer en bases de conocimiento
-- **Géneros Nicho**: Algunos micro-géneros pueden no tener mapeos aún
-- **MCs Brasileños**: Actualmente reciben `Sertanejo` como fallback (orden de lista de prioridad)
-- **Detección de Escritura**: Basada en heurísticas, puede ocasionalmente identificar mal
+## 🧪 Known Limitations and Future Improvements
 
-### **Mejoras Planificadas**
+### **Current Limitations**
 
-- Añadir API de Spotify como fuente adicional
-- Implementar backoff exponencial para límites de tasa
-- Crear datos de entrenamiento para clasificación de géneros basada en ML
-- Añadir puntuaciones de confianza a las entradas de la base de datos
-- Soporte para detección de país de miembros de grupos/bandas
-- Mapas de calor geográficos de géneros musicales por región
-- Suite de pruebas automatizadas para cambios en API
+- **API Dependency**: System relies on external services that may change or rate-limit
+- **New Artists**: Recently emerging artists may not appear in knowledge bases
+- **Niche Genres**: Some micro-genres may not have mappings yet
+- **Brazilian MCs**: Currently receive `Sertanejo` as fallback (priority list order)
+- **Script Detection**: Heuristic-based, may occasionally misidentify
+- **DeepSeek Cost**: While minimal, requires API key and has token costs
+
 
 ------
 
-**⭐ Si encuentras útil este proyecto, ¡considera darle una estrella en GitHub!**
+**⭐ If you find this project useful, please consider starring it on GitHub!**
