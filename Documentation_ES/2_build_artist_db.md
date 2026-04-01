@@ -8,178 +8,178 @@
 | **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1viUAxZ7k-qeYYbyvZf2OaP20AfLOgKh2/view?usp=drive_link) |
 | **🇪🇸 Spanish Documentation**  | [PDF](https://drive.google.com/file/d/1WBHBreKeVToTBygSyCuYsHQUr_zSl3BT/view?usp=drive_link) |
 
-## 📋 General Description
+## 📋 Descripción General
 
-This project is the second component of the YouTube Charts intelligence system. It takes the raw artist names extracted by the downloader and **enriches them with geographic and genre metadata** by querying multiple open knowledge bases. The result is a structured database of artists with their country of origin and primary music genre.
+Este proyecto es el segundo componente del sistema de inteligencia de YouTube Charts. Toma los nombres de artistas extraídos por el descargador y los **enriquece con metadatos geográficos y de género** consultando múltiples bases de conocimiento abiertas. El resultado es una base de datos estructurada de artistas con su país de origen y género musical principal.
 
+### Características Principales
 
-### Key Features
+- **Búsqueda Multi-Fuente**: Consultas en cascada inteligentes a MusicBrainz, Wikipedia (resumen e infobox) y Wikidata
+- **DeepSeek IA como Respaldo**: Usa la API de DeepSeek como último recurso cuando fallan todas las fuentes gratuitas (económico, ~$0.002 por 100 artistas)
+- **Variación Inteligente de Nombres**: Genera hasta 15 variaciones por artista (acentos eliminados, prefijos quitados, etc.) para máxima tasa de coincidencia
+- **Inteligencia Geográfica**: Detección de país a partir de ciudades, gentilicios y referencias regionales usando un diccionario curado de más de 30,000 términos
+- **Clasificación de Géneros**: Más de 200 macro-géneros y 5,000+ mapeos de subgéneros con sistema de votación ponderada
+- **Reglas Específicas por País**: Manejo especial para más de 50 países (ej. K-Pop para Corea del Sur, Sertanejo para Brasil)
+- **Detección de Escritura**: Detección automática de idioma para escrituras no latinas (Cirílico, Devanagari, Árabe, Hangul, etc.)
+- **Actualizaciones Inteligentes**: Solo completa datos faltantes, nunca sobrescribe información correcta existente
+- **Caché en Memoria**: Evita llamadas API redundantes durante la ejecución
+- **Optimizado para CI/CD**: Configurado específicamente para GitHub Actions con respaldos progresivos
+- **Límites de Tasa**: Retrasos integrados para respetar cuotas de API y evitar bloqueos
 
-- **Multi-Source Lookup**: Intelligent cascading queries to MusicBrainz, Wikipedia (summary & infobox), and Wikidata
-- **DeepSeek AI Fallback**: Uses DeepSeek API as last resort when all free sources fail (cost-effective, ~$0.002 per 100 artists)
-- **Smart Name Variation**: Generates up to 15 variations per artist (accents removed, prefixes stripped, etc.) for maximum match rate
-- **Geographic Intelligence**: Country detection from cities, demonyms, and regional references using a curated dictionary of 30,000+ terms
-- **Genre Classification**: 200+ macro-genres and 5,000+ subgenre mappings with weighted voting system
-- **Country-Specific Rules**: Special handling for 50+ countries (e.g., K-Pop for South Korea, Sertanejo for Brazil)
-- **Script Detection**: Automatic language detection for non-Latin scripts (Cyrillic, Devanagari, Arabic, Hangul, etc.)
-- **Intelligent Updates**: Only fills missing data, never overwrites existing correct information
-- **In-Memory Caching**: Avoids redundant API calls during execution
-- **CI/CD Optimized**: Specifically configured for GitHub Actions with progressive fallbacks
-- **Rate Limiting**: Built-in delays to respect API quotas and avoid throttling
+## 📊 Diagramas de Flujo del Proceso
 
-## 📊 Process Flow Diagram
+### **Leyenda**
 
-### **Legend**
-| Color        | Type     | Description                   |
-| :----------- | :------- | :---------------------------- |
-| 🔵 Blue       | Input    | Source data (charts database) |
-| 🟠 Orange     | Process  | Internal processing logic     |
-| 🟣 Purple     | API      | External service queries      |
-| 🟢 Green      | Cache    | In-memory temporary storage   |
-| 🔴 Red        | Decision | Conditional branching points  |
-| 🟢 Dark Green | Output   | Results and final database    |
+| Color          | Tipo     | Descripción                            |
+| :------------- | :------- | :------------------------------------- |
+| 🔵 Azul         | Entrada  | Datos fuente (base de datos de charts) |
+| 🟠 Naranja      | Proceso  | Lógica de procesamiento interno        |
+| 🟣 Morado       | API      | Consultas a servicios externos         |
+| 🟢 Verde        | Caché    | Almacenamiento temporal en memoria     |
+| 🔴 Rojo         | Decisión | Puntos de ramificación condicional     |
+| 🟢 Verde Oscuro | Salida   | Resultados y base de datos final       |
 
-### **Diagram 1: Main Flow Overview**
+### **Diagrama 1: Vista General del Flujo Principal**
 
-<img src="https://drive.google.com/uc?export=view&id=18uJf6B1ihQs5b3Hv1MZuqnwQs9DNjMjA" alt="Country Search" width="350">
+https://drive.google.com/uc?export=view&id=18uJf6B1ihQs5b3Hv1MZuqnwQs9DNjMjA
 
-This diagram shows the **high-level pipeline** of the entire system:
+Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
-1. **Input**: Reads the weekly YouTube Charts database (`youtube_charts_YYYY-WXX.db`)
-2. **Extraction**: Reads artist names and splits them (handles "feat.", "&", commas, etc.)
-3. **Deduplication**: Creates a list of unique artists to avoid redundant processing
-4. **Per-Artist Loop**: For each artist, checks if they already exist in the enriched database
-   - **If complete** (country + genre known): Skips to next artist ✅
-   - **If missing info**: Searches only the missing fields (country or genre)
-   - **If new**: Performs full country and genre search
-5. **Country Search** → **Genre Search** → **Voting System** → **Database Update**
-6. **After all artists**: Generates a final report and automatically commits changes to GitHub
+1. **Entrada**: Lee la base de datos semanal de YouTube Charts (`youtube_charts_YYYY-WXX.db`)
+2. **Extracción**: Lee nombres de artistas y los divide (maneja "feat.", "&", comas, etc.)
+3. **Desduplicación**: Crea una lista de artistas únicos para evitar procesamiento redundante
+4. **Bucle por Artista**: Para cada artista, verifica si ya existe en la base de datos enriquecida
+   - **Si está completo** (país + género conocidos): Salta al siguiente artista ✅
+   - **Si falta información**: Busca solo los campos faltantes (país o género)
+   - **Si es nuevo**: Realiza búsqueda completa de país y género
+5. **Búsqueda de País** → **Búsqueda de Género** → **Sistema de Votación** → **Actualización de Base de Datos**
+6. **Después de todos los artistas**: Genera un informe final y confirma automáticamente los cambios en GitHub
 
-### **Diagram 2: Country Search (Detailed)**
+### **Diagrama 2: Búsqueda de País (Detallada)**
 
-<img src="https://drive.google.com/uc?export=view&id=1mQx2lJ4bltmssN9VBTnkiFxwQXSJiz7y" alt="Country Search" width="250">
+https://drive.google.com/uc?export=view&id=1mQx2lJ4bltmssN9VBTnkiFxwQXSJiz7y
 
-This diagram details the **cascading search strategy** for detecting an artist's country:
+Este diagrama detalla la **estrategia de búsqueda en cascada** para detectar el país de un artista:
 
-1. **Start**: Receives an artist name (may be missing info or new artist)
-2. **Name Variations**: Generates up to 15 variations (no accents, no prefixes, etc.)
-3. **Cache Check**: First checks in-memory cache to avoid repeat API calls
-4. **MusicBrainz**: Queries MusicBrainz API (structured data, high reliability)
-   - If found → returns country ✅
-5. **Wikipedia English**: If not found, queries Wikipedia English:
-   - First checks summary (first paragraph) for patterns like "born in...", "from..."
-   - Then checks infobox for fields like "origin", "birth_place", "location"
-   - If found → returns country ✅
-6. **Wikipedia Priority Languages**: If still not found, tries Wikipedia in languages based on:
-   - The artist's country (if already known from previous step)
-   - Detected script from the artist's name (Cyrillic → Russian Wikipedia, etc.)
-   - If found → returns country ✅
-7. **Wikidata**: Final free source, queries Wikidata using properties P27 (country of citizenship) and P19 (place of birth)
-8. **DeepSeek AI Fallback**: Only if all free sources fail, queries DeepSeek API (cost-effective)
-   - Uses structured prompt asking for country and genre
-   - Results are normalized using the same validation functions
-   - Rate-limited to 0.5s delay between calls
-9. **Result**: Returns either a canonical country name or "Unknown"
+1. **Inicio**: Recibe un nombre de artista (puede faltar información o ser nuevo)
+2. **Variaciones de Nombre**: Genera hasta 15 variaciones (sin acentos, sin prefijos, etc.)
+3. **Verificación de Caché**: Primero verifica la caché en memoria para evitar llamadas API repetidas
+4. **MusicBrainz**: Consulta la API de MusicBrainz (datos estructurados, alta confiabilidad)
+   - Si se encuentra → retorna país ✅
+5. **Wikipedia en Inglés**: Si no se encuentra, consulta Wikipedia en inglés:
+   - Primero verifica el resumen (primer párrafo) en busca de patrones como "nacido en...", "de..."
+   - Luego verifica la infobox en busca de campos como "origin", "birth_place", "location"
+   - Si se encuentra → retorna país ✅
+6. **Wikipedia en Idiomas Prioritarios**: Si aún no se encuentra, intenta Wikipedia en idiomas basados en:
+   - El país del artista (si ya se conoce del paso anterior)
+   - La escritura detectada del nombre del artista (Cirílico → Wikipedia en ruso, etc.)
+   - Si se encuentra → retorna país ✅
+7. **Wikidata**: Última fuente gratuita, consulta Wikidata usando las propiedades P27 (país de ciudadanía) y P19 (lugar de nacimiento)
+8. **DeepSeek IA como Respaldo**: Solo si fallan todas las fuentes gratuitas, consulta la API de DeepSeek (económico)
+   - Usa un prompt estructurado pidiendo país y género
+   - Los resultados se normalizan usando las mismas funciones de validación
+   - Limitado a 0.5s de retraso entre llamadas
+9. **Resultado**: Retorna un nombre de país canónico o "Desconocido"
 
-### **Diagram 3: Genre Search (Detailed)**
+### **Diagrama 3: Búsqueda de Género (Detallada)**
 
-<img src="https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0_" alt="Country Search" width="350">
+https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0_
 
-This diagram shows how the system **collects genre candidates** from multiple sources:
+Este diagrama muestra cómo el sistema **recopila candidatos de género** de múltiples fuentes:
 
-1. **Start**: Receives artist name (and country if already detected)
-2. **Name Variations**: Same variation system for maximum match rate
-3. **MusicBrainz**: First source, extracts genre tags and their counts
-   - Adds candidates with base weight (1.5x for MusicBrainz)
-4. **Wikidata**: Second source, queries property P136 (genre)
-   - Adds candidates with base weight (1.3x for Wikidata)
-5. **Candidate Check**: Checks if we already have at least 3 genre candidates
-   - **If yes**: Proceeds directly to voting system
-   - **If no**: Continues to Wikipedia search
-6. **Wikipedia Priority Languages**: Queries Wikipedia in languages prioritized by:
-   - Country (e.g., Korean artists → Korean Wikipedia)
-   - Detected script (e.g., Arabic name → Arabic Wikipedia)
-7. **Extraction**: Uses pattern matching to extract genres from:
-   - **Infobox**: Looks for "genre", "genres", "género" fields
-   - **Summary**: Uses NLP patterns like "is a [genre] singer", "known for [genre] music"
-8. **Second Check**: If still under 3 candidates, tries Wikipedia in other common languages
-9. **DeepSeek AI Fallback**: Only if all free sources return no candidates, queries DeepSeek API
-   - Uses the country (if known) as context to improve accuracy
-   - Returns a normalized genre or raw string
-10. **Final**: All candidates (with their weights and sources) go to the Voting System
+1. **Inicio**: Recibe nombre del artista (y país si ya está detectado)
+2. **Variaciones de Nombre**: Mismo sistema de variaciones para máxima tasa de coincidencia
+3. **MusicBrainz**: Primera fuente, extrae etiquetas de género y sus conteos
+   - Agrega candidatos con peso base (1.5x para MusicBrainz)
+4. **Wikidata**: Segunda fuente, consulta la propiedad P136 (género)
+   - Agrega candidatos con peso base (1.3x para Wikidata)
+5. **Verificación de Candidatos**: Verifica si ya tenemos al menos 3 candidatos de género
+   - **Si es sí**: Procede directamente al sistema de votación
+   - **Si es no**: Continúa con la búsqueda en Wikipedia
+6. **Wikipedia en Idiomas Prioritarios**: Consulta Wikipedia en idiomas priorizados por:
+   - País (ej. artistas coreanos → Wikipedia en coreano)
+   - Escritura detectada (ej. nombre árabe → Wikipedia en árabe)
+7. **Extracción**: Usa coincidencia de patrones para extraer géneros de:
+   - **Infobox**: Busca campos "genre", "genres", "género"
+   - **Resumen**: Usa patrones de NLP como "es un cantante de [género]", "conocido por música [género]"
+8. **Segunda Verificación**: Si aún hay menos de 3 candidatos, intenta Wikipedia en otros idiomas comunes
+9. **DeepSeek IA como Respaldo**: Solo si todas las fuentes gratuitas no devuelven candidatos, consulta la API de DeepSeek
+   - Usa el país (si se conoce) como contexto para mejorar la precisión
+   - Retorna un género normalizado o texto sin procesar
+10. **Final**: Todos los candidatos (con sus pesos y fuentes) van al Sistema de Votación
 
-### **Diagram 4: Voting & Weight System**
+### **Diagrama 4: Sistema de Votación y Pesos**
 
-<img src="https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN" alt="Country Search" width="250">
+https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN
 
-This is the **intelligent decision engine** that selects the final genre:
+Este es el **motor de decisión inteligente** que selecciona el género final:
 
-1. **Input**: Receives all genre candidates with their raw weights and sources
-2. **Normalization**: Maps each specific subgenre to a macro-genre using the `GENRE_MAPPINGS` dictionary
-   - Example: "synth pop", "synth-pop", "synthpop" all → "Pop"
-3. **Source Weights**: Applies multipliers based on source reliability:
-   - MusicBrainz: ×1.5 (structured, reliable)
-   - Wikidata: ×1.3 (semantic, medium reliability)
-   - Wikipedia Infobox: ×1.2 (semi-structured)
-   - Wikipedia Summary: ×1.0 (free text, lower confidence)
-   - Wikipedia Keywords: ×0.5 (lowest confidence)
-4. **Script Detection**: Analyzes the artist's name to detect writing system (Cyrillic, Hangul, Arabic, etc.)
-5. **Term Bonuses**: Multiplies weight by 1.4x if specific keywords are found:
-   - "reggaeton", "trap latino" → boosts Latin genres
-   - "k-pop", "korean pop" → boosts K-Pop
-   - "sertanejo", "funk brasileiro" → boosts Brazilian genres
-6. **Country Priority** (if country known): Applies additional multipliers based on country's genre priority list:
-   - 1st priority genre: ×2.0
-   - 2nd priority genre: ×1.5
-   - 3rd+ priority genres: ×1.2
-7. **Country-Specific Rules**: Applies special rules for certain countries:
-   - **force_macro**: Forces a specific macro-genre (e.g., Puerto Rico → Reggaetón/Trap Latino)
-   - **map_generic_to**: Maps generic genres (Pop, Rock) to regional ones (e.g., Korea → K-Pop/K-Rock)
-8. **Script Bonus**: If detected script matches the country's dominant language, applies ×1.2 bonus
-9. **Vote Summation**: Adds all weighted votes for each macro-genre
-10. **Winner Selection**: Chooses macro-genre with highest total votes
-11. **Fallback**: If no winner and country is known, uses the first genre from country's priority list
+1. **Entrada**: Recibe todos los candidatos de género con sus pesos y fuentes originales
+2. **Normalización**: Mapea cada subgénero específico a un macro-género usando el diccionario `GENRE_MAPPINGS`
+   - Ejemplo: "synth pop", "synth-pop", "synthpop" todos → "Pop"
+3. **Pesos por Fuente**: Aplica multiplicadores basados en la confiabilidad de la fuente:
+   - MusicBrainz: ×1.5 (estructurado, confiable)
+   - Wikidata: ×1.3 (semántico, confiabilidad media)
+   - Wikipedia Infobox: ×1.2 (semi-estructurado)
+   - Wikipedia Resumen: ×1.0 (texto libre, menor confianza)
+   - Wikipedia Palabras Clave: ×0.5 (confianza más baja)
+4. **Detección de Escritura**: Analiza el nombre del artista para detectar el sistema de escritura (Cirílico, Hangul, Árabe, etc.)
+5. **Bonificaciones por Término**: Multiplica el peso por 1.4x si se encuentran palabras clave específicas:
+   - "reggaeton", "trap latino" → aumenta géneros latinos
+   - "k-pop", "korean pop" → aumenta K-Pop
+   - "sertanejo", "funk brasileiro" → aumenta géneros brasileños
+6. **Prioridad por País** (si el país es conocido): Aplica multiplicadores adicionales basados en la lista de prioridad de géneros del país:
+   - 1er género prioritario: ×2.0
+   - 2do género prioritario: ×1.5
+   - 3er+ géneros prioritarios: ×1.2
+7. **Reglas Específicas por País**: Aplica reglas especiales para ciertos países:
+   - **force_macro**: Fuerza un macro-género específico (ej. Puerto Rico → Reggaetón/Trap Latino)
+   - **map_generic_to**: Mapea géneros genéricos (Pop, Rock) a regionales (ej. Corea → K-Pop/K-Rock)
+8. **Bonificación por Escritura**: Si la escritura detectada coincide con el idioma dominante del país, aplica ×1.2
+9. **Suma de Votos**: Suma todos los votos ponderados para cada macro-género
+10. **Selección del Ganador**: Elige el macro-género con mayor total de votos
+11. **Respaldo**: Si no hay ganador y el país es conocido, usa el primer género de la lista de prioridad del país
 
-### **Diagram 5: Database Update**
-<img src="https://drive.google.com/uc?export=view&id=1zU7GwiHW3DYDlY7kGLnwC6HqY99SRF5m" alt="Country Search" width="350">
+### **Diagrama 5: Actualización de Base de Datos**
 
-This diagram shows how the system **persists data intelligently**:
+https://drive.google.com/uc?export=view&id=1zU7GwiHW3DYDlY7kGLnwC6HqY99SRF5m
 
-1. **Input**: Receives final country and genre data for an artist
-2. **Connect**: Opens connection to `artist_countries_genres.db`
-3. **Existence Check**: Queries if artist already exists in database
-4. **If Artist Exists**:
-   - **Check Missing Fields**: Compares existing data with new data
-   - **Update Only Missing**: Updates country only if existing is NULL/Unknown and new is known
-   - Updates genre only if existing is NULL/Unknown and new is known
-   - **Never overwrites** existing correct data!
-5. **If Artist is New**:
-   - Inserts complete new record with country and genre
-6. **Log Statistics**: Records success/failure for reporting
-7. **Loop Check**: If more artists remain, returns to main loop
-8. **All Artists Processed**:
-   - Generates final report with statistics (success rate, new artists, etc.)
-9. **GitHub Commit**: Automatically commits and pushes changes to repository
+Este diagrama muestra cómo el sistema **persiste los datos de forma inteligente**:
 
+1. **Entrada**: Recibe los datos finales de país y género para un artista
+2. **Conectar**: Abre conexión a `artist_countries_genres.db`
+3. **Verificación de Existencia**: Consulta si el artista ya existe en la base de datos
+4. **Si el Artista Existe**:
+   - **Verificar Campos Faltantes**: Compara los datos existentes con los nuevos
+   - **Actualizar Solo Faltantes**: Actualiza país solo si el existente es NULL/Desconocido y el nuevo es conocido
+   - Actualiza género solo si el existente es NULL/Desconocido y el nuevo es conocido
+   - **¡Nunca sobrescribe** datos correctos existentes!
+5. **Si el Artista es Nuevo**:
+   - Inserta un nuevo registro completo con país y género
+6. **Registrar Estadísticas**: Registra éxito/fracaso para el informe
+7. **Verificación de Bucle**: Si quedan más artistas, vuelve al bucle principal
+8. **Todos los Artistas Procesados**:
+   - Genera informe final con estadísticas (tasa de éxito, nuevos artistas, etc.)
+9. **Commit en GitHub**: Confirma y sube automáticamente los cambios al repositorio
+    
 ---
-## 🔍 Detailed Analysis of `2_build_artist_db.py`
+## Análisis Detallado de `2_build_artist_db.py`
 
-### Code Structure
+### Estructura del Código
 
-#### **1. Configuration and Paths**
+#### **1. Configuración y Rutas**
 ```python
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 CHARTS_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
 ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_countries-genres-artist" / "artist_countries_genres.db"
 ```
 
-The script reads from the downloader's output and creates its own enriched database:
+El script lee la salida del descargador y crea su propia base de datos enriquecida:
+- **Entrada**: Bases de datos semanales de charts del paso 1 (`youtube_charts_YYYY-WXX.db`)
+- **Salida**: Base de datos de metadatos de artistas (`artist_countries_genres.db`)
+- **Estructura**: `charts_archive/2_countries-genres-artist/`
 
-- **Input**: Weekly chart databases from step 1 (`youtube_charts_YYYY-WXX.db`)
-- **Output**: Artist metadata database (`artist_countries_genres.db`)
-- **Structure**: `charts_archive/2_countries-genres-artist/`
-
-#### **2. Intelligent Name Variation System**
+#### **2. Sistema Inteligente de Variación de Nombres**
 
 ```python
 def generate_all_variations(name: str) -> List[str]:
@@ -194,7 +194,7 @@ def generate_all_variations(name: str) -> List[str]:
     """
 ```
 
-**Example for "Lil Wayne":**
+**Ejemplo para "Lil Wayne":**
 
 ```python
 Lil Wayne
@@ -205,7 +205,7 @@ Wayne
 ... (hasta 15 variaciones)
 ```
 
-**Prefix dictionary includes:**
+**El diccionario de prefijos incluye:**
 
 ```python
 ARTIST_PREFIXES = {
@@ -222,11 +222,11 @@ ARTIST_PREFIXES = {
 }
 ```
 
-#### **3. Geographic Intelligence System**
+#### **3. Sistema de Inteligencia Geográfica**
 
-The heart of country detection is the `COUNTRIES_CANONICAL` dictionary, a curated knowledge base with **30,000+ terms** mapping to 200+ countries.
+El corazón de la detección de país es el diccionario `COUNTRIES_CANONICAL`, una base de conocimiento curada con **más de 30,000 términos** mapeados a más de 200 países.
 
-**Structure example for United States:**
+**Ejemplo de estructura para Estados Unidos:**
 
 ```python
 'United States': {
@@ -242,18 +242,17 @@ The heart of country detection is the `COUNTRIES_CANONICAL` dictionary, a curate
 }
 ```
 
-**Detection process:**
+**Proceso de detección:**
+1. **Coincidencia directa**: "canadian" → Canadá
+2. **Mención de ciudad**: "from Toronto" → Canadá
+3. **Referencia regional**: "born in Brooklyn" → Estados Unidos
+4. **Gentilicio**: "argentine singer" → Argentina
 
-1. **Direct match**: "canadian" → Canada
-2. **City mention**: "from Toronto" → Canada
-3. **Regional reference**: "born in Brooklyn" → United States
-4. **Demonym**: "argentine singer" → Argentina
+#### **4. Ontología de Clasificación de Géneros**
 
-#### **4. Genre Classification Ontology**
+El diccionario `GENRE_MAPPINGS` contiene **más de 5,000 variantes de géneros** mapeadas a más de 200 macro-géneros.s.
 
-The `GENRE_MAPPINGS` dictionary contains **5,000+ genre variants** mapped to 200+ macro-genres.
-
-**Example mapping for Electronic music:**
+**Ejemplo de mapeo para música electrónica:**
 
 ```python
 # Variantes de House
@@ -274,18 +273,18 @@ The `GENRE_MAPPINGS` dictionary contains **5,000+ genre variants** mapped to 200
 'goa trance': ('Electrónica/Dance', 'goa trance'),
 ```
 
-**Macro-genre categories (200+):**
+**Categorías de macro-géneros (más de 200):**
 
-- **Global**: `Pop`, `Rock`, `Hip-Hop/Rap`, `R&B/Soul`, `Electrónica/Dance`
-- **Regional America**: `Reggaetón/Trap Latino`, `Bachata`, `Cumbia`, `Sertanejo`, `Funk Brasileiro`, `Regional Mexicano`, `Vallenato`
-- **Regional Asia**: `K-Pop/K-Rock`, `J-Pop/J-Rock`, `C-Pop/C-Rock`, `T-Pop/T-Rock`, `V-Pop/V-Rock`, `OPM`, `Indonesian Pop/Dangdut`, `Pakistani Pop`
-- **Regional Africa**: `Afrobeats`, `Amapiano`, `Bongo Flava`, `Zim Dancehall`, `Kuduro`, `Kizomba/Zouk`
-- **Regional Europe**: `Turbo-folk`, `Manele`, `Schlager`, `Chanson`, `Flamenco / Copla`, `Canzone Italiana`
-- **Indigenous**: `Māori Pop/Rock`, `Aboriginal Australian Pop/Rock`, `Siberian Indigenous Pop/Rock`, `Hawaiian Pop/Rock`
+- **Globales**: `Pop`, `Rock`, `Hip-Hop/Rap`, `R&B/Soul`, `Electrónica/Dance`
+- **América Regional**: `Reggaetón/Trap Latino`, `Bachata`, `Cumbia`, `Sertanejo`, `Funk Brasileiro`, `Regional Mexicano`, `Vallenato`
+- **Asia Regional**: `K-Pop/K-Rock`, `J-Pop/J-Rock`, `C-Pop/C-Rock`, `T-Pop/T-Rock`, `V-Pop/V-Rock`, `OPM`, `Indonesian Pop/Dangdut`, `Pakistani Pop`
+- **África Regional**: `Afrobeats`, `Amapiano`, `Bongo Flava`, `Zim Dancehall`, `Kuduro`, `Kizomba/Zouk`
+- **Europa Regional**: `Turbo-folk`, `Manele`, `Schlager`, `Chanson`, `Flamenco / Copla`, `Canzone Italiana`
+- **Indígenas**: `Māori Pop/Rock`, `Aboriginal Australian Pop/Rock`, `Siberian Indigenous Pop/Rock`, `Hawaiian Pop/Rock`
 
 #### **5. Multi-Source API Queries**
 
-The script queries four knowledge bases in cascade (with DeepSeek as final fallback):
+El script consulta cuatro bases de conocimiento en cascada (con DeepSeek como respaldo final):
 
 ```python
 def search_artist_genre(artist: str, country: Optional[str] = None):
@@ -298,7 +297,7 @@ def search_artist_genre(artist: str, country: Optional[str] = None):
     """
 ```
 
-**MusicBrainz query:**
+**Consulta a MusicBrainz:**
 
 ```python
 url = "https://musicbrainz.org/ws/2/artist/"
@@ -306,7 +305,7 @@ params = {'query': artist, 'fmt': 'json', 'limit': 1}
 # Retorna etiquetas de género estructuradas con puntuaciones de confianza
 ```
 
-**Wikipedia infobox extraction:**
+**Extracción de infobox de Wikipedia:**
 
 ```text
 # Extrae de Infobox musical artist
@@ -314,7 +313,7 @@ params = {'query': artist, 'fmt': 'json', 'limit': 1}
 # Ejemplo: | genre = [[Pop music|Pop]], [[R&B]]
 ```
 
-**Wikipedia summary extraction with NLP patterns:**
+**Extracción de resumen de Wikipedia con patrones de NLP:**
 
 ```python
 patterns = [
@@ -325,7 +324,7 @@ patterns = [
 ]
 ```
 
-**DeepSeek API fallback:**
+**Respaldo con API de DeepSeek:**
 
 ```python
 def search_deepseek_fallback(artist: str, context_country: Optional[str] = None):
@@ -338,7 +337,7 @@ def search_deepseek_fallback(artist: str, context_country: Optional[str] = None)
     """
 ```
 
-#### **6. Intelligent Caching System**
+#### **6. Sistema Inteligente de Caché**
 
 ```python
 _CACHE = {
@@ -353,15 +352,15 @@ _CACHE = {
 _DEEPSEEK_CACHE = {}  # Caché para resultados de DeepSeek
 ```
 
-**Benefits:**
+**Beneficios:**
 
-- **Performance**: Avoids redundant API calls for the same artist
-- **Politeness**: Reduces load on external services
-- **Speed**: In-memory cache for current execution
-- **Session reuse**: Keep-alive connections for multiple queries
-- **Cost savings**: DeepSeek cache prevents duplicate paid calls
+- **Rendimiento**: Evita llamadas API redundantes para el mismo artista
+- **Cortesía**: Reduce la carga en servicios externos
+- **Velocidad**: Caché en memoria para la ejecución actual
+- **Reutilización de sesiones**: Conexiones persistentes para múltiples consultas
+- **Ahorro de costos**: Caché de DeepSeek evita llamadas pagadas duplicadas
 
-#### **7. Script/Language Detection**
+#### **7. Detección de Escritura/Idioma**
 
 ```python
 def detect_script_from_name(name: str) -> Optional[str]:
@@ -377,17 +376,16 @@ def detect_script_from_name(name: str) -> Optional[str]:
     - Hanzi/Kanji (zh/ja) → China/Japón
     """
 ```
+**Usado para:**
 
-**Used for:**
+- Priorizar consultas de Wikipedia en el idioma correcto
+- Aplicar bonificaciones regionales (ej. escritura coreana → K-Pop)
+- Mejorar la generación de variaciones de nombre
+- Proporcionar contexto al respaldo de DeepSeek
 
-- Prioritizing Wikipedia queries in the right language
-- Applying regional bonuses (e.g., Korean script → K-Pop)
-- Improving name variation generation
-- Providing context to DeepSeek fallback
+#### **8. Sistema de Votación Ponderada**
 
-#### **8. Weighted Voting System**
-
-The `select_primary_genre` function implements a sophisticated voting algorithm:
+La función `select_primary_genre` implementa un sofisticado algoritmo de votación:
 
 ```python
 def select_primary_genre(artist: str, genre_candidates: List[Tuple[str, int, str]],
@@ -472,13 +470,12 @@ Nueva búsqueda encuentra: (País: UK, Género: Rock)
 Resultado: (País: UK, Género: Rock)  ✓ Solo se actualiza el país
 ```
 
-### **`artist` Table Structure**
-
-| Column      | Type   | Description               | Example        |
-| :---------- | :----- | :------------------------ | :------------- |
-| name        | `TEXT` | Artist name (primary key) | "BTS"          |
-| country     | `TEXT` | Canonical country name    | "South Korea"  |
-| macro_genre | `TEXT` | Primary macro-genre       | "K-Pop/K-Rock" |
+### **Estructura de la Tabla `artist`**
+| Columna     | Tipo   | Descripción                         | Ejemplo        |
+| :---------- | :----- | :---------------------------------- | :------------- |
+| name        | `TEXT` | Nombre del artista (clave primaria) | "BTS"          |
+| country     | `TEXT` | Nombre de país canónico             | "South Korea"  |
+| macro_genre | `TEXT` | Macro-género principal              | "K-Pop/K-Rock" |
 
 ---
 ## ⚙️ Análisis del Workflow de GitHub Actions (`2-update-artist-database.yml`)
