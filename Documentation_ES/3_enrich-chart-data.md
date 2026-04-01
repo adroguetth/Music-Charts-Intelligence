@@ -1,5 +1,6 @@
 # Script 3: YouTube Chart Enrichment System
-![MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+
+![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) 
 ![Web Scraping](https://img.shields.io/badge/Web-Scraping-orange?style=flat-square)
 ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue?style=flat-square)
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
