@@ -481,7 +481,7 @@ Resultado: (País: UK, Género: Rock)  ✓ Solo se actualiza el país
 | macro_genre | `TEXT` | Primary macro-genre       | "K-Pop/K-Rock" |
 
 ---
-## ⚙️ GitHub Actions Workflow Analysis (`2-update-artist-database.yml`)
+## ⚙️ Análisis del Workflow de GitHub Actions (`2-update-artist-database.yml`)
 
 ### **Estructura del Workflow**
 
@@ -514,13 +514,13 @@ jobs:
 
 #### **Job: `build-artist-database`**
 
-- **Operating system**: Ubuntu Latest
-- **Timeout**: 60 minutes (allows for API rate limiting and DeepSeek calls)
-- **Permissions**: Repository write access
+- **Sistema operativo**: Ubuntu Latest
+- **Tiempo máximo**: 60 minutos (permite límites de tasa de API y llamadas a DeepSeek)
+- **Permisos**: Escritura en el repositorio
 
-#### **Detailed Steps:**
+#### **Pasos Detallados:**
 
-1. **📚 Repository Checkout**
+1. **📚 Checkout del Repositorio**
 
 ```yaml
 uses: actions/checkout@v4
@@ -528,7 +528,7 @@ with:
   fetch-depth: 0  # Historial completo para operaciones git
 ```
 
-2. **🐍 Python 3.12 Setup**
+2. **🐍 Configuración de Python 3.12**
 
 ```yaml
 uses: actions/setup-python@v5
@@ -536,15 +536,14 @@ with:
   cache: 'pip'  # Caché de dependencias
 ```
 
-3. **📦 Dependency Installation**
+3. **📦 Instalación de Dependencias**
 
 ```yaml
 run: |
   pip install -r requirements.txt
-  # Playwright no es necesario para este script
 ```
 
-4. **📁 Directory Structure Creation**
+4. **📁 Creación de Estructura de Directorios**
 
 ```yaml
 run: |
@@ -564,7 +563,6 @@ run: |
 ```
 
 6. **✅ Verificación de Integridad de la Base de Datos**
-
 ```python
 - name: ✅ Verify database integrity
   run: |
@@ -592,7 +590,6 @@ run: |
 ```
 
 7. **📤 Commit y Push Automáticos**
-
 ```yaml
 - name: 📤 Commit and push changes
   run: |
@@ -624,7 +621,6 @@ run: |
 
 8. **📦 Subida de Artefactos (en caso de fallo)**
 
-
 ```yaml
 - name: 📦 Upload debug artifacts
   if: failure()
@@ -637,7 +633,6 @@ run: |
 ```
 
 9. **📋 Informe Final**
-
 ```yaml
 - name: 📋 Generate final report
   if: always()
@@ -682,41 +677,36 @@ run: |
 ```cron
 '0 13 * * 1'  # Minuto 0, Hora 13, Cualquier día del mes, Cualquier mes, Lunes
 ```
-
-- **Execution**: Every Monday at 13:00 UTC
-- **Offset**: 1 hour after the download workflow (12:00 UTC)
-- **Purpose**: Allows download workflow to complete before enrichment begins
+- **Ejecución**: Cada lunes a las 13:00 UTC
+- **Desfase**: 1 hora después del workflow de descarga (12:00 UTC)
+- **Propósito**: Permite que el workflow de descarga complete antes de que comience el enriquecimiento
 
 ---
 
 ## 🔐 Secretos Requeridos
-
-| Secret             | Purpose                                                      |
+| Secreto            | Propósito                                                    |
 | :----------------- | :----------------------------------------------------------- |
-| `DEEPSEEK_API_KEY` | Used by the DeepSeek AI fallback system to retrieve country and genre information when all free sources (MusicBrainz, Wikidata, Wikipedia) fail to return results. Required only for the fallback functionality; the script continues without it if not provided. |
+| `DEEPSEEK_API_KEY` | Utilizado por el sistema de respaldo DeepSeek AI para obtener información de país y género cuando todas las fuentes gratuitas (MusicBrainz, Wikidata, Wikipedia) fallan en devolver resultados. Requerido solo para la funcionalidad de respaldo; el script continúa sin él si no se proporciona. |
 
 ---
 
 ## 🚀 Instalación y Configuración Local
 
 ### **Prerequisites**
+- Python 3.7 o superior
+- Git instalado
+- Acceso a Internet para consultas API
+- (Opcional) Clave API de DeepSeek para respaldo
 
-- Python 3.7 or higher
-- Git installed
-- Internet access for API queries
-- (Optional) DeepSeek API key for fallback
-
-### **Step-by-Step Installation**
+### **Instalación Paso a Paso**
 
 1. **Clonar el Repositorio**
-
 ```bash
 git clone <repository-url>
 cd <project-directory>
 ```
 
-2. **Create Virtual Environment (recommended)**
-
+2. **Crear Entorno Virtual (recomendado)**
 ```bash
 python -m venv venv
 
@@ -727,46 +717,41 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-3. **Install Dependencies**
+3. **Instalar Dependencias**
 
 ```bash
 pip install -r requirements.txt
-# Playwright is not required for this script
 ```
 
-4. **Set DeepSeek API Key (optional, for fallback)**
-
+4. **Configurar Clave API de DeepSeek (opcional, para respaldo)**
 ```bash
 # Linux/Mac
-export DEEPSEEK_API_KEY="your-api-key-here"
+export DEEPSEEK_API_KEY="tu-clave-api-aqui"
 
 # Windows (Command Prompt)
-set DEEPSEEK_API_KEY=your-api-key-here
+set DEEPSEEK_API_KEY=tu-clave-api-aqui
 
 # Windows (PowerShell)
-$env:DEEPSEEK_API_KEY="your-api-key-here"
+$env:DEEPSEEK_API_KEY="tu-clave-api-aqui"
 ```
 
-5. **Run Initial Test**
-
+5. **Ejecutar Prueba Inicial**
 ```bash
 python scripts/2_build_artist_db.py
 ```
 
-### **Development Configuration**
-
+### **Configuración de Desarrollo**
 ```bash
-# To simulate GitHub Actions environment
+# Para simular el entorno de GitHub Actions
 export GITHUB_ACTIONS=true
 
-# For detailed debugging (shows genre candidates)
+# Para depuración detallada (muestra candidatos de género)
 export LOG_LEVEL=DEBUG
 ```
 
 ---
 
 ## 📁 Generated File Structure
-
 ```text
 charts_archive/
 ├── 1_download-chart/
@@ -777,111 +762,107 @@ charts_archive/
 │   │   └── ...
 │   └── backup/
 │       └── ...
-└── 2_countries-genres-artist/          # ← This script's output
-    └── artist_countries_genres.db       # Enriched artist database
+└── 2_countries-genres-artist/          # ← Salida de este script
+    └── artist_countries_genres.db       # Base de datos de artistas enriquecida
 ```
 
 ### **Database Growth**
-
-- Initial run: 100-200 artists
-- Weekly growth: 10-50 new artists (only new ones from weekly charts)
-- Size estimate: ~10KB per 100 artists
+- Ejecución inicial: 100-200 artistas
+- Crecimiento semanal: 10-50 nuevos artistas (solo los nuevos de charts semanales)
+- Tamaño estimado: ~10KB por 100 artistas
 
 ---
 
-## 🔧 Customization and Configuration
+## 🔧 Personalización y Configuración
 
-### **Adjustable Parameters in Script**
+### **Parámetros Ajustables en el Script**
 
 ```python
-# In 2_build_artist_db.py
-MIN_CANDIDATES = 3        # Minimum genre candidates before Wikipedia search
-RETRY_DELAY = 0.5          # Delay between API calls (seconds)
-DEFAULT_TIMEOUT = 10       # API timeout (seconds)
-DEEPSEEK_RATE_LIMIT = 0.5  # Delay between DeepSeek calls (seconds)
+# En 2_build_artist_db.py
+MIN_CANDIDATES = 3        # Mínimo de candidatos de género antes de búsqueda en Wikipedia
+RETRY_DELAY = 0.5          # Retraso entre llamadas API (segundos)
+DEFAULT_TIMEOUT = 10       # Tiempo de espera de API (segundos)
+DEEPSEEK_RATE_LIMIT = 0.5  # Retraso entre llamadas a DeepSeek (segundos)
 ```
 
-### **Workflow Configuration**
+### **Configuración del Workflow**
 
 ```yaml
-# In 2-update-artist-database.yml
+# En 2-update-artist-database.yml
 env:
-  RETENTION_DAYS: 30       # Days for artifacts
+  RETENTION_DAYS: 30       # Días para artefactos
 
-timeout-minutes: 60        # Total job timeout (allows for API rate limits)
+timeout-minutes: 60        # Tiempo máximo del job (permite límites de tasa de API)
 ```
 
-### **Adding New Countries**
+### **Agregar Nuevos Países**
 
 ```python
-# Extend COUNTRIES_CANONICAL
+# Extender COUNTRIES_CANONICAL
 'New Country': {
-    'country name', 'demonyms', 'capital', 'major cities'
+    'nombre del país', 'gentilicios', 'capital', 'ciudades principales'
 }
 ```
 
-### **Adding New Genre Mappings**
+### **Agregar Nuevos Mapeos de Géneros**
 
 ```python
-# Extend GENRE_MAPPINGS
-'new subgenre': ('Macro-Genre', 'subgenre')
+# Extender GENRE_MAPPINGS
+'nuevo subgénero': ('Macro-Género', 'subgénero')
 ```
 
-### **Adjusting Country Priorities**
+### **Ajustar Prioridades por País**
 
 ```python
-# Modify COUNTRY_GENRE_PRIORITY
-"Country Name": [
-    "Priority Genre 1",   # Gets 2.0x bonus
-    "Priority Genre 2",   # Gets 1.5x bonus
-    "Priority Genre 3"    # Gets 1.2x bonus
+# Modificar COUNTRY_GENRE_PRIORITY
+"Nombre del País": [
+    "Género Prioritario 1",   # Obtiene 2.0x bonificación
+    "Género Prioritario 2",   # Obtiene 1.5x bonificación
+    "Género Prioritario 3"    # Obtiene 1.2x bonificación
 ]
+```
 ---
 
-## 🐛 Troubleshooting
+## 🐛 Solución de Problemas
 
-### **Common Issues and Solutions**
+### Problemas Comunes y Soluciones
 
 1. **Error: "No chart databases found"**
    - Run the download workflow (script 1) first
    - Check if `charts_archive/1_download-chart/databases/` exists
    - Verify file permissions
-2. **Error: API timeouts in GitHub Actions**
+2. **Error: Tiempo de espera de API en GitHub Actions**
 
 ```bash
-# Increase timeouts in script
+# Aumentar tiempos de espera en el script
 DEFAULT_TIMEOUT = 20
 RETRY_DELAY = 1.0
 ```
 
-3. **Error: Rate limiting from APIs**
+3. **Error: Límite de tasa de API**
+- El script incluye retrasos entre llamadas
+- Para lotes grandes, considerar agregar retrasos más largos
+- Monitorear encabezados de respuesta de API para información de límites de tasa
 
-   - The script includes delays between calls
-   - For large batches, consider adding longer delays
-   - Monitor API response headers for rate limit info
+4. **Error: Clave API de DeepSeek no configurada**
+- Agregar `DEEPSEEK_API_KEY` a los Secretos de GitHub
+- Para pruebas locales, configurar variable de entorno
+- El script continúa sin DeepSeek si falta la clave
 
-4. **Error: DeepSeek API key not set**
+5. **Error: Artista no encontrado en ninguna fuente**
+- Verificar si el nombre del artista tiene caracteres especiales
+- Intentar búsqueda manual en MusicBrainz
+- Agregar reglas de respaldo para el país
+- DeepSeek puede ayudar con artistas oscuros
 
-   - Add `DEEPSEEK_API_KEY` to GitHub Secrets
-   - For local testing, set environment variable
-   - The script continues without DeepSeek if key is missing
+### **Registros y Depuración**
 
-5. **Error: Artist not found in any source**
-   - Check if artist name has special characters
-   - Try manual search in MusicBrainz
-   - Add fallback rules for the country
-   - DeepSeek may help with obscure artists
-   
-
-### **Logs and Debugging**
-
-**Available log levels:**
-
-1. **Basic information**: Shows progress and results
-2. **DEBUG mode**: Shows genre candidates and voting details
-3. **GitHub Actions mode**: Enhanced logging for CI/CD
-4. **Verbose API logging**: Uncomment `print` statements in API functions
-5. **DeepSeek fallback logging**: Shows when AI fallback is used
+**Niveles de registro disponibles:**
+1. **Información básica**: Muestra progreso y resultados
+2. **Modo DEBUG**: Muestra candidatos de género y detalles de votación
+3. **Modo GitHub Actions**: Registro mejorado para CI/CD
+4. **Registro verbose de API**: Descomentar declaraciones `print` en funciones API
+5. **Registro de respaldo DeepSeek**: Muestra cuando se usa el respaldo de IA
 
 ---
 
