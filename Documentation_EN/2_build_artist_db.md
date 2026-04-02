@@ -110,7 +110,7 @@ This diagram shows how the system **collects genre candidates** from multiple so
 
 ### **Diagram 4: Voting & Weight System**
 
-<img src="https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN" alt="Voting & Weight System" width="250">
+<img src="https://drive.google.com/uc?export=view&id=1TjRbNOSIj7VdFqohXDTknysfzI7R5HgN" alt="Voting & Weight System" width="250">
 
 This is the **intelligent decision engine** that selects the final genre:
 
