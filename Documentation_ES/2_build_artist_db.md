@@ -110,14 +110,7 @@ Este diagrama muestra cómo el sistema **recopila candidatos de género** de mú
 
 ### **Diagrama 4: Sistema de Votación y Pesos**
 
-<img src="https://drive.google.com/file/d/1hopeWo6XpnalvK98aDi5fqdZwSSPtYTl/view?usp=drive_link" alt="Sistema de Votación y Pesos" width="250">
-
-https://drive.google.com/file/d/1hopeWo6XpnalvK98aDi5fqdZwSSPtYTl/view?usp=drive_link
-
-
-<img src="https://drive.google.com/file/d/1N7bB-2ZjkkELwbW3e3p4y6xbc5PaJr8v/view?usp=drive_link" alt="Sistema de Votación y Pesos" width="250">
-
-https://drive.google.com/file/d/1N7bB-2ZjkkELwbW3e3p4y6xbc5PaJr8v/view?usp=drive_link
+<img src="https://drive.google.com/uc?export=view&id=1hopeWo6XpnalvK98aDi5fqdZwSSPtYTl" alt="Actualización de Base de Datos" width="350">
 
 Este es el **motor de decisión inteligente** que selecciona el género final:
 
@@ -149,7 +142,7 @@ Este es el **motor de decisión inteligente** que selecciona el género final:
 
 ### **Diagrama 5: Actualización de Base de Datos**
 
-https://drive.google.com/uc?export=view&id=1zU7GwiHW3DYDlY7kGLnwC6HqY99SRF5m
+<img src="https://drive.google.com/uc?export=view&id=1IKXuumnAqDQEW3TfxK-XDldHsAMhWOXG" alt="Actualización de Base de Datos" width="350">
 
 Este diagrama muestra cómo el sistema **persiste los datos de forma inteligente**:
 
