@@ -41,7 +41,7 @@ Este proyecto es el segundo componente del sistema de inteligencia de YouTube Ch
 
 ### **Diagrama 1: Vista General del Flujo Principal**
 
-https://drive.google.com/uc?export=view&id=18uJf6B1ihQs5b3Hv1MZuqnwQs9DNjMjA
+<img src="https://drive.google.com/uc?export=view&id=1Bn8U0DY8ds-hESUBxgssPtqAPvsq1YLw" alt="Flujo Principal" width="400">
 
 Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
@@ -57,7 +57,7 @@ Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
 ### **Diagrama 2: Búsqueda de País (Detallada)**
 
-https://drive.google.com/uc?export=view&id=1mQx2lJ4bltmssN9VBTnkiFxwQXSJiz7y
+<img src="https://drive.google.com/uc?export=view&id=1932QMOwkdTmppIw1awhWgMa-b0dWLk2w" alt="Búsqueda de País" width="250">
 
 Este diagrama detalla la **estrategia de búsqueda en cascada** para detectar el país de un artista:
 
@@ -83,7 +83,7 @@ Este diagrama detalla la **estrategia de búsqueda en cascada** para detectar el
 
 ### **Diagrama 3: Búsqueda de Género (Detallada)**
 
-https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0_
+<img src="https://drive.google.com/uc?export=view&id=1kPow9lkOp_g5MBzKmWi0nyivbE89JtHY" alt="Búsqueda de Género" width="200">
 
 Este diagrama muestra cómo el sistema **recopila candidatos de género** de múltiples fuentes:
 
@@ -110,7 +110,14 @@ Este diagrama muestra cómo el sistema **recopila candidatos de género** de mú
 
 ### **Diagrama 4: Sistema de Votación y Pesos**
 
-https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN
+<img src="https://drive.google.com/file/d/1hopeWo6XpnalvK98aDi5fqdZwSSPtYTl/view?usp=drive_link" alt="Sistema de Votación y Pesos" width="250">
+
+https://drive.google.com/file/d/1hopeWo6XpnalvK98aDi5fqdZwSSPtYTl/view?usp=drive_link
+
+
+<img src="https://drive.google.com/file/d/1N7bB-2ZjkkELwbW3e3p4y6xbc5PaJr8v/view?usp=drive_link" alt="Sistema de Votación y Pesos" width="250">
+
+https://drive.google.com/file/d/1N7bB-2ZjkkELwbW3e3p4y6xbc5PaJr8v/view?usp=drive_link
 
 Este es el **motor de decisión inteligente** que selecciona el género final:
 
