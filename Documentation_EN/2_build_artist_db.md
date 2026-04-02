@@ -5,7 +5,7 @@
 ## 📥 Quick Downloads
 | Document                | Format                                                     |                                                    
 | ------------------------- | ------------------------------------------------------------ |
-| **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1viUAxZ7k-qeYYbyvZf2OaP20AfLOgKh2/view?usp=drive_link) |
+| **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1ar9huV0mMVS0ABgedO5LQWwyA1aEyKvY/view?usp=drive_link) |
 | **🇪🇸 Spanish Documentation**  | [PDF](https://drive.google.com/file/d/1WBHBreKeVToTBygSyCuYsHQUr_zSl3BT/view?usp=drive_link) |
 
 ## 📋 General Description
