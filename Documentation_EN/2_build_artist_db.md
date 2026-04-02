@@ -6,7 +6,7 @@
 | Document                | Format                                                     |                                                    
 | ------------------------- | ------------------------------------------------------------ |
 | **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/1ar9huV0mMVS0ABgedO5LQWwyA1aEyKvY/view?usp=drive_link) |
-| **🇪🇸 Spanish Documentation**  | [PDF](https://drive.google.com/file/d/1WBHBreKeVToTBygSyCuYsHQUr_zSl3BT/view?usp=drive_link) |
+| **🇪🇸 Spanish Documentation**  | [PDF](https://drive.google.com/file/d/1DeaA4FSflAcB-En9yQlu1yvzNpdAOMZO/view?usp=sharing) |
 
 ## 📋 General Description
 
