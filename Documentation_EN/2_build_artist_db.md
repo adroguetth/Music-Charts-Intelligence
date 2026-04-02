@@ -41,7 +41,7 @@ This project is the second component of the YouTube Charts intelligence system. 
 
 ### **Diagram 1: Main Flow Overview**
 
-<img src="https://drive.google.com/uc?export=view&id=18uJf6B1ihQs5b3Hv1MZuqnwQs9DNjMjA" alt="Country Search" width="350">
+<img src="https://drive.google.com/uc?export=view&id=1Xa_kmFpuu-YjUbVn5PnGuS1BICWwLhaq" alt="Main Flow Overview" width="350">
 
 This diagram shows the **high-level pipeline** of the entire system:
 
@@ -83,7 +83,7 @@ This diagram details the **cascading search strategy** for detecting an artist's
 
 ### **Diagram 3: Genre Search (Detailed)**
 
-<img src="https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0_" alt="Country Search" width="350">
+<img src="https://drive.google.com/uc?export=view&id=173wJP4u30DDEN27HaFb52A3nhS1VCg0_" alt="Genre Search" width="350">
 
 This diagram shows how the system **collects genre candidates** from multiple sources:
 
@@ -110,7 +110,7 @@ This diagram shows how the system **collects genre candidates** from multiple so
 
 ### **Diagram 4: Voting & Weight System**
 
-<img src="https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN" alt="Country Search" width="250">
+<img src="https://drive.google.com/uc?export=view&id=1ml8-R9svwpnT4bgXhJ3L-FNkqa17N8CN" alt="Voting & Weight System" width="250">
 
 This is the **intelligent decision engine** that selects the final genre:
 
@@ -141,7 +141,7 @@ This is the **intelligent decision engine** that selects the final genre:
 11. **Fallback**: If no winner and country is known, uses the first genre from country's priority list
 
 ### **Diagram 5: Database Update**
-<img src="https://drive.google.com/uc?export=view&id=1zU7GwiHW3DYDlY7kGLnwC6HqY99SRF5m" alt="Country Search" width="350">
+<img src="https://drive.google.com/uc?export=view&id=1k0Z2qZ-6Pxf7NGd6-m31sL9r77EX2S0r" alt="Country Search" width="350">
 
 This diagram shows how the system **persists data intelligently**:
 
