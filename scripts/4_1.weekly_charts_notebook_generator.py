@@ -77,7 +77,7 @@ class Config:
     DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
     DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
-    # Colors
+    # Colors (YouTube-inspired)
     YT_RED = '#FF0000'
     YT_RED_DARK = '#CC0000'
     YT_BG = '#FFFFFF'
@@ -741,7 +741,8 @@ def load_data(db_path: Path) -> pd.DataFrame:
 
     df['upload_date'] = pd.to_datetime(df['upload_date'], errors='coerce')
     df['upload_quarter'] = df['upload_date'].dt.quarter
-    df['engagement'] = (df['likes'] / df['views'] * 100).round(2)
+    # Avoid division by zero: set engagement to 0 where views == 0
+    df['engagement'] = np.where(df['views'] > 0, (df['likes'] / df['views'] * 100).round(2), 0.0)
 
     return df
 
@@ -949,7 +950,7 @@ conn.close()
 
 df['upload_date'] = pd.to_datetime(df['upload_date'], errors='coerce')
 df['upload_quarter'] = df['upload_date'].dt.quarter
-df['engagement'] = (df['likes'] / df['views'] * 100).round(2)
+df['engagement'] = np.where(df['views'] > 0, (df['likes'] / df['views'] * 100).round(2), 0.0)
 
 print(f"Loaded {{len(df)}} songs, {{df.shape[1]}} columns")
 df.head()
@@ -1269,9 +1270,11 @@ else:
         print("="*80)
         display(matrix_heatmap)
 
-        # Static heatmap using matplotlib/seaborn for reliable GitHub rendering
+        # Convert to integer to avoid float formatting issues with fmt='d'
+        matrix_heatmap_int = matrix_heatmap.astype(int)
+        
         plt.figure(figsize=(12, 8))
-        sns.heatmap(matrix_heatmap, annot=True, fmt='d', cmap='Reds',
+        sns.heatmap(matrix_heatmap_int, annot=True, fmt='d', cmap='Reds',
                     xticklabels=True, yticklabels=True, linewidths=0.5, linecolor='white')
         plt.title('Country vs Genre Distribution', fontsize=14, fontweight='bold')
         plt.xlabel('Genre', fontsize=12)
@@ -1987,7 +1990,7 @@ def main():
         output_path.parent.mkdir(parents=True, exist_ok=True)
         generate_notebook(df, (db_path, year, week), insights, output_path, 'en')
         print(f"\nEnglish notebook generated: {output_path}")
-    else:
+    else:  # 'es'
         summaries = get_data_summaries(df)
         sections = [
             "introduction",
