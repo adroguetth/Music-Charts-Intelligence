@@ -10,7 +10,7 @@ Features:
 - AI-generated insights for each analysis section with language support
 - Caching system per week and language to avoid redundant API calls
 - Generates two notebooks: English and Spanish
-- Full analysis with 9 sections + introduction + attribution + 20+ visualizations
+- Full analysis with 12 sections + introduction + attribution + 25+ visualizations
 
 Usage:
     python 4_1.weekly_charts_notebook_generator.py [--week YYYY-WXX] [--language en|es|both]
@@ -159,6 +159,8 @@ class AIInsightsCache:
             key_data = df.groupby('upload_quarter')['views'].sum().to_string()
         elif section == 'introduction':
             key_data = f"{len(df)}_{df['views'].sum()}_{df['likes'].sum()}_{df['artist_country'].nunique()}_{df['macro_genre'].nunique()}"
+        elif section in ('top_songs_views', 'top_songs_likes', 'top_songs_engagement'):
+            key_data = df.nlargest(10, section.split('_')[-1])['track_name'].to_string()
         else:
             key_data = df.to_string()
             
@@ -201,7 +203,7 @@ def get_ai_insight(section: str, data_summary: Dict, df: pd.DataFrame, language:
     Query DeepSeek API for section insights with language-aware caching.
     
     Args:
-        section: Analysis section identifier (general_stats, top_countries, etc.)
+        section: Analysis section identifier
         data_summary: Pre-aggregated metrics for the section
         df: Full DataFrame for cache key generation
         language: Output language ('en' or 'es')
@@ -256,39 +258,40 @@ Analiza estas estadísticas generales de música:
 - Promedio vistas: {data_summary.get('avg_views', 0):,.0f}
 - Promedio likes: {data_summary.get('avg_likes', 0):,.0f}
 
-Proporciona un análisis breve (3-4 líneas) en español destacando:
-- Diversidad geográfica y de géneros
-- Niveles de engagement
-- Insights principales
+Proporciona un análisis explicativo (4-5 líneas) en español destacando:
+- Diversidad geográfica y de géneros, y qué implica para el alcance global.
+- Niveles de engagement y qué indican sobre la conexión audiencia-artista.
+- Insights principales sobre el comportamiento del mercado musical actual.
 """,
 
             "top_countries": f"""
 Analiza los top países por cantidad de canciones:
 {data_summary.get('top_countries', 'N/A')}
 
-Proporciona un análisis breve (3-4 líneas) en español sobre:
-- Qué países dominan el ranking
-- Patrones geográficos observados
-- Posibles razones de esta distribución
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Qué países dominan el ranking y por qué (industria musical, población, acceso a internet, cultura de consumo musical).
+- Patrones geográficos observados (concentración en ciertas regiones).
+- Implicaciones para artistas que buscan expandir su audiencia internacional.
 """,
 
             "top_likes": f"""
 Analiza los top países por total de likes:
 {data_summary.get('top_likes', 'N/A')}
 
-Proporciona un análisis breve (3-4 líneas) en español sobre:
-- Qué países generan más engagement
-- Diferencias entre top por canciones vs top por likes
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Qué países generan más engagement y por qué (cultura de fans, tamaño de mercado, plataformas locales).
+- Diferencias entre top por canciones vs top por likes (qué revela sobre la calidad de la interacción).
+- Estrategias para artistas que buscan maximizar el engagement en regiones específicas.
 """,
 
             "genre_engagement": f"""
 Analiza las tasas de engagement por género:
 {data_summary.get('genre_engagement', 'N/A')}
 
-Proporciona un análisis breve (3-4 líneas) en español sobre:
-- Géneros con mayor y menor engagement
-- Posibles explicaciones para estas diferencias
-- Implicaciones para creadores de contenido
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Géneros con mayor y menor engagement y por qué (comunidades de fans más apasionadas, nichos específicos).
+- Posibles explicaciones para estas diferencias (ritmo, lírica, cultura del género).
+- Implicaciones para creadores de contenido al elegir un género.
 """,
 
             "video_metrics": f"""
@@ -298,21 +301,52 @@ Analiza las métricas de video:
 - Live performances: {data_summary.get('live_pct', 0):.1f}% ({data_summary.get('live_views', 0):,.0f} avg views)
 - Engagement promedio: {data_summary.get('avg_engagement', 0):.1f}%
 
-Proporciona un análisis breve (3-4 líneas) en español sobre:
-- Qué tipo de video funciona mejor
-- Preferencias de la audiencia
-- Recomendaciones para artistas
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Qué tipo de video funciona mejor en términos de vistas y por qué (expectativas de la audiencia, producción, novedad).
+- Preferencias de la audiencia según el tipo de contenido.
+- Recomendaciones para artistas según sus objetivos (alcance masivo vs fidelización).
 """,
 
-            "temporal": f"""
-Analiza las tendencias temporales:
-- Vistas por trimestre: {data_summary.get('quarterly_views', {})}
-- Engagement por trimestre: {data_summary.get('quarterly_engagement', {})}
+            "engagement_by_type": f"""
+Analiza las tasas de engagement por tipo de video:
+- Official videos: {data_summary.get('official_engagement', 0):.2f}%
+- Lyric videos: {data_summary.get('lyric_engagement', 0):.2f}%
+- Live performances: {data_summary.get('live_engagement', 0):.2f}%
 
-Proporciona un análisis breve (3-4 líneas) en español sobre:
-- Patrones estacionales observados
-- Evolución del engagement
-- Tendencias relevantes
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Qué tipo de video genera mejor engagement (no solo vistas) y por qué.
+- Por qué los lyric videos pueden tener mejor o peor engagement (concentración en la letra vs producción visual).
+- Recomendaciones para artistas según su objetivo (engagement vs alcance).
+""",
+
+            "top_songs_views": f"""
+Analiza las 10 canciones con más vistas:
+{data_summary.get('top_songs_views_list', 'N/A')}
+
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Patrones comunes entre estas canciones (artistas, géneros, países, tendencias virales).
+- Qué factores pueden explicar su éxito en vistas (marketing, colaboraciones, momento de lanzamiento).
+- Implicaciones para artistas que buscan maximizar vistas.
+""",
+
+            "top_songs_likes": f"""
+Analiza las 10 canciones con más likes:
+{data_summary.get('top_songs_likes_list', 'N/A')}
+
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Relación entre likes y vistas (engagement rate) y qué indica sobre la calidad de la canción.
+- Qué características tienen las canciones más queridas por el público (emocionales, pegadizas, con mensaje).
+- Diferencias con el ranking de vistas y qué revela sobre el comportamiento del usuario.
+""",
+
+            "top_songs_engagement": f"""
+Analiza las 10 canciones con mayor engagement (likes/views %):
+{data_summary.get('top_songs_engagement_list', 'N/A')}
+
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Qué tipo de canciones generan más engagement proporcional (nichos, fandom leal, contenido emotivo).
+- Estrategias para aumentar el engagement (call to action, comunidad, interacción).
+- Relación con nichos de audiencia más comprometidos y cómo capitalizarlos.
 """,
 
             "duration": f"""
@@ -322,9 +356,21 @@ Analiza la duración de videos:
 - Mínimo: {data_summary.get('min_duration', 0):.1f} min
 - Máximo: {data_summary.get('max_duration', 0):.1f} min
 
-Proporciona un análisis breve (3-4 líneas) en español sobre:
-- Rango típico de duración
-- Implicaciones para creadores
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Rango típico de duración y cómo se compara con estándares de la industria.
+- Implicaciones para creadores sobre la atención de la audiencia y retención.
+- Estrategias de duración según el género o tipo de contenido.
+""",
+
+            "temporal": f"""
+Analiza las tendencias temporales:
+- Vistas por trimestre: {data_summary.get('quarterly_views', {})}
+- Engagement por trimestre: {data_summary.get('quarterly_engagement', {})}
+
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Patrones estacionales observados (picos en ciertos trimestres, por ejemplo lanzamientos de fin de año).
+- Evolución del engagement y posibles causas (cambios en algoritmo, comportamiento del usuario).
+- Tendencias relevantes para la planificación de lanzamientos.
 """,
 
             "collaborations": f"""
@@ -332,10 +378,10 @@ Analiza el impacto de las colaboraciones:
 - Canciones solistas: {data_summary.get('solo_count', 0)} ({data_summary.get('solo_views', 0):,.0f} avg views, {data_summary.get('solo_engagement', 0):.1f}% engagement)
 - Colaboraciones: {data_summary.get('collab_count', 0)} ({data_summary.get('collab_views', 0):,.0f} avg views, {data_summary.get('collab_engagement', 0):.1f}% engagement)
 
-Proporciona un análisis breve (3-4 líneas) en español sobre:
-- Si las colaboraciones tienen mejor rendimiento
-- Posibles razones
-- Estrategias recomendadas
+Proporciona un análisis explicativo (4-5 líneas) en español sobre:
+- Si las colaboraciones tienen mejor rendimiento y por qué (sinergia de fans, diversidad de estilos).
+- Posibles razones (alcance cruzado, novedad, producción conjunta).
+- Estrategias recomendadas para artistas según su etapa de carrera.
 """,
 
             "executive_summary": f"""
@@ -405,39 +451,40 @@ Analyze these general music statistics:
 - Average views: {data_summary.get('avg_views', 0):,.0f}
 - Average likes: {data_summary.get('avg_likes', 0):,.0f}
 
-Provide a brief analysis (3-4 lines) highlighting:
-- Geographic and genre diversity
-- Engagement levels
-- Key insights
+Provide an explanatory analysis (4-5 lines) highlighting:
+- Geographic and genre diversity and what it implies for global reach.
+- Engagement levels and what they indicate about audience-artist connection.
+- Key insights about current music market behavior.
 """,
 
             "top_countries": f"""
 Analyze the top countries by song count:
 {data_summary.get('top_countries', 'N/A')}
 
-Provide a brief analysis (3-4 lines) about:
-- Which countries dominate the ranking
-- Observed geographic patterns
-- Possible reasons for this distribution
+Provide an explanatory analysis (4-5 lines) about:
+- Which countries dominate the ranking and why (music industry size, population, internet access, music consumption culture).
+- Observed geographic patterns (concentration in certain regions).
+- Implications for artists looking to expand their international audience.
 """,
 
             "top_likes": f"""
 Analyze the top countries by total likes:
 {data_summary.get('top_likes', 'N/A')}
 
-Provide a brief analysis (3-4 lines) about:
-- Which countries generate the most engagement
-- Differences between top by songs vs top by likes
+Provide an explanatory analysis (4-5 lines) about:
+- Which countries generate the most engagement and why (fan culture, market size, local platforms).
+- Differences between top by songs vs top by likes (what it reveals about interaction quality).
+- Strategies for artists aiming to maximize engagement in specific regions.
 """,
 
             "genre_engagement": f"""
 Analyze engagement rates by genre:
 {data_summary.get('genre_engagement', 'N/A')}
 
-Provide a brief analysis (3-4 lines) about:
-- Genres with highest and lowest engagement
-- Possible explanations for these differences
-- Implications for content creators
+Provide an explanatory analysis (4-5 lines) about:
+- Genres with highest and lowest engagement and why (more passionate fan communities, niche specifics).
+- Possible explanations for these differences (tempo, lyrics, genre culture).
+- Implications for content creators when choosing a genre.
 """,
 
             "video_metrics": f"""
@@ -447,21 +494,52 @@ Analyze video metrics:
 - Live performances: {data_summary.get('live_pct', 0):.1f}% ({data_summary.get('live_views', 0):,.0f} avg views)
 - Average engagement: {data_summary.get('avg_engagement', 0):.1f}%
 
-Provide a brief analysis (3-4 lines) about:
-- Which video type performs best
-- Audience preferences
-- Recommendations for artists
+Provide an explanatory analysis (4-5 lines) about:
+- Which video type performs best in terms of views and why (audience expectations, production quality, novelty).
+- Audience preferences based on content type.
+- Recommendations for artists based on their goals (mass reach vs loyalty building).
 """,
 
-            "temporal": f"""
-Analyze temporal trends:
-- Views by quarter: {data_summary.get('quarterly_views', {})}
-- Engagement by quarter: {data_summary.get('quarterly_engagement', {})}
+            "engagement_by_type": f"""
+Analyze engagement rates by video type:
+- Official videos: {data_summary.get('official_engagement', 0):.2f}%
+- Lyric videos: {data_summary.get('lyric_engagement', 0):.2f}%
+- Live performances: {data_summary.get('live_engagement', 0):.2f}%
 
-Provide a brief analysis (3-4 lines) about:
-- Observed seasonal patterns
-- Engagement evolution
-- Relevant trends
+Provide an explanatory analysis (4-5 lines) about:
+- Which video type generates better engagement (not just views) and why.
+- Why lyric videos may have higher or lower engagement (focus on lyrics vs visual production).
+- Recommendations for artists based on their objective (engagement vs reach).
+""",
+
+            "top_songs_views": f"""
+Analyze the top 10 songs by views:
+{data_summary.get('top_songs_views_list', 'N/A')}
+
+Provide an explanatory analysis (4-5 lines) about:
+- Common patterns among these songs (artists, genres, countries, viral trends).
+- Factors that may explain their success in views (marketing, collaborations, release timing).
+- Implications for artists seeking to maximize views.
+""",
+
+            "top_songs_likes": f"""
+Analyze the top 10 songs by likes:
+{data_summary.get('top_songs_likes_list', 'N/A')}
+
+Provide an explanatory analysis (4-5 lines) about:
+- Relationship between likes and views (engagement rate) and what it indicates about song quality.
+- Characteristics of the most loved songs by audiences (emotional, catchy, message-driven).
+- Differences from the views ranking and what it reveals about user behavior.
+""",
+
+            "top_songs_engagement": f"""
+Analyze the top 10 songs by engagement (likes/views %):
+{data_summary.get('top_songs_engagement_list', 'N/A')}
+
+Provide an explanatory analysis (4-5 lines) about:
+- What type of songs generate higher proportional engagement (niches, loyal fandom, emotional content).
+- Strategies to increase engagement (call to action, community building, interaction).
+- Relationship with more committed audience niches and how to capitalize on them.
 """,
 
             "duration": f"""
@@ -471,9 +549,21 @@ Analyze video duration:
 - Minimum: {data_summary.get('min_duration', 0):.1f} min
 - Maximum: {data_summary.get('max_duration', 0):.1f} min
 
-Provide a brief analysis (3-4 lines) about:
-- Typical duration range
-- Implications for creators
+Provide an explanatory analysis (4-5 lines) about:
+- Typical duration range and how it compares to industry standards.
+- Implications for creators regarding audience attention span and retention.
+- Duration strategies based on genre or content type.
+""",
+
+            "temporal": f"""
+Analyze temporal trends:
+- Views by quarter: {data_summary.get('quarterly_views', {})}
+- Engagement by quarter: {data_summary.get('quarterly_engagement', {})}
+
+Provide an explanatory analysis (4-5 lines) about:
+- Observed seasonal patterns (peaks in certain quarters, e.g., year-end releases).
+- Engagement evolution and possible causes (algorithm changes, user behavior shifts).
+- Relevant trends for release planning.
 """,
 
             "collaborations": f"""
@@ -481,10 +571,10 @@ Analyze the impact of collaborations:
 - Solo songs: {data_summary.get('solo_count', 0)} ({data_summary.get('solo_views', 0):,.0f} avg views, {data_summary.get('solo_engagement', 0):.1f}% engagement)
 - Collaborations: {data_summary.get('collab_count', 0)} ({data_summary.get('collab_views', 0):,.0f} avg views, {data_summary.get('collab_engagement', 0):.1f}% engagement)
 
-Provide a brief analysis (3-4 lines) about:
-- Whether collaborations perform better
-- Possible reasons
-- Recommended strategies
+Provide an explanatory analysis (4-5 lines) about:
+- Whether collaborations perform better and why (fan synergy, style diversity).
+- Possible reasons (cross-reach, novelty, joint production).
+- Recommended strategies for artists based on their career stage.
 """,
 
             "executive_summary": f"""
@@ -530,7 +620,7 @@ Provide a DETAILED executive summary (20-25 lines) that:
         if section in ["introduction", "executive_summary"]:
             max_tokens = 1500
         else:
-            max_tokens = 500
+            max_tokens = 600
             
         response = requests.post(
             Config.DEEPSEEK_API_URL,
@@ -1154,48 +1244,41 @@ print(f"   Min: {genre_stats['engagement_rate'].min():.2f}% ({genre_stats.loc[ge
     if insights.get('genre_engagement'):
         nb.cells.append(new_markdown_cell(insights['genre_engagement']))
 
-    # Country-Genre Heatmap
+    # Country-Genre Heatmap (using matplotlib/seaborn instead of plotly)
     nb.cells.append(new_markdown_cell(titles['country_genre_heatmap']))
     nb.cells.append(new_code_cell("""
 df_analysis = df[~df['artist_country'].isin(['Multi-country', 'Unknown'])]
 
-matrix = pd.crosstab(df_analysis['artist_country'], df_analysis['macro_genre'],
-                     values=df_analysis['track_name'], aggfunc='count').fillna(0)
+if df_analysis.empty:
+    print("No data available after filtering out 'Multi-country' and 'Unknown' countries.")
+else:
+    matrix = pd.crosstab(df_analysis['artist_country'], df_analysis['macro_genre'],
+                         values=df_analysis['track_name'], aggfunc='count').fillna(0)
 
-top_countries_matrix = matrix.sum(axis=1).sort_values(ascending=False).head(12).index
-top_genres_matrix = genre_stats.nlargest(10, 'total_songs')['macro_genre'].tolist()
-top_genres_existing = [g for g in top_genres_matrix if g in matrix.columns]
+    top_countries = matrix.sum(axis=1).sort_values(ascending=False).head(12).index
+    top_genres = genre_stats.nlargest(10, 'total_songs')['macro_genre'].tolist()
+    top_genres = [g for g in top_genres if g in matrix.columns]
 
-matrix_heatmap = matrix.loc[top_countries_matrix, top_genres_existing]
+    if len(top_countries) == 0 or len(top_genres) == 0:
+        print("Insufficient countries or genres to generate heatmap.")
+    else:
+        matrix_heatmap = matrix.loc[top_countries, top_genres]
 
-print("="*80)
-print("COUNTRY vs GENRE MATRIX (Top 12 countries × Top 10 genres)")
-print("="*80)
-display(matrix_heatmap)
+        print("="*80)
+        print("COUNTRY vs GENRE MATRIX (Top 12 countries × Top 10 genres)")
+        print("="*80)
+        display(matrix_heatmap)
 
-fig = go.Figure(data=go.Heatmap(
-    z=matrix_heatmap.values,
-    x=matrix_heatmap.columns.tolist(),
-    y=matrix_heatmap.index.tolist(),
-    colorscale='Reds',
-    text=matrix_heatmap.values,
-    texttemplate='%{text}',
-    textfont={"size": 10},
-    hoverongaps=False,
-    hovertemplate='<b>Country: %{y}</b><br><b>Genre: %{x}</b><br><b>Songs: %{z}</b><extra></extra>'
-))
-
-fig.update_layout(
-    title='Country vs Genre Distribution',
-    title_font_size=18,
-    xaxis_title='Music Genre',
-    yaxis_title='Country',
-    xaxis_tickangle=-45,
-    width=1200,
-    height=700,
-    paper_bgcolor='white'
-)
-fig.show()
+        # Static heatmap using matplotlib/seaborn for reliable GitHub rendering
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(matrix_heatmap, annot=True, fmt='d', cmap='Reds',
+                    xticklabels=True, yticklabels=True, linewidths=0.5, linecolor='white')
+        plt.title('Country vs Genre Distribution', fontsize=14, fontweight='bold')
+        plt.xlabel('Genre', fontsize=12)
+        plt.ylabel('Country', fontsize=12)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.show()
 """))
 
     # Song Metrics
@@ -1207,6 +1290,8 @@ print("TOP 10 SONGS BY VIEWS")
 print("="*80)
 display(df.nlargest(10, 'views')[['rank', 'track_name', 'artist_names', 'views', 'artist_country']])
 """))
+    if insights.get('top_songs_views'):
+        nb.cells.append(new_markdown_cell(insights['top_songs_views']))
 
     nb.cells.append(new_markdown_cell(titles['top_likes']))
     nb.cells.append(new_code_cell("""
@@ -1215,6 +1300,8 @@ print("TOP 10 SONGS BY LIKES")
 print("="*80)
 display(df.nlargest(10, 'likes')[['rank', 'track_name', 'artist_names', 'likes', 'artist_country']])
 """))
+    if insights.get('top_songs_likes'):
+        nb.cells.append(new_markdown_cell(insights['top_songs_likes']))
 
     nb.cells.append(new_markdown_cell(titles['top_engagement']))
     nb.cells.append(new_code_cell("""
@@ -1223,6 +1310,8 @@ print("TOP 10 SONGS BY ENGAGEMENT (Likes/Views %)")
 print("="*80)
 display(df.nlargest(10, 'engagement')[['rank', 'track_name', 'artist_names', 'engagement', 'artist_country']])
 """))
+    if insights.get('top_songs_engagement'):
+        nb.cells.append(new_markdown_cell(insights['top_songs_engagement']))
 
     # Video Metrics
     nb.cells.append(new_markdown_cell(titles['video_metrics']))
@@ -1283,31 +1372,16 @@ plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
 """))
-
     if insights.get('video_metrics'):
         nb.cells.append(new_markdown_cell(insights['video_metrics']))
 
     # Engagement by Video Type
     nb.cells.append(new_markdown_cell(titles['engagement_by_type']))
     nb.cells.append(new_code_cell("""
-engagement_stats = df_video.groupby('video_type').agg(
-    total_videos=('engagement', 'count'),
-    engagement_rate=('engagement', 'mean'),
-    median_engagement=('engagement', 'median'),
-    std_engagement=('engagement', 'std')
-).round(2).reset_index()
-
-table_engagement = engagement_stats.copy()
-table_engagement['total_videos'] = table_engagement['total_videos'].astype(int)
-table_engagement['engagement_rate'] = table_engagement['engagement_rate'].round(2).astype(str) + '%'
-table_engagement['median_engagement'] = table_engagement['median_engagement'].round(2).astype(str) + '%'
-table_engagement['std_engagement'] = table_engagement['std_engagement'].round(2).astype(str) + '%'
-table_engagement.columns = ['Video Type', 'Total Videos', 'Avg Engagement', 'Median Engagement', 'Std Dev']
-
-print("="*80)
-print("ENGAGEMENT ANALYSIS BY VIDEO TYPE")
-print("="*80)
-display(table_engagement)
+# Compute engagement rates by video type
+engagement_by_type = df_video.groupby('video_type')['engagement'].mean().reset_index()
+engagement_by_type.columns = ['Video Type', 'Avg Engagement (%)']
+display(engagement_by_type)
 
 fig, ax = plt.subplots(figsize=(8, 6))
 fig.patch.set_facecolor('#F9F9F9')
@@ -1320,6 +1394,8 @@ plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
 """))
+    if insights.get('engagement_by_type'):
+        nb.cells.append(new_markdown_cell(insights['engagement_by_type']))
 
     # Duration Analysis
     nb.cells.append(new_markdown_cell(titles['duration_analysis']))
@@ -1382,7 +1458,6 @@ print(f"   Mean: {duration_minutes.mean():.1f} min | Median: {duration_minutes.m
 print(f"   Min: {duration_minutes.min():.1f} min | Max: {duration_minutes.max():.1f} min")
 print(f"   Q1: {duration_minutes.quantile(0.25):.1f} min | Q3: {duration_minutes.quantile(0.75):.1f} min")
 """))
-
     if insights.get('duration'):
         nb.cells.append(new_markdown_cell(insights['duration']))
 
@@ -1427,7 +1502,8 @@ plt.show()
     nb.cells.append(new_markdown_cell(titles['views_evolution']))
     nb.cells.append(new_code_cell("""
 bg_color = '#F9F9F9'
-genre_palette = ['#FF0000', '#282828', '#4A4A4A', '#FFB347', '#FF6B6B']
+# Updated color palette for better distinction
+genre_palette = ['#751924', '#FF0000', '#282828', '#FFB347', '#FF6B6B']
 
 top5_genres = genre_stats.nlargest(5, 'total_songs')['macro_genre'].tolist()
 df_temporal = df[df['macro_genre'].isin(top5_genres)].copy()
@@ -1490,7 +1566,6 @@ if legend2:
 plt.tight_layout()
 plt.show()
 """))
-
     if insights.get('temporal'):
         nb.cells.append(new_markdown_cell(insights['temporal']))
 
@@ -1542,14 +1617,15 @@ fig.patch.set_facecolor('#F9F9F9')
 axes[0].set_facecolor('#F9F9F9')
 axes[1].set_facecolor('#F9F9F9')
 
+# Updated colors: Solo = '#282828' (dark gray), Collaboration = 'red'
 sns.scatterplot(data=df, x='artist_count', y='views', hue='is_collaboration',
-                palette={0: 'blue', 1: 'red'}, ax=axes[0], alpha=0.6)
+                palette={0: '#282828', 1: 'red'}, ax=axes[0], alpha=0.6)
 axes[0].set_title('Views vs Number of Artists', fontweight='bold')
 axes[0].set_xlabel('Number of Artists')
 axes[0].set_ylabel('Views')
 
 sns.scatterplot(data=df, x='artist_count', y='engagement', hue='is_collaboration',
-                palette={0: 'blue', 1: 'red'}, ax=axes[1], alpha=0.6)
+                palette={0: '#282828', 1: 'red'}, ax=axes[1], alpha=0.6)
 axes[1].set_title('Engagement vs Number of Artists', fontweight='bold')
 axes[1].set_xlabel('Number of Artists')
 axes[1].set_ylabel('Engagement (%)')
@@ -1557,7 +1633,6 @@ axes[1].set_ylabel('Engagement (%)')
 plt.tight_layout()
 plt.show()
 """))
-
     if insights.get('collaborations'):
         nb.cells.append(new_markdown_cell(insights['collaborations']))
 
@@ -1634,6 +1709,11 @@ def get_data_summaries(df: pd.DataFrame) -> Dict[str, Dict]:
     official_views = df[df['is_official_video'] == 1]['views'].mean() if official_count > 0 else 0
     lyric_views = df[df['is_lyric_video'] == 1]['views'].mean() if lyric_count > 0 else 0
     live_views = df[df['is_live_performance'] == 1]['views'].mean() if live_count > 0 else 0
+    
+    # Engagement by video type
+    official_engagement = df[df['is_official_video'] == 1]['engagement'].mean() if official_count > 0 else 0
+    lyric_engagement = df[df['is_lyric_video'] == 1]['engagement'].mean() if lyric_count > 0 else 0
+    live_engagement = df[df['is_live_performance'] == 1]['engagement'].mean() if live_count > 0 else 0
 
     # Best video type
     video_views = {'Official': official_views, 'Lyric': lyric_views, 'Live': live_views}
@@ -1663,6 +1743,11 @@ def get_data_summaries(df: pd.DataFrame) -> Dict[str, Dict]:
     # Quarterly stats
     quarterly_views = df.groupby('upload_quarter')['views'].sum().to_dict()
     quarterly_engagement = df.groupby('upload_quarter')['engagement'].mean().to_dict()
+
+    # Top songs lists for insights
+    top_views_songs = df.nlargest(10, 'views')[['track_name', 'artist_names']].to_string(index=False)
+    top_likes_songs = df.nlargest(10, 'likes')[['track_name', 'artist_names']].to_string(index=False)
+    top_engagement_songs = df.nlargest(10, 'engagement')[['track_name', 'artist_names']].to_string(index=False)
 
     return {
         "introduction": {
@@ -1695,6 +1780,14 @@ def get_data_summaries(df: pd.DataFrame) -> Dict[str, Dict]:
             "live_views": float(live_views),
             "avg_engagement": float(df['engagement'].mean())
         },
+        "engagement_by_type": {
+            "official_engagement": float(official_engagement),
+            "lyric_engagement": float(lyric_engagement),
+            "live_engagement": float(live_engagement)
+        },
+        "top_songs_views": {"top_songs_views_list": top_views_songs},
+        "top_songs_likes": {"top_songs_likes_list": top_likes_songs},
+        "top_songs_engagement": {"top_songs_engagement_list": top_engagement_songs},
         "temporal": {
             "quarterly_views": quarterly_views,
             "quarterly_engagement": quarterly_engagement
@@ -1745,6 +1838,10 @@ def generate_both_notebooks(df: pd.DataFrame, db_path: Path, year: int, week: in
         "top_likes",
         "genre_engagement",
         "video_metrics",
+        "engagement_by_type",
+        "top_songs_views",
+        "top_songs_likes",
+        "top_songs_engagement",
         "temporal",
         "duration",
         "collaborations",
@@ -1878,7 +1975,9 @@ def main():
         sections = [
             "introduction",
             "general_stats", "top_countries", "top_likes", "genre_engagement",
-            "video_metrics", "temporal", "duration", "collaborations", "executive_summary"
+            "video_metrics", "engagement_by_type",
+            "top_songs_views", "top_songs_likes", "top_songs_engagement",
+            "temporal", "duration", "collaborations", "executive_summary"
         ]
         insights = {}
         for section in sections:
@@ -1893,7 +1992,9 @@ def main():
         sections = [
             "introduction",
             "general_stats", "top_countries", "top_likes", "genre_engagement",
-            "video_metrics", "temporal", "duration", "collaborations", "executive_summary"
+            "video_metrics", "engagement_by_type",
+            "top_songs_views", "top_songs_likes", "top_songs_engagement",
+            "temporal", "duration", "collaborations", "executive_summary"
         ]
         insights = {}
         for section in sections:
