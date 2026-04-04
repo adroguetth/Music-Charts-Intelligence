@@ -32,8 +32,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
 import re
 import os
 import sys
@@ -385,7 +383,7 @@ Proporciona un análisis explicativo (4-5 líneas) en español sobre:
 """,
 
             "executive_summary": f"""
-Genera un resumen ejecutivo detallado (20-25 líneas) en español del análisis completo de charts musicales con los siguientes datos clave:
+Genera un resumen ejecutivo detallado (30 líneas aproximadamente) en español del análisis completo de charts musicales con los siguientes datos clave:
 
 DATOS GENERALES:
 - Total canciones: {data_summary.get('total_songs', 'N/A')}
@@ -411,7 +409,7 @@ MÉTRICAS DE VIDEO:
 COLABORACIONES:
 - {data_summary.get('collab_impact', 'N/A')}
 
-Proporciona un resumen ejecutivo DETALLADO (20-25 líneas) en español que:
+Proporciona un resumen ejecutivo DETALLADO (30 líneas) en español que:
 1. Resuma los hallazgos principales con datos concretos
 2. Destaque las tendencias clave observadas (geográficas, de género, temporales)
 3. Analice el rendimiento por tipo de contenido (video, colaboraciones)
@@ -578,7 +576,7 @@ Provide an explanatory analysis (4-5 lines) about:
 """,
 
             "executive_summary": f"""
-Generate a detailed executive summary (20-25 lines) of the complete music charts analysis with the following key data:
+Generate a detailed executive summary (approximately 30 lines) of the complete music charts analysis with the following key data:
 
 GENERAL DATA:
 - Total songs: {data_summary.get('total_songs', 'N/A')}
@@ -604,7 +602,7 @@ VIDEO METRICS:
 COLLABORATIONS:
 - {data_summary.get('collab_impact', 'N/A')}
 
-Provide a DETAILED executive summary (20-25 lines) that:
+Provide a DETAILED executive summary (30 lines) that:
 1. Summarizes main findings with concrete data points
 2. Highlights key observed trends (geographic, genre, temporal)
 3. Analyzes content type performance (video, collaborations)
@@ -618,7 +616,7 @@ Provide a DETAILED executive summary (20-25 lines) that:
     try:
         # Set max_tokens higher for introduction and executive_summary
         if section in ["introduction", "executive_summary"]:
-            max_tokens = 1500
+            max_tokens = 2000  # Increased to allow for 30 lines
         else:
             max_tokens = 600
             
@@ -879,6 +877,11 @@ def generate_notebook(df: pd.DataFrame, db_info: Tuple[Path, int, int],
     nb.cells.append(new_markdown_cell(f"""# {titles['title']}
 """))
 
+    # Add week/year information below title (before introduction)
+    nb.cells.append(new_markdown_cell(f"""
+**Week:** {year}-W{week:02d} | **Analysis Date:** {datetime.now().strftime('%Y-%m-%d')}
+"""))
+
     # Introduction (AI-generated)
     nb.cells.append(new_markdown_cell(titles['introduction']))
     if insights.get('introduction'):
@@ -893,8 +896,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
+import squarify
 import sqlite3
 import os
 from scipy.stats import gaussian_kde
@@ -1179,21 +1181,31 @@ print("\\nTOP 10 GENRES")
 display(genre_stats.head(10)[['macro_genre', 'total_songs', 'engagement_rate']])
 """))
 
-    # Treemap
+    # Treemap (static matplotlib version using squarify)
     nb.cells.append(new_markdown_cell(titles['treemap']))
     nb.cells.append(new_code_cell("""
-fig = px.treemap(
-    genre_stats,
-    path=['macro_genre'],
-    values='total_songs',
-    color='total_songs',
-    color_continuous_scale='Reds',
-    title='Genre Distribution by Song Count',
-    hover_data={'engagement_rate': ':.2f', 'total_views': ':,.0f', 'total_likes': ':,.0f'}
-)
-fig.update_traces(textinfo="label+value", textfont_size=12)
-fig.update_layout(width=1000, height=600, paper_bgcolor='white')
-fig.show()
+# Prepare data for treemap (top 15 genres to avoid overcrowding)
+treemap_data = genre_stats.head(15).copy()
+sizes = treemap_data['total_songs'].values
+labels = [f"{genre}\\n{format_number(song_count)}" 
+          for genre, song_count in zip(treemap_data['macro_genre'], treemap_data['total_songs'])]
+
+# Generate colors from Reds colormap
+colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(sizes)))
+
+fig, ax = plt.subplots(figsize=(14, 8))
+fig.patch.set_facecolor(YT_BG)
+ax.set_facecolor(YT_BG)
+
+squarify.plot(sizes=sizes, label=labels, alpha=0.9, color=colors,
+              text_kwargs={'fontsize': 10, 'fontweight': 'bold', 'color': 'white'},
+              ax=ax)
+
+ax.set_title('Genre Distribution by Song Count', fontweight='bold', color=YT_TEXT, fontsize=14, pad=20)
+ax.axis('off')
+
+plt.tight_layout()
+plt.show()
 """))
 
     # Engagement by Genre (barh) - edgecolor removed
