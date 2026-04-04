@@ -45,7 +45,11 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
-          pip install pandas numpy matplotlib seaborn plotly scipy requests
+          # Core data science libraries
+          pip install pandas numpy matplotlib seaborn scipy requests
+          # Treemap support (replaces plotly for static visualizations)
+          pip install squarify
+          # Jupyter notebook generation and execution
           pip install jupyter nbformat nbconvert
 
       - name: Determine week to process
