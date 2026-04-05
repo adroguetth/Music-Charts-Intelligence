@@ -349,9 +349,32 @@ on:
 env:
   # Number of days to retain artifacts
   RETENTION_DAYS: 30
+
+jobs:
+  download-and-store:
+    name: Download and Store YouTube Charts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    permissions:
+      contents: write
 ```
 
 ### Job Steps
+
+| Step | Name | Purpose |
+|:-----|:-----|:--------|
+| 1 | 📚 Checkout repository | Clone repository with full history |
+| 2 | 🐍 Setup Python | Install Python 3.12 with pip cache |
+| 3 | 📦 Install dependencies | Install requirements + Playwright + Chromium |
+| 4 | 📁 Create directory structure | Create databases and backup folders |
+| 5 | 🚀 Run download script | Execute main scraping script |
+| 6 | ✅ Verify results | List generated files and sizes |
+| 7 | 📤 Commit and push | Push changes to GitHub (with rebase) |
+| 8 | 📦 Upload artifacts (on failure) | Upload debug data for troubleshooting |
+| 9 | 📋 Final report | Generate execution summary |
+
+### Detailed Steps
 
 #### **1. 📚 Repository Checkout**
 
@@ -431,10 +454,27 @@ env:
 ```cron
 '0 12 * * 1'  # Minute 0, Hour 12, Any day, Any month, Monday
 ```
-
 - **Execution**: Every Monday at 12:00 UTC
-- **Equivalent**: 13:00 CET / 08:00 EST
-- **Rationale**: YouTube updates charts on Sunday/Monday
+- **Equivalent**: 13:00 CET (Central European Time) / 08:00 EST (Eastern Standard Time)
+- **Rationale**: YouTube updates its charts on Sundays/Mondays. This schedule ensures the latest chart is available.
+- **Pipeline Timeline**:
+  - `12:00 UTC` → Script 1: Download charts
+  - `13:00 UTC` → Script 2: Artist enrichment
+  - `14:00 UTC` → Script 3: Chart enrichment
+  - `15:00 UTC` → Script 4: Notebook generation (weekly)
+
+### Required Secrets
+
+| Secret | Purpose                                                      |
+| :----- | :----------------------------------------------------------- |
+| None   | Script 1 requires no API keys. It works entirely with public YouTube Charts and Playwright browser automation. |
+
+### Environment Variables
+
+| Variable         | Value  | Purpose                                          |
+| :--------------- | :----- | :----------------------------------------------- |
+| `GITHUB_ACTIONS` | `true` | Disables interactive prompts, enables CI/CD mode |
+| `RETENTION_DAYS` | `30`   | Days to retain debug artifacts (GitHub setting)  | 
 
 ---
 
