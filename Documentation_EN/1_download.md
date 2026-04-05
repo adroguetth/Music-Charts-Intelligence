@@ -43,11 +43,102 @@ The script uses **Playwright** for headless browser automation with sophisticate
 
 ### **Diagram 1: Main Flow Overview**
 
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/EN-Diagram1.png" alt="Diagram 1: Main Flow Overview" width="500">
+This diagram shows the **high-level pipeline** of the entire script:
 
+1. **Start**: Navigates to YouTube Charts URL (`https://charts.youtube.com/charts/TopSongs/global/weekly`)
+2. **Dependency Check**: Verifies Playwright Python package and Chromium browser are installed
+   - **If missing**: Auto-installs via pip and playwright CLI
+   - **If fails**: Falls back to sample data generation
+3. **Browser Launch**: Launches headless Chromium with anti-detection measures:
+   - Custom user agent (Chrome 120)
+   - Disabled automation flags
+   - JavaScript injection to hide `navigator.webdriver`
+   - Realistic viewport (1920×1080) and locale (en-US)
+4. **Page Navigation**: Loads YouTube Charts page, waits for `networkidle` state
+5. **Scroll & Wait**: Scrolls 5 times (800px each) to trigger lazy-loaded content
+6. **Find Download Button**: Attempts 4 fallback selector strategies
+   - **If found**: Clicks button and waits for download
+   - **If not found**: Takes screenshot, uses fallback sample data
+7. **Download CSV**: Saves 100-song CSV with complete chart metrics
+8. **Update SQLite**: Creates backup, reads CSV with pandas, adds metadata, inserts data
+9. **Create Indexes**: Builds `idx_week`, `idx_rank`, `idx_artist` for query optimization
+10. **Cleanup**: Removes old backups (>7 days) and old databases (>52 weeks)
+11. **Output**: Database ready for Script 2 (`youtube_charts_YYYY-WXX.db`)
 
+### **Diagram 2: Multi-Selector Strategy**
 
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/EN-Diagram2.png" alt="Diagram 2: Multi-Selector Strategy" width="500">
 
+This diagram details the **4 fallback strategies** to locate the download button:
 
+1. **Selector 1 (Primary)**: `#download-button` (ID-based)
+   - Most specific, fastest when available
+   - Timeout: 15 seconds
+   - **If found** → Click, download CSV, return success ✅
+   - **If not found** → Continue to Selector 2
+2. **Selector 2 (Fallback 1)**: `paper-icon-button[title="download"]`
+   - Targets Polymer elements with title attribute
+   - Timeout: 10 seconds
+   - **If found** → Click, download CSV, return success ✅
+   - **If not found** → Continue to Selector 3
+3. **Selector 3 (Fallback 2)**: `button[aria-label*="download" i]`
+   - Case-insensitive aria-label pattern matching
+   - Timeout: 10 seconds
+   - **If found** → Click, download CSV, return success ✅
+   - **If not found** → Continue to Final Fallback
+4. **Final Fallback**: Iterate all buttons (`button, paper-icon-button, iron-icon`)
+   - Search HTML for keywords: `download`, `descarga`, `export`, `csv`
+   - Attempt each matching button sequentially
+   - **If found** → Click, download CSV, return success ✅
+   - **If not found** → Take screenshot, use sample data
+
+**Each selector includes:**
+
+- Visibility check (`is_visible()`)
+- Scroll into view if needed (`scroll_into_view_if_needed()`)
+- 2-second pause after scroll
+- 15-45 second download timeout
+
+### **Diagram 3: SQLite Database Update Process**
+
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/EN-Diagram3.png" alt="Diagram 3: SQLite Database Update Process" width="500">
+
+This diagram shows the **safe database update process**:
+
+1. **Read CSV**: Loads CSV file with pandas
+   - Tries UTF-8 encoding first
+   - Falls back to Latin-1 if UTF-8 fails
+   - Validates 100 songs (or fewer if incomplete)
+2. **Add Metadata Columns**: Injects tracking fields
+   - `download_date`: Current date (YYYY-MM-DD)
+   - `download_time`: Current time (HH:MM:SS)
+   - `week_id`: ISO week identifier (YYYY-WXX)
+   - `timestamp`: Full timestamp (YYYYMMDD_HHMMSS)
+3. **Check Existing Database**: Does `youtube_charts_YYYY-WXX.db` exist?
+   - **If YES**: Creates timestamped backup before any modification
+     - Backup naming: `backup_YYYY-WXX_YYYYMMDD_HHMMSS.db`
+     - Location: `charts_archive/1_download-chart/backup/`
+   - **If NO**: Proceeds directly to update
+4. **Create Temporary Table**: Creates `temp_YYYYMMDD_HHMMSS` table
+   - Writes new data to temp table first
+   - Prevents data loss if write fails
+5. **Delete Old Records**: Removes existing data for current `week_id`
+   - Ensures clean replace (not append)
+   - Only affects current week, preserves other weeks
+6. **Insert New Data**: Moves data from temp table to main table
+   - If schema mismatch detected → Drops and recreates table
+   - Commits transaction after successful insert
+7. **Create Indexes**: Builds optimized indices
+   - `idx_date` on `download_date`
+   - `idx_week` on `week_id`
+   - `idx_rank` on `Rank`
+   - `idx_artist` on `Artist Names`
+8. **Verify & Report**: Counts total records and unique dates
+   - Outputs: "✅ Database updated successfully!"
+   - Displays: total records, unique dates, file location
+
+**Safety Guarantee**: The temporary table + backup pattern ensures that if any step fails, the original data remains intact and can be restored from the backup.
 
 ## 🔍 Detailed Analysis of `1_download.py`
 
