@@ -3,8 +3,6 @@
 ![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue?style=flat-square) 
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![Pandas](https://img.shields.io/badge/Pandas-150458?style=flat-square&logo=pandas&logoColor=white) ![Requests](https://img.shields.io/badge/Requests-FF6F61?style=flat-square&logo=python&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-07405e?style=flat-square&logo=sqlite&logoColor=white) ![MusicBrainz](https://img.shields.io/badge/MusicBrainz-BA478F?style=flat-square&logo=musicbrainz&logoColor=white) ![Wikipedia API](https://img.shields.io/badge/Wikipedia-000000?style=flat-square&logo=wikipedia&logoColor=white) ![Wikidata](https://img.shields.io/badge/Wikidata-990000?style=flat-square&logo=wikidata&logoColor=white) ![DeepSeek](https://custom-icon-badges.demolab.com/badge/DeepSeek-4D6BFF?logo=deepseek&logoColor=white&style=flat-square)
-s
-
 
 ## 📋 General Description
 
@@ -41,7 +39,7 @@ The script implements a **cascading search strategy** across MusicBrainz, Wikipe
 
 ### **Diagram 1: Main Flow Overview**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/1.png" alt="Diagram 1" width="45%">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/1.png" alt="Diagram 1" width="50%">
 
 This diagram shows the **high-level pipeline** of the entire system:
 
@@ -57,7 +55,7 @@ This diagram shows the **high-level pipeline** of the entire system:
 
 ### **Diagram 2: Country Search (Detailed)**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/2.png" alt="Diagram 2" width="45%">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/2.png" alt="Diagram 2" width="50%">
 
 This diagram details the **cascading search strategy** for detecting an artist's country:
 
@@ -83,7 +81,7 @@ This diagram details the **cascading search strategy** for detecting an artist's
 
 ### **Diagram 3: Genre Search (Detailed)**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/2.png" alt="Diagram 2" width="45%">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/2.png" alt="Diagram 2" width="50%">
 
 
 This diagram shows how the system **collects genre candidates** from multiple sources:
@@ -111,7 +109,7 @@ This diagram shows how the system **collects genre candidates** from multiple so
 
 ### **Diagram 4: Voting & Weight System**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/4.png" alt="Diagram 4" width="45%">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/4.png" alt="Diagram 4" width="50%">
 
 This is the **intelligent decision engine** that selects the final genre:
 
@@ -143,7 +141,7 @@ This is the **intelligent decision engine** that selects the final genre:
 
 ### **Diagram 5: Database Update Process**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/5.png" alt="Diagram 5" width="45%">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/2_build_artist_db/5.png" alt="Diagram 5" width="50%">
 
 This diagram shows how the system **persists data intelligently**:
 
