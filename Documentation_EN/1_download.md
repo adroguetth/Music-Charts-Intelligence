@@ -43,7 +43,8 @@ The script uses **Playwright** for headless browser automation with sophisticate
 
 ### **Diagram 1: Main Flow Overview**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/EN-Diagram1.png" alt="Diagram 1: Main Flow Overview" width="500">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/1.png" alt="Diagram 1" width="50%">
+
 This diagram shows the **high-level pipeline** of the entire script:
 
 1. **Start**: Navigates to YouTube Charts URL (`https://charts.youtube.com/charts/TopSongs/global/weekly`)
@@ -68,7 +69,7 @@ This diagram shows the **high-level pipeline** of the entire script:
 
 ### **Diagram 2: Multi-Selector Strategy**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/EN-Diagram2.png" alt="Diagram 2: Multi-Selector Strategy" width="500">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/2.png" alt="Diagram 2" width="50%">
 
 This diagram details the **4 fallback strategies** to locate the download button:
 
@@ -102,7 +103,7 @@ This diagram details the **4 fallback strategies** to locate the download button
 
 ### **Diagram 3: SQLite Database Update Process**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/EN-Diagram3.png" alt="Diagram 3: SQLite Database Update Process" width="500">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/1_download/3.png" alt="Diagram 3" width="50%">
 
 This diagram shows the **safe database update process**:
 
