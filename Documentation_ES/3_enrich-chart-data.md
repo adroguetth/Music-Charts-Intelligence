@@ -19,14 +19,14 @@ El script extrae duración de video, likes, comentarios, fecha de subida, idioma
 
 ### Características Principales
 
-- **🔄 Sistema de 3 Capas**: API de YouTube (prioridad) → Selenium → yt-dlp (último recurso) para máxima confiabilidad
-- **⚡ Rendimiento Optimizado**: Procesa 100 canciones en ~2 minutos usando la API de YouTube (vs. 8+ minutos con solo yt-dlp)
-- **👥 Sistema de Colaboración Ponderada**: Algoritmo inteligente que determina país y género cuando hay múltiples artistas
-- **🗺️ Jerarquías Culturales por País**: Listas de géneros ordenadas que reflejan importancia local (ej., K-Pop primero en Corea del Sur)
-- **📝 Detección de Metadatos de Video**: Identifica si un video es oficial, lírico, presentación en vivo o remix
-- **📺 Clasificación de Canales**: Detecta VEVO, Topic, Label/Studio, Artist Channel y más
-- **🔄 Actualizaciones Automáticas**: Selecciona la base de datos de charts más reciente y genera su versión enriquecida
-- **🔧 Optimizado para CI/CD**: Específicamente diseñado para ejecutarse en GitHub Actions sin intervención manual
+- **Sistema de 3 Capas**: API de YouTube (prioridad) → Selenium → yt-dlp (último recurso) para máxima confiabilidad
+- **Rendimiento Optimizado**: Procesa 100 canciones en ~2 minutos usando la API de YouTube (vs. 8+ minutos con solo yt-dlp)
+- **Sistema de Colaboración Ponderada**: Algoritmo inteligente que determina país y género cuando hay múltiples artistas
+- **Jerarquías Culturales por País**: Listas de géneros ordenadas que reflejan importancia local (ej., K-Pop primero en Corea del Sur)
+- **Detección de Metadatos de Video**: Identifica si un video es oficial, lírico, presentación en vivo o remix
+- **Clasificación de Canales**: Detecta VEVO, Topic, Label/Studio, Artist Channel y más
+- **Actualizaciones Automáticas**: Selecciona la base de datos de charts más reciente y genera su versión enriquecida
+- **Optimizado para CI/CD**: Específicamente diseñado para ejecutarse en GitHub Actions sin intervención manual
 
 ------
 
@@ -45,7 +45,7 @@ El script extrae duración de video, likes, comentarios, fecha de subida, idioma
 
 ### **Diagrama 1: Vista General del Flujo Principal**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/1.png" alt="Diagrama 1: Vista General del Flujo Principal" width="700">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/1.png" alt="Diagrama 1: Vista General del Flujo Principal" width="500">
 
 Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
@@ -66,7 +66,7 @@ Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
 ### **Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/2.png" alt="Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas" width="700">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/2.png" alt="Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas" width="500">
 
 Este diagrama detalla la **estrategia de recuperación en cascada** para metadatos de video de YouTube:
 
@@ -96,7 +96,7 @@ Este diagrama detalla la **estrategia de recuperación en cascada** para metadat
 
 ### **Diagrama 3: Sistema de Colaboración Ponderada**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/3.png" alt="Diagrama 3: Sistema de Colaboración Ponderada" width="700">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/3.png" alt="Diagrama 3: Sistema de Colaboración Ponderada" width="500">
 
 Este diagrama muestra el **motor de decisión inteligente** para pistas con múltiples artistas:
 
