@@ -1,12 +1,8 @@
 # Script 3: YouTube Chart Enrichment System
 
-![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) ![Web Scraping](https://img.shields.io/badge/Web-Scraping-orange?style=flat-square)
-![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue?style=flat-square)
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-07405e?style=flat-square&logo=sqlite&logoColor=white)
-![Selenium](https://img.shields.io/badge/Selenium-43B02A?style=flat-square&logo=selenium&logoColor=white)
-![yt-dlp](https://img.shields.io/badge/yt--dlp-FF6F61?style=flat-square&logo=youtube&logoColor=white)
-![YouTube API](https://img.shields.io/badge/YouTube_API-FF0000?style=flat-square&logo=youtube&logoColor=white) 
+![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) ![Web Scraping](https://img.shields.io/badge/Web-Scraping-orange?style=flat-square) ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue?style=flat-square)
+
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-07405e?style=flat-square&logo=sqlite&logoColor=white) ![Selenium](https://img.shields.io/badge/Selenium-43B02A?style=flat-square&logo=selenium&logoColor=white) ![yt-dlp](https://img.shields.io/badge/yt--dlp-FF6F61?style=flat-square&logo=youtube&logoColor=white) ![YouTube API](https://img.shields.io/badge/YouTube_API-FF0000?style=flat-square&logo=youtube&logoColor=white) 
 
 
 ## 📥 Quick Downloads
@@ -23,14 +19,14 @@ The script extracts video duration, likes, comments, upload date, audio language
 
 ### Key Features
 
-- **🔄 3-Layer Retrieval System**: YouTube API (priority) → Selenium → yt-dlp (last resort) for maximum reliability
-- **⚡ Optimized Performance**: Processes 100 songs in ~2 minutes using YouTube API (vs. 8+ minutes with pure yt-dlp)
-- **👥 Collaboration Weighting System**: Intelligent algorithm that determines country and genre when multiple artists are involved
-- **🗺️ Country-Based Cultural Hierarchies**: Ordered genre lists that reflect local importance (e.g., K-Pop first in South Korea)
-- **📝 Video Metadata Detection**: Identifies whether a video is official, lyric video, live performance, or remix/special version
-- **📺 Channel Classification**: Detects VEVO, Topic, Label/Studio, Artist Channel, and more
-- **🔄 Automatic Updates**: Selects the most recent charts database and generates its enriched version
-- **🔧 CI/CD Optimized**: Specifically designed to run in GitHub Actions with zero manual intervention
+- **3-Layer Retrieval System**: YouTube API (priority) → Selenium → yt-dlp (last resort) for maximum reliability
+- **Optimized Performance**: Processes 100 songs in ~2 minutes using YouTube API (vs. 8+ minutes with pure yt-dlp)
+- **Collaboration Weighting System**: Intelligent algorithm that determines country and genre when multiple artists are involved
+- **Country-Based Cultural Hierarchies**: Ordered genre lists that reflect local importance (e.g., K-Pop first in South Korea)
+- **Video Metadata Detection**: Identifies whether a video is official, lyric video, live performance, or remix/special version
+- **Channel Classification**: Detects VEVO, Topic, Label/Studio, Artist Channel, and more
+- **Automatic Updates**: Selects the most recent charts database and generates its enriched version
+- **CI/CD Optimized**: Specifically designed to run in GitHub Actions with zero manual intervention
 
 ------
 
