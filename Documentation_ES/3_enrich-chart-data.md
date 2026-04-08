@@ -1,174 +1,124 @@
 # Script 3: YouTube Chart Enrichment System
 
-![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) 
-![Web Scraping](https://img.shields.io/badge/Web-Scraping-orange?style=flat-square)
-![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue?style=flat-square)
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-07405e?style=flat-square&logo=sqlite&logoColor=white)
-![Selenium](https://img.shields.io/badge/Selenium-43B02A?style=flat-square&logo=selenium&logoColor=white)
-![yt-dlp](https://img.shields.io/badge/yt--dlp-FF6F61?style=flat-square&logo=youtube&logoColor=white)
-![YouTube API](https://img.shields.io/badge/YouTube_API-FF0000?style=flat-square&logo=youtube&logoColor=white)
+![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) ![Web Scraping](https://img.shields.io/badge/Web-Scraping-orange?style=flat-square) ![Data Enrichment](https://img.shields.io/badge/Data-Enrichment-blue?style=flat-square)
 
-## 📥 Descarga Rápida
-| Documento                  | Formato                                                       |
-| ------------------------- | ------------------------------------------------------------ |
-| **🇬🇧 Documentación en inglés** | [PDF](https://drive.google.com/file/d/1XGEx2fRBCpOhU5BfY_YjlKm6zmI41RpB/view?usp=drive_link) |
-| **🇪🇸 Documentación en español** | [PDF](https://drive.google.com/file/d/1tSFjf_gQQeArdE4n5DLL2I2G_MJW6vE3/view?usp=drive_link) |
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-07405e?style=flat-square&logo=sqlite&logoColor=white) ![Selenium](https://img.shields.io/badge/Selenium-43B02A?style=flat-square&logo=selenium&logoColor=white) ![yt-dlp](https://img.shields.io/badge/yt--dlp-FF6F61?style=flat-square&logo=youtube&logoColor=white) ![YouTube API](https://img.shields.io/badge/YouTube_API-FF0000?style=flat-square&logo=youtube&logoColor=white) 
 
+## 📥 Descargas Rápidas
+
+| Documento                       | Formato                                                      |
+| :------------------------------ | :----------------------------------------------------------- |
+| **🇬🇧 Documentación en Inglés**  | [PDF](https://drive.google.com/file/d/1XGEx2fRBCpOhU5BfY_YjlKm6zmI41RpB/view?usp=drive_link) |
+| **🇪🇸 Documentación en Español** | [PDF](https://drive.google.com/file/d/1tSFjf_gQQeArdE4n5DLL2I2G_MJW6vE3/view?usp=sharing) |
 
 ## 📋 Descripción General
-Este script es el tercer componente del sistema de inteligencia de YouTube Charts. Toma la base de datos semanal de charts generada por el descargador y los metadatos de artistas del sistema de enriquecimiento y los combina con metadatos detallados de YouTube mediante un sistema inteligente de tres capas. El resultado es una base de datos completamente enriquecida lista para análisis y visualización.
+
+Este script es el **tercer componente** del sistema de inteligencia de charts de YouTube. Toma la base de datos de charts semanal (del Script 1) y la base de datos de artistas (del Script 2), y luego **enriquece cada canción con metadatos detallados de video de YouTube** usando un sistema inteligente de 3 capas.
+
+El script extrae duración de video, likes, comentarios, fecha de subida, idioma de audio, restricciones regionales, y clasifica el tipo de video (oficial/lírico/en vivo), el tipo de canal (VEVO/Topic/Artista), y los patrones de colaboración. También resuelve país y género para pistas con múltiples artistas usando un algoritmo de colaboración ponderada.
 
 ### Características Principales
 
-- **Sistema de Obtención de 3 Capas**: API de YouTube (prioritaria) → Selenium → yt-dlp (último recurso) para máxima fiabilidad
-- **Rendimiento Optimizado**: Procesamiento de 100 canciones en ~2 minutos usando API de YouTube (vs 8+ minutos con yt-dlp puro)
-- **Sistema de Pesos para Colaboraciones**: Algoritmo inteligente que determina país y género cuando hay múltiples artistas
-- **Jerarquías Culturales por País**: Listas ordenadas de géneros que reflejan la importancia local (ej. K-Pop primero en Corea)
-- **Detección de Metadatos de Video**: Identifica si es oficial, lyric video, live performance, remix, etc.
-- **Clasificación de Canales**: Detecta VEVO, Topic, Label/Studio, Artist Channel y más
-- **Actualización Automática**: Selecciona la base de charts más reciente y genera su versión enriquecida
-- **Optimizado para CI/CD**: Diseñado específicamente para ejecutarse en GitHub Actions sin intervención manual
+- **🔄 Sistema de 3 Capas**: API de YouTube (prioridad) → Selenium → yt-dlp (último recurso) para máxima confiabilidad
+- **⚡ Rendimiento Optimizado**: Procesa 100 canciones en ~2 minutos usando la API de YouTube (vs. 8+ minutos con solo yt-dlp)
+- **👥 Sistema de Colaboración Ponderada**: Algoritmo inteligente que determina país y género cuando hay múltiples artistas
+- **🗺️ Jerarquías Culturales por País**: Listas de géneros ordenadas que reflejan importancia local (ej., K-Pop primero en Corea del Sur)
+- **📝 Detección de Metadatos de Video**: Identifica si un video es oficial, lírico, presentación en vivo o remix
+- **📺 Clasificación de Canales**: Detecta VEVO, Topic, Label/Studio, Artist Channel y más
+- **🔄 Actualizaciones Automáticas**: Selecciona la base de datos de charts más reciente y genera su versión enriquecida
+- **🔧 Optimizado para CI/CD**: Específicamente diseñado para ejecutarse en GitHub Actions sin intervención manual
+
+------
 
 ## 📊 Diagrama de Flujo del Proceso
 
-### Diagrama n°1: Flujo de ejecución 
+### **Leyenda**
 
-![Diagrama del pipeline](https://drive.google.com/uc?export=view&id=1u7jAa0QWfCIRCLHqKNac_srTz--6qXUo)
+| Color          | Tipo           | Descripción                                                  |
+| :------------- | :------------- | :----------------------------------------------------------- |
+| 🔵 Azul         | Entrada        | Datos fuente (base de datos de charts + base de datos de artistas) |
+| 🟠 Naranja      | Proceso        | Lógica de procesamiento interno                              |
+| 🟣 Púrpura      | API            | Consultas a servicios externos (API YouTube, Selenium, yt-dlp) |
+| 🟢 Verde        | Almacenamiento | Bases de datos SQLite, archivos temporales                   |
+| 🔴 Rojo         | Decisión       | Puntos de ramificación condicional                           |
+| 🟢 Verde Oscuro | Salida         | Base de datos enriquecida                                    |
 
-Este diagrama muestra el el flujo de ejecución:
+### **Diagrama 1: Vista General del Flujo Principal**
 
-- **Entrada**: Busca automáticamente la base de datos más reciente en `charts_archive/1_download-chart/databases/` (orden lexicográfico inverso → `youtube_charts_2026-W11.db`)
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/1.png" alt="Diagrama 1: Vista General del Flujo Principal" width="700">
 
-- **Descarga de Datos de Artistas**: Obtiene `artist_countries_genres.db` desde GitHub (archivo temporal) y carga en memoria un diccionario `{nombre_normalizado: (país, género)}`
+Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
-- **Lectura de Canciones**: Conecta con la base de charts y lee las 100 canciones de la tabla `chart_data` (columnas: Rank, Artist Names, Track Name, YouTube URL, etc.)
+1. **Entrada**: Localiza la base de datos de charts más reciente (`youtube_charts_YYYY-WXX.db`) del Script 1
+2. **Descargar DB de Artistas**: Obtiene `artist_countries_genres.db` de GitHub (archivo temporal)
+3. **Construir Diccionario**: Crea diccionario en memoria `{nombre_normalizado: (país, género)}` para búsquedas O(1)
+4. **Cargar Canciones**: Lee 100 canciones de la tabla `chart_data`
+5. **Crear Tabla de Salida**: Configura la tabla `enriched_songs` con 25 columnas + índices
+6. **Bucle por Canción**: Para cada canción (1 a 100):
+   - **Extraer Artistas**: Separa nombres usando delimitadores (&, feat., ft., etc.)
+   - **Buscar Datos de Artistas**: Consulta el diccionario para país/género de cada artista
+   - **Resolución de Colaboración**: Aplica algoritmo ponderado para determinar país/género final
+   - **Obtener Metadatos de YouTube**: Sistema de 3 capas (API → Selenium → yt-dlp)
+   - **Clasificar Video**: Detecta tipo, tipo de canal, colaboración, temporada de subida
+   - **Insertar Fila**: Guarda datos enriquecidos en la base de datos de salida
+7. **Limpieza**: Elimina el archivo temporal de la base de datos de artistas
+8. **Salida**: Base de datos enriquecida lista para el Script 4 (generación de notebooks)
 
-- **Preparación de Salida**: Crea la tabla `canciones_enriquecidas` en la base de salida (`charts_archive/3_enrich-chart-data/{nombre}_enriched.db`) con índices para consultas rápidas
+### **Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas**
 
-- **Por cada canción (×100)**:
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/2.png" alt="Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas" width="700">
 
-  a. **Extracción de Artistas**:
+Este diagrama detalla la **estrategia de recuperación en cascada** para metadatos de video de YouTube:
 
-  - Separa los nombres usando múltiples delimitadores (`&`, `feat.`, `ft.`, `,`, `y`, `and`, `with`, `x`, `vs`)
-  - Ejemplo: `"ROSÉ & Bruno Mars"` → `["ROSÉ", "Bruno Mars"]`
+1. **Inicio**: Recibe URL de video de YouTube y string CSV de artistas
+2. **Capa 1 – API de YouTube Data v3** (0.3–0.8s/video):
+   - Extrae video_id de la URL (patrón de 11 caracteres)
+   - Consulta API para `snippet`, `contentDetails`, `statistics`
+   - Recupera: duración, likes, comentarios, idioma de audio, fecha de subida, restricciones regionales
+   - **Si tiene éxito** → Retorna metadatos completos ✅
+   - **Si falla** (sin clave, cuota excedida, error) → Procede a Capa 2
+3. **Capa 2 – Selenium Navegador Headless** (3–5s/video):
+   - Lanza navegador Chrome headless
+   - Navega a la página de video, espera elemento de título
+   - Extrae: título, duración (del reproductor), nombre del canal, fecha de subida (de meta tag)
+   - **Nota**: Selenium NO retorna likes, comentarios o idioma de audio
+   - **Si tiene éxito** → Retorna metadatos parciales ✅
+   - **Si falla** → Procede a Capa 3
+4. **Capa 3 – yt-dlp con Rotación de Clientes** (2–4s/video):
+   - Intenta múltiples configuraciones de cliente secuencialmente:
+     - `android` (más confiable)
+     - `ios` (buen respaldo)
+     - `android + web` (combinación)
+     - `web` (navegador estándar)
+   - Cada intento incluye reintentos y demoras para evitar detección de bots
+   - **Si alguno tiene éxito** → Retorna metadatos completos ✅
+   - **Si todos fallan** → Retorna metadatos vacíos con mensaje de error
 
-  b. **Consulta de Datos de Artistas**:
+### **Diagrama 3: Sistema de Colaboración Ponderada**
 
-  - Normaliza cada nombre (minúsculas, sin caracteres especiales)
-  - Busca en el diccionario de artistas
-  - Resultado: lista de diccionarios `[{'nombre': x, 'pais': y, 'genero': z}]`
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/3_enrich_chart_data/3.png" alt="Diagrama 3: Sistema de Colaboración Ponderada" width="700">
 
-  c. **Sistema de Pesos para Colaboraciones**:
+Este diagrama muestra el **motor de decisión inteligente** para pistas con múltiples artistas:
 
-  - Si es **artista único** → usa su país y género
-  - Si hay **mayoría absoluta (>50%)** del mismo país → gana ese país + género jerárquico local
-  - Si hay **mayoría exacta (50%)**:
-    - Con 2 países distintos → gana el mayoritario
-    - Con 3+ países → "Multipais" + "Multigénero"
-  - Si hay **mayoría relativa (<50%)**:
-    - Mismo continente y ≤2 países → gana mayoritario
-    - Diferentes continentes → "Multipais" + "Multigénero"
-  - Si **todos desconocidos** → "Desconocido" + "Pop"
+| Regla                                    | Condición                             | Resultado                                              |
+| :--------------------------------------- | :------------------------------------ | :----------------------------------------------------- |
+| **Regla 1 – Mayoría Absoluta**           | >50% del mismo país                   | Retorna país mayoritario + infiere género de jerarquía |
+| **Regla 2 – División 50/50 Exacta**      | =50% con exactamente 2 países         | Retorna país mayoritario + infiere género              |
+| **Regla 3 – División 50/50 (3+ países)** | =50% con 3+ países                    | Retorna "Multi-country" + "Multi-genre"                |
+| **Regla 4 – Mayoría Relativa**           | <50% con mismo continente y ≤2 países | Retorna país mayoritario + infiere género              |
+| **Regla 5 – Caso contrario**             | <50% con diferentes continentes       | Retorna "Multi-country" + "Multi-genre"                |
+| **Regla 6 – Respaldo**                   | Sin artistas conocidos                | Retorna "Unknown" + "Pop"                              |
 
-  d. **Obtención de Metadatos de YouTube** (Sistema de 3 capas):
+**Inferencia de Género** (`infer_genre_by_country`):
 
-  - **Capa 1 - API de YouTube (prioritaria)**:
+- Recupera la jerarquía de género del país desde `GENRE_HIERARCHY`
+- Si un solo género tiene >50% entre los artistas → lo usa
+- Si no, elige el género de mayor rango presente en los géneros conocidos
+- Respalda al primer género de la jerarquía
 
-    - Extrae video_id de la URL
+------
 
-    - Consulta YouTube Data API v3
-
-    - Obtiene: duración exacta, likes, comentarios, idioma, fecha, restricciones regionales
-
-    - Tiempo: ~0.3-0.8 segundos por video
-
-    - Si falla (cuota/error) → pasa a Capa 2
-
-  - **Capa 2 - Selenium (respaldo principal)**:
-
-    - Lanza navegador Chrome headless
-
-    - Extrae duración del reproductor, título, nombre del canal
-
-    - Detecta tipo de video por título (oficial, lyric, live)
-
-    - Tiempo: ~3-5 segundos por video
-
-    - Si falla → pasa a Capa 3
-
-  - **Capa 3 - yt-dlp (último recurso)**:
-
-    - Prueba múltiples configuraciones de cliente (android, iOS, web)
-
-    - Con retardos entre intentos para evitar bloqueos
-
-    - Obtiene metadatos completos si es posible
-
-    - Tiempo: ~2-4 segundos por video
-
-  e. **Detección Adicional**:
-
-  - Tipo de video: oficial, lyric, live, remix (por título/descripción)
-  - Tipo de canal: VEVO, Topic, Label/Studio, Artist Channel, etc.
-  - Trimestre de subida: Q1-Q4 basado en fecha
-  - Colaboración: detecta feat./& en título
-
-  f. **Inserción en Base de Datos**:
-
-  - Combina: datos del chart + metadatos + país/género resultante
-  - Guarda en `canciones_enriquecidas`
-  - Incluye campo `error` si algo falló
-
-### Diagrama n°2: Arquitectura de módulos 
-
-![Diagrama del pipeline](https://drive.google.com/uc?export=view&id=1vmH1MD9o0nEaExZKnvw8xuWm1Oge7qNx)
-
-1. **Tablas de Referencia (Lookup Tables)**:
-
-   - `COUNTRY_TO_CONTINENT`: Mapa que asigna 196 países a sus continentes
-   - `GENRE_HIERARCHY`: Listas ordenadas de géneros por país (prioridad cultural local)
-
-2. **Sistema de Pesos para Colaboraciones**:
-
-   - `get_continent`: Obtiene continente de un país desde `COUNTRY_TO_CONTINENT`
-   - `infer_genre_by_country`: Selecciona género según jerarquía local cuando hay múltiples artistas del mismo país
-   - `resolve_country_and_genre`: Motor principal de decisión con reglas (>50%, =50%, <50%)
-
-3. **Clasificadores de Texto**:
-
-   - `detect_video_type`: Identifica si el video es oficial, lyric, live o remix
-   - `detect_collaboration`: Detecta colaboraciones en el título (feat., &, with)
-   - `detect_channel_type`: Clasifica el canal (VEVO, Topic, Label/Studio, Artist)
-   - `parse_upload_season`: Determina el trimestre de subida (Q1-Q4)
-
-4. **Sistema de Obtención de Metadatos (3 capas)**:
-
-   - **Capa 1 - YouTube API v3**: Obtiene metadatos completos (0.3-0.8s/video). Requiere API key
-   - **Capa 2 - Selenium**: Extrae metadatos parciales con navegador headless (3-5s/video)
-   - **Capa 3 - yt-dlp**: Último recurso con rotación de clientes (android/ios/web)
-
-5. **Utilidades de Base de Datos de Entrada**:
-
-   - `find_latest_chart_db`: Localiza el archivo .db más reciente en `/databases`
-   - `load_chart_songs`: Lee las 100 canciones de la tabla `chart_data`
-   - `download_artist_db`: Descarga `artist_countries_genres.db` desde GitHub
-   - `build_artist_lookup`: Construye diccionario `{nombre_normalizado: (país, género)}`
-   - `get_artist_info`: Consulta información de cada artista en el diccionario
-
-6. **Utilidades de Base de Datos de Salida**:
-
-   - `create_output_table`: Crea tabla `canciones_enriquecidas` con 25 columnas y 4 índices
-   - `insert_enriched_row`: Inserta una fila con todos los datos enriquecidos
-   - `enriched_songs`: Tabla final con estructura optimizada para consultas
-
-7. **Utilidades de Texto**:
-
-      - `normalize_name`: Limpia nombres (minúsculas, sin caracteres especiales)
-      - `parse_artist_list`: Separa artistas usando múltiples delimitadores
-      - `_empty_metadata`: Diccionario con valores por defecto (cero/vacío)
-  
-## 🔍 Análisis Detallado de `3_enrich-chart-data.py`
+## 🔍 Análisis Detallado de `3_enrich_chart_data.py`
 
 ### Estructura del Código
 
@@ -178,297 +128,229 @@ Este diagrama muestra el el flujo de ejecución:
 SCRIPT_DIR = Path(__file__).parent.absolute()
 PROJECT_ROOT = SCRIPT_DIR.parent
 INPUT_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
-URL_ARTISTAS_DB = "https://github.com/adroguetth/Music-Charts-Intelligence/raw/refs/heads/main/charts_archive/2_countries-genres-artist/artist_countries_genres.db"
+URL_ARTIST_DB = "https://github.com/adroguetth/Music-Charts-Intelligence/raw/refs/heads/main/charts_archive/2_countries-genres-artist/artist_countries_genres.db"
 OUTPUT_DIR = PROJECT_ROOT / "charts_archive" / "3_enrich-chart-data"
 ```
 
 El script integra los dos componentes anteriores:
 
-- **Entrada**: Base de datos semanal de charts del paso 1 (`youtube_charts_YYYY-WXX.db`)
-- **Referencia**: Base de datos de artistas del paso 2 (`artist_countries_genres.db` desde GitHub)
-- **Salida**: Base de datos enriquecida (`charts_archive/3_enrich-chart-data/{nombre}_enriched.db`)
+| Ruta            | Propósito                                                    |
+| :-------------- | :----------------------------------------------------------- |
+| `INPUT_DB_DIR`  | Entrada: Bases de datos semanales de charts del Script 1     |
+| `URL_ARTIST_DB` | Referencia: Base de datos de artistas del Script 2 (descargada temporalmente) |
+| `OUTPUT_DIR`    | Salida: Bases de datos enriquecidas para el Script 4         |
 
-#### **2. Sistema de Obtención de Metadatos (3 Capas)**
+#### **2. Tablas de Referencia Principal**
 
-La innovación clave del script es su estrategia multicapa que prioriza siempre el método más rápido y fiable:
+**Mapa País → Continente (196 países):**
 
 ```python
-def obtener_metadatos_especificos(url, artistas_csv="", api_key=None):
+COUNTRY_TO_CONTINENT = {
+    "South Korea": "Asia", "Japan": "Asia", "China": "Asia",
+    "United States": "America", "Canada": "America",
+    "United Kingdom": "Europe", "France": "Europe",
+    "Nigeria": "Africa", "South Africa": "Africa",
+    "Australia": "Oceania", "New Zealand": "Oceania",
+    # ... 196 países en total
+}
+```
+
+**Jerarquías de Género por País (prioridad cultural local):**
+
+```python
+GENRE_HIERARCHY = {
+    "South Korea": ["K-Pop/K-Rock", "Hip-Hop/Rap", "Rock", "Ballad", "Trot"],
+    "Brazil": ["Sertanejo", "Funk Brasileiro", "Reggaeton/Latin Trap", "Pop", "Rock"],
+    "Nigeria": ["Afrobeats", "Hip-Hop/Rap", "Gospel", "Jùjú", "Fuji"],
+    # ... más de 100 países con jerarquías personalizadas
+}
+```
+
+#### **3. Sistema de Recuperación de Metadatos de 3 Capas**
+
+```python
+def fetch_video_metadata(url: str, artists_csv: str = "", api_key: str = None) -> dict:
     """
-    Obtiene metadatos del video con estrategia de 3 capas:
-    - Capa 1: YouTube API v3 (0.3-0.8s/video) → si hay clave y cuota
-    - Capa 2: Selenium (3-5s/video) → simula navegador, evita bloqueos
-    - Capa 3: yt-dlp (2-4s/video) → último recurso con rotación de clientes
+    Orquesta la estrategia de recuperación de metadatos de tres capas.
+    
+    Capa 1 — API de YouTube Data v3:
+        Metadatos completos: duración, likes, comentarios, idioma, fecha, restricciones.
+        Termina inmediatamente en caso de éxito.
+    
+    Capa 2 — Selenium navegador headless:
+        Metadatos parciales: duración, tipo de canal, fecha, flags de tipo de video.
+        Usado cuando la API no está disponible o retorna error.
+    
+    Capa 3 — yt-dlp con rotación de clientes anti-bloqueo:
+        Prueba android → ios → android+web → web en orden.
+        Último recurso; puede ser más lento y aún fallar.
     """
 ```
 
-**Capa 1 - YouTube API v3 (prioritaria):**
+**Capa 1 – API de YouTube Data v3:**
 
 ```python
-# Extrae video_id de la URL
-video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', url)
+# Extraer ID de video de la URL
+vid_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', url)
+video_id = vid_match.group(1)
+
 youtube = build('youtube', 'v3', developerKey=api_key)
 response = youtube.videos().list(
     part='snippet,contentDetails,statistics',
     id=video_id
 ).execute()
 
-# Metadatos obtenidos:
-- duracion_iso → isodate.parse_duration() → segundos
-- likeCount, commentCount
-- defaultAudioLanguage
-- regionRestriction
-- publishedAt → fecha y trimestre
-- title, description, channelTitle
+# Campos recuperados:
+# - duration: isodate.parse_duration() → segundos
+# - likeCount, commentCount
+# - defaultAudioLanguage
+# - regionRestriction (bloqueado/permitido)
+# - publishedAt → fecha y trimestre
+# - title, description, channelTitle
 ```
 
-**Capa 2 - Selenium (respaldo principal):**
+**Capa 2 – Selenium Navegador Headless:**
 
 ```python
 chrome_options = Options()
 chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
+driver = webdriver.Chrome(service=service, options=chrome_options)
 
 driver.get(url)
-# Extrae título del reproductor
-titulo = driver.find_element(By.CSS_SELECTOR, "h1.ytd-video-primary-info-renderer").text
-# Extrae duración del reproductor
-duracion = driver.find_element(By.CSS_SELECTOR, "span.ytp-time-duration").text
-# Extrae nombre del canal
-canal = driver.find_element(By.CSS_SELECTOR, "a.ytd-channel-name").text
-# Extrae fecha de meta tag
-fecha = driver.find_element(By.CSS_SELECTOR, "meta[itemprop='datePublished']").get_attribute("content")
+title = driver.find_element(By.CSS_SELECTOR, "h1.ytd-video-primary-info-renderer").text
+duration = driver.find_element(By.CSS_SELECTOR, "span.ytp-time-duration").text
+channel = driver.find_element(By.CSS_SELECTOR, "a.ytd-channel-name").text
+date = driver.find_element(By.CSS_SELECTOR, "meta[itemprop='datePublished']").get_attribute("content")
 ```
 
-**Capa 3 - yt-dlp (último recurso con anti-bloqueo):**
+**Capa 3 – yt-dlp con Rotación de Clientes:**
 
 ```python
-# Prueba múltiples configuraciones de cliente
-clientes = [
-    {'player_client': ['android']},
-    {'player_client': ['ios']},
-    {'player_client': ['android', 'web']},
-    {'player_client': ['web']},
+client_options = [
+    {'player_client': ['android']},     # Más confiable
+    {'player_client': ['ios']},         # Buen respaldo
+    {'player_client': ['android', 'web']},  # Combinación
+    {'player_client': ['web']},         # Navegador estándar
 ]
 
-for opts in clientes:
-    ydl_opts = {
+for opts in client_options:
+    ydl_config = {
         'quiet': True,
-        'ignoreerrors': False,
-        'user_agent': 'Mozilla/5.0 ... Chrome/120.0.0.0',
+        'skip_download': True,
         'extractor_retries': 5,
         'sleep_interval': 2,
         **opts
     }
-    try:
+    with yt_dlp.YoutubeDL(ydl_config) as ydl:
         info = ydl.extract_info(url, download=False)
-        if info: break
-    except: continue
+        if info:
+            break  # Éxito
 ```
 
-#### **3. Tablas de Referencia Fundamentales**
-
-**Mapa de Países a Continentes (196 países):**
+#### **4. Sistema de Colaboración Ponderada**
 
 ```python
-PAIS_A_CONTINENTE = {
-    # Asia
-    "South Korea": "Asia", "Japan": "Asia", "China": "Asia",
-    # América
-    "United States": "America", "Canada": "America", "Mexico": "America",
-    # Europa
-    "United Kingdom": "Europe", "France": "Europe", "Germany": "Europe",
-    # África
-    "Nigeria": "Africa", "South Africa": "Africa", "Egypt": "Africa",
-    # Oceanía
-    "Australia": "Oceania", "New Zealand": "Oceania",
-    # ... 196 países en total
-}
-```
-
-**Jerarquías de Géneros por País (prioridad cultural local):**
-
-```python
-JERARQUIA_GENEROS = {
-    "United States": [
-        "Pop", "Hip-Hop/Rap", "R&B/Soul", "Country", "Rock",
-        "Alternative", "Electrónica/Dance", "Reggaetón/Trap Latino"
-    ],
-    "South Korea": [
-        "K-Pop/K-Rock", "Hip-Hop/Rap", "Rock", "Ballad", "Trot"
-    ],
-    "Brazil": [
-        "Sertanejo", "Funk Brasileiro", "Reggaetón/Trap Latino",
-        "Pop", "Rock", "Hip-Hop/Rap", "Forró", "Axé", "MPB"
-    ],
-    "Nigeria": [
-        "Afrobeats", "Hip-Hop/Rap", "Gospel", "Jùjú", "Fuji"
-    ],
-    # ... más de 100 países con jerarquías personalizadas
-}
-```
-
-#### **4. Sistema de Pesos para Colaboraciones**
-
-El algoritmo `determinar_pais_y_genero_colaboracion` implementa reglas precisas:
-
-```python
-def determinar_pais_y_genero_colaboracion(artistas_info):
+def resolve_country_and_genre(artists_info: list) -> tuple:
     """
-    Algoritmo de decisión para colaboraciones:
+    Aplica el algoritmo de colaboración ponderada para determinar un solo
+    país y género para una pista potencialmente con múltiples artistas.
     
-    Caso 1: Mayoría absoluta (>50%)
-        → gana país mayoritario + género jerárquico
-    
-    Caso 2: Mayoría exacta (50%)
-        - 2 países distintos → gana el mayoritario
-        - 3+ países distintos → "Multipais" + "Multigénero"
-    
-    Caso 3: Mayoría relativa (<50%)
-        - Mismo continente y ≤2 países → gana mayoritario
-        - Diferentes continentes → "Multipais" + "Multigénero"
-    
-    Caso 4: Todos desconocidos → "Desconocido" + "Pop"
+    Árbol de decisión:
+        Regla 1 – Mayoría absoluta (>50%): asignar país mayoritario + su género
+        Regla 2 – División exacta 50/50 (2 países): asignar país mayoritario
+        Regla 3 – División exacta 50/50 (3+ países): Multi-country / Multi-genre
+        Regla 4 – Mayoría relativa (<50%): asignar si mismo continente y ≤2 países
+        Regla 5 – Caso contrario: Multi-country / Multi-genre
     """
 ```
 
-**Ejemplo de ejecución:**
+**Ejemplos de escenarios:**
 
-```python
-# Colaboración: "ROSÉ (Corea) & Bruno Mars (EE.UU.)"
-artistas_info = [
-    {'nombre': 'ROSÉ', 'pais': 'South Korea', 'genero': 'K-Pop'},
-    {'nombre': 'Bruno Mars', 'pais': 'United States', 'genero': 'Pop'}
-]
-# 50% - 50% con 2 países distintos → gana "South Korea" (mayoritario por orden alfabético?)
-# Resultado real: "Multipais" + "Multigénero" (regla de 2 países distintos con 50% exacto)
-```
-
-**Función de selección de género jerárquico:**
-
-```python
-def generar_genero_por_pais(artistas_info):
-    pais = artistas_info[0]['pais']
-    jerarquia = JERARQUIA_GENEROS.get(pais, [GENERO_POR_DEFECTO])
-    
-    # Si hay un género claramente dominante, úsalo
-    counter = Counter([a['genero'] for a in artistas_info if a['genero']])
-    if counter and counter.most_common(1)[0][1] > len(artistas_info)/2:
-        return counter.most_common(1)[0][0]
-    
-    # Si no, elige el de mayor jerarquía entre los presentes
-    for genero_prioritario in jerarquia:
-        if genero_prioritario in [a['genero'] for a in artistas_info]:
-            return genero_prioritario
-    
-    return jerarquia[0]
-```
+| Escenario | Artistas                       | Países        | Resultado                          |
+| :-------- | :----------------------------- | :------------ | :--------------------------------- |
+| 1         | BTS (solo)                     | Corea del Sur | Corea del Sur, K-Pop/K-Rock        |
+| 2         | ROSÉ (CS) + Bruno Mars (USA)   | 2 distintos   | Multi-country, Multi-genre         |
+| 3         | Bad Bunny (PR) + J Balvin (CO) | 2 distintos   | Multi-country, Multi-genre         |
+| 4         | 3 artistas USA + 1 UK          | 75% USA       | Estados Unidos, Pop (de jerarquía) |
+| 5         | Todos desconocidos             | Ninguno       | Unknown, Pop                       |
 
 #### **5. Clasificadores de Texto**
 
-**Detección de tipo de video:**
+**Detección de Tipo de Video:**
 
 ```python
-def detectar_tipo_video(titulo, descripcion=""):
-    texto = f"{titulo.lower()} {descripcion.lower()}"
+def detect_video_type(title: str, description: str = "") -> dict:
+    full_text = f"{title.lower()} {description.lower()}"
     
-    es_oficial = any(p in texto for p in ['official', 'oficial', 'official music video'])
-    es_lyric = any(p in titulo.lower() for p in ['lyric', 'lyrics', 'letra'])
-    es_live = any(p in texto for p in ['live', 'en vivo', 'concert', 'performance'])
-    es_remix = any(p in titulo.lower() for p in ['remix', 'sped up', 'slowed', 'acoustic'])
+    is_official = any(kw in full_text for kw in ['official', 'official music video'])
+    is_lyric = any(kw in title.lower() for kw in ['lyric', 'lyrics', 'letra'])
+    is_live = any(kw in full_text for kw in ['live', 'concert', 'performance'])
+    is_special = any(kw in title.lower() for kw in ['remix', 'sped up', 'slowed', 'acoustic'])
     
     return {
-        'is_official_video': es_oficial,
-        'is_lyric_video': es_lyric,
-        'is_live_performance': es_live,
-        'is_special_version': es_remix
+        'is_official_video': is_official,
+        'is_lyric_video': is_lyric,
+        'is_live_performance': is_live,
+        'is_special_version': is_special
     }
 ```
 
-**Detección de colaboraciones:**
+**Detección de Colaboración:**
 
 ```python
-def detectar_colaboracion_artistas(titulo, artistas_csv):
-    patrones = [
-        r'\sft\.\s', r'\sfeat\.\s', r'\sfeaturing\s',
-        r'\s&\s', r'\sx\s', r'\scon\s', r'\swith\s'
-    ]
+def detect_collaboration(title: str, artists_csv: str) -> dict:
+    collab_patterns = [r'\sft\.\s', r'\sfeat\.\s', r'\s&\s', r'\sx\s', r'\swith\s']
+    is_collab = any(re.search(p, title.lower()) for p in collab_patterns)
     
-    es_colaboracion = any(re.search(p, titulo.lower()) for p in patrones)
-    
-    # Estimación del número de artistas
-    if artistas_csv:
-        artist_count = artistas_csv.count('&') + artistas_csv.count(',') + 1
+    if artists_csv:
+        artist_count = artists_csv.count('&') + artists_csv.count(',') + 1
     else:
-        artist_count = 2 if es_colaboracion else 1
+        artist_count = 2 if is_collab else 1
     
-    return {
-        'is_collaboration': es_colaboracion,
-        'artist_count': min(artist_count, 10)
-    }
+    return {'is_collaboration': is_collab, 'artist_count': min(artist_count, 10)}
 ```
 
-**Clasificación de canales:**
+**Clasificación de Tipo de Canal:**
 
 ```python
-def detectar_tipo_canal(channel_title):
-    channel_lower = channel_title.lower()
+def detect_channel_type(channel_title: str) -> dict:
+    ch = channel_title.lower()
     
-    if 'vevo' in channel_lower:
+    if 'vevo' in ch:
         return {'channel_type': 'VEVO'}
-    elif 'topic' in channel_lower:
+    elif 'topic' in ch:
         return {'channel_type': 'Topic'}
-    elif any(w in channel_lower for w in ['records', 'music', 'label']):
+    elif any(w in ch for w in ['records', 'music', 'label', 'studios']):
         return {'channel_type': 'Label/Studio'}
-    elif any(w in channel_lower for w in ['official', 'artist', 'band']):
+    elif any(w in ch for w in ['official', 'artist', 'band', 'singer']):
         return {'channel_type': 'Artist Channel'}
     else:
         return {'channel_type': 'General'}
 ```
 
-#### **6. Procesamiento Principal**
+#### **6. Procesamiento de Nombres de Artistas**
 
 ```python
-def main():
-    # 1. Encontrar última base de charts
-    ruta_chart_db = encontrar_ultima_db()
-    # → youtube_charts_2026-W11.db
-    
-    # 2. Descargar y cargar base de artistas
-    ruta_artistas_temp = descargar_db_artistas(URL_ARTISTAS_DB)
-    artistas_dict = cargar_db_artistas_en_diccionario(ruta_artistas_temp)
-    # → {nombre_normalizado: (país, género)} con 2323 artistas
-    
-    # 3. Leer canciones
-    canciones = leer_canciones_desde_db(ruta_chart_db)
-    # → 100 canciones con Rank, Artist Names, Track Name, YouTube URL
-    
-    # 4. Preparar base de salida
-    output_db_path = OUTPUT_DIR / f"{nombre_base}_enriched.db"
-    conn_salida = sqlite3.connect(output_db_path)
-    crear_tabla_resultados(conn_salida)
-    
-    # 5. Procesar cada canción
-    for i, cancion in enumerate(canciones, 1):
-        # Extraer artistas
-        artistas_info = obtener_info_artistas(artistas_csv, artistas_dict)
-        
-        # Determinar país/género (sistema de pesos)
-        pais_final, genero_final = determinar_pais_y_genero_colaboracion(artistas_info)
-        
-        # Obtener metadatos de YouTube (3 capas)
-        metadatos = obtener_metadatos_especificos(url, artistas_csv, YOUTUBE_API_KEY)
-        
-        # Construir y guardar fila
-        fila = construir_fila(cancion, metadatos, pais_final, genero_final)
-        guardar_en_sqlite(conn_salida, fila)
+def parse_artist_list(artist_names: str) -> list:
+    """Separa nombres de artistas usando múltiples delimitadores."""
+    text = artist_names
+    for sep in ['&', 'feat.', 'ft.', ',', ' y ', ' and ', ' with ', ' x ', ' vs ']:
+        text = text.replace(sep, '|')
+    return [part.strip() for part in text.split('|') if part.strip()]
+
+def normalize_name(name: str) -> str:
+    """Normaliza nombre de artista para búsqueda en diccionario."""
+    name = re.sub(r'\s+', ' ', str(name)).strip().lower()
+    name = re.sub(r'[^\w\s]', '', name)  # Eliminar puntuación
+    return name
 ```
 
-#### **7. Esquema de Base de Datos de Salida**
+#### **7. Esquema de la Base de Datos de Salida**
 
 ```sqlite
-CREATE TABLE canciones_enriquecidas (
+CREATE TABLE enriched_songs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rank INTEGER,
     artist_names TEXT,
@@ -492,226 +374,225 @@ CREATE TABLE canciones_enriquecidas (
     region_restricted BOOLEAN,
     artist_country TEXT,
     macro_genre TEXT,
-    artistas_encontrados TEXT,
+    artists_found TEXT,
     error TEXT,
-    fecha_procesamiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Índices para consultas rápidas
-CREATE INDEX idx_pais ON canciones_enriquecidas(artist_country);
-CREATE INDEX idx_genero ON canciones_enriquecidas(macro_genre);
-CREATE INDEX idx_fecha ON canciones_enriquecidas(upload_date);
-CREATE INDEX idx_error ON canciones_enriquecidas(error);
+-- Índices para optimización de consultas
+CREATE INDEX idx_country ON enriched_songs(artist_country);
+CREATE INDEX idx_genre ON enriched_songs(macro_genre);
+CREATE INDEX idx_upload_date ON enriched_songs(upload_date);
+CREATE INDEX idx_error ON enriched_songs(error);
 ```
 
-#### **8. Optimizaciones para CI/CD**
+---
 
-```python
-# Detección automática de entorno
-IN_GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
+## ⚙️ Análisis del Workflow de GitHub Actions (`3_enrich-chart-data.yml`)
 
-# Sin intervención en CI
-if IN_GITHUB_ACTIONS:
-    # Ejecución automática
-    main()
-else:
-    # Modo interactivo local
-    respuesta = input("¿Continuar? (s/n): ")
-    if respuesta in ['s', 'si', 'y', 'yes']:
-        main()
-
-# API Key desde variable de entorno (nunca hardcodeada)
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
-```
-
-#### **9. Métricas y Estadísticas**
-
-Al finalizar, el script muestra estadísticas detalladas:
-
-```python
-📊 ESTADÍSTICAS FINALES
-   • Total canciones: 100
-   • Colaboraciones multi-país: 24 (24.0%)
-   • Países distintos detectados: 28
-   • Géneros distintos: 15
-   • Canciones sin país: 3 (3.0%)
-   • Canciones con error en metadatos: 2 (2.0%)
-```
-## ⚙️ Análisis del Workflow de GitHub Actions (`3_enrich-chart-data.yml`
-
-### **Estructura del Workflow**
+### Estructura del Workflow
 
 ```yaml
-name: 3- Enrich Chart Data
+name: 3- Enriquecer Datos de Charts
+
 on:
   schedule:
-    - cron: '0 14 * * 1'  # Lunes 14:00 UTC (2h después del download)
-  workflow_dispatch:       # Ejecución manual
-  push:                    # Disparador en cambios al script
+    # Se ejecuta cada lunes a las 14:00 UTC (2 horas después de la descarga)
+    - cron: '0 14 * * 1'
+  
+  # Permite ejecución manual del workflow
+  workflow_dispatch:
+  
+  # Se dispara con push a main si cambia el script de enriquecimiento
+  push:
     branches:
       - main
     paths:
       - 'scripts/3_enrich_chart_data.py'
       - '.github/workflows/3_enrich-chart-data.yml'
-```
 
-### **Jobs y Pasos**
-
-#### **Job: `enrich-chart-data`**
-
-- **Sistema operativo**: Ubuntu Latest
-- **Timeout**: 60 minutos
-- **Permisos**: Acceso de escritura al repositorio
-- **Variable de entorno**: `RETENTION_WEEKS: 78` (1.5 años de retención)
-  - **Cálculo**: 78 semanas × 7 días = 546 días
-  - **Limpieza**: Automática en cada ejecución
-
-#### **Pasos Detallados:**
-
-**📚 Checkout del Repositorio**
-
-```yaml
-uses: actions/checkout@v4
-with:
-  fetch-depth: 0  # Historial completo para operaciones git
-```
-
-1. **🐍 Configuración de Python 3.12**
-
-```yaml
-uses: actions/setup-python@v5
-with:
-  python-version: "3.12"
-  cache: 'pip'  # Caché de dependencias para builds más rápidos
-```
-
-2. **📦 Instalación de Dependencias**
-
-```bash
-pip install -r requirements.txt
-```
-
-3. **📁 Creación de Estructura de Directorios**
-
-```bash
-mkdir -p charts_archive/1_download-chart/databases
-mkdir -p charts_archive/3_enrich-chart-data
-```
-
- 4. **🚀 Ejecución del Script de Enriquecimiento**
-
-```yaml
-run: |
-  python scripts/3_enrich_chart_data.py
 env:
-  YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}  # Clave API desde secrets
-  GITHUB_ACTIONS: true  # Variable de entorno para detección
+  # Número de semanas para retener bases de datos enriquecidas (1.5 años)
+  RETENTION_WEEKS: 78
 ```
 
-5. **✅ Verificación de Resultados**
+### Pasos del Job
 
-- Listado de archivos generados en `charts_archive/3_enrich-chart-data/`
-- Verificación de existencia de bases enriquecidas
-- Estadísticas de tamaño de archivos
+| Paso | Nombre                               | Propósito                                       |
+| :--- | :----------------------------------- | :---------------------------------------------- |
+| 1    | 📚 Clonar repositorio                 | Clonar repositorio con historial completo       |
+| 2    | 🐍 Configurar Python                  | Instalar Python 3.12 con caché de pip           |
+| 3    | 📦 Instalar dependencias              | Instalar requisitos (selenium, yt-dlp, etc.)    |
+| 4    | 📁 Crear estructura de directorios    | Crear carpetas de entrada y salida              |
+| 5    | 🚀 Ejecutar script de enriquecimiento | Ejecutar script principal de enriquecimiento    |
+| 6    | ✅ Verificar resultados               | Listar archivos generados y tamaños             |
+| 7    | 📤 Commit y push de cambios           | Subir cambios a GitHub (con rebase)             |
+| 8    | 📦 Subir artefactos (en fallo)        | Subir datos de depuración para troubleshooting  |
+| 9    | 🧹 Limpiar bases de datos antiguas    | Eliminar bases de datos anteriores a 78 semanas |
+| 10   | 📋 Reporte final                      | Generar resumen de ejecución                    |
 
-6. **📤 Commit y Push Automático**
+### Pasos Detallados
 
-```bash
-# Configuración de usuario automático
-git config --global user.name "github-actions[bot]"
-git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-# Solo stage de archivos enriquecidos
-git add charts_archive/3_enrich-chart-data/
-
-# Pull con rebase antes de push para evitar conflictos
-git pull --rebase origin main
-git push origin HEAD:main
-```
-
-7. **📦 Subida de Artefactos (solo en fallo)**
+#### **1. 📚 Clonar Repositorio**
 
 ```yaml
-
-if: failure()  # Solo se ejecuta si el workflow falla
-uses: actions/upload-artifact@v4
-with:
-  name: enrich-debug-${{ github.run_number }}
-  path: |
-    scripts/3_enrich_chart_data.py.log
-    charts_archive/3_enrich-chart-data/
-  retention-days: 7
+- name: 📚 Clonar repositorio
+  uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
 ```
 
-8. **🧹 Limpieza de Bases Antiguas**
+#### **2. 🐍 Configurar Python**
 
-```bash
-# Elimina archivos más antiguos que RETENTION_WEEKS (78 semanas = 546 días)
-find charts_archive/3_enrich-chart-data/ \
-  -name "*_enriched.db" \
-  -type f \
-  -mtime +$((RETENTION_WEEKS * 7)) \
-  -delete
+```yaml
+- name: 🐍 Configurar Python
+  uses: actions/setup-python@v5
+  with:
+    python-version: "3.12"
+    cache: 'pip'
 ```
 
-9. **📋 Reporte Final** (siempre se ejecuta)
+#### **3. 📦 Instalar Dependencias**
 
-```bash
-# Muestra:
-# - Fecha y trigger de ejecución
-# - Última base enriquecida y su tamaño
-# - Estadísticas de la base (total canciones, multi-país, errores)
-# - Total de bases almacenadas y política de retención
+```yaml
+- name: 📦 Instalar dependencias
+  run: |
+    pip install -r requirements.txt
 ```
 
-### **Programación Cron**
+#### **4. 📁 Crear Estructura de Directorios**
+
+```yaml
+- name: 📁 Crear estructura de directorios
+  run: |
+    mkdir -p charts_archive/1_download-chart/databases
+    mkdir -p charts_archive/3_enrich-chart-data
+```
+
+#### **5. 🚀 Ejecutar Script de Enriquecimiento**
+
+```yaml
+- name: 🚀 Ejecutar script de enriquecimiento
+  run: |
+    python scripts/3_enrich_chart_data.py
+  env:
+    YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+    GITHUB_ACTIONS: true
+```
+
+#### **6. ✅ Verificar Resultados**
+
+```yaml
+- name: ✅ Verificar resultados
+  run: |
+    echo "📊 Verificando resultados de ejecución..."
+    echo "📂 Contenido de charts_archive/3_enrich-chart-data/:"
+    ls -lah charts_archive/3_enrich-chart-data/
+```
+
+#### **7. 📤 Commit y Push de Cambios**
+
+```yaml
+- name: 📤 Commit y push de cambios
+  run: |
+    git config --global user.name "github-actions[bot]"
+    git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    git add charts_archive/3_enrich-chart-data/
+    
+    if git diff --cached --quiet; then
+      echo "🔭 No hay cambios para commit"
+    else
+      DATE=$(date +'%Y-%m-%d')
+      WEEK=$(date +'%Y-W%W')
+      git commit -m "🤖 Datos de charts enriquecidos ${DATE} (Semana ${WEEK}) [Automated]"
+      git pull --rebase origin main
+      git push origin HEAD:main
+    fi
+```
+
+#### **8. 📦 Subir Artefactos (en fallo)**
+
+```yaml
+- name: 📦 Subir artefactos (en fallo)
+  if: failure()
+  uses: actions/upload-artifact@v4
+  with:
+    name: enrich-debug-${{ github.run_number }}
+    path: |
+      charts_archive/3_enrich-chart-data/
+    retention-days: 7
+```
+
+#### **9. 🧹 Limpiar Bases de Datos Antiguas**
+
+```yaml
+- name: 🧹 Limpiar bases de datos antiguas
+  run: |
+    echo "🧹 Limpiando bases de datos enriquecidas anteriores a ${{ env.RETENTION_WEEKS }} semanas..."
+    find charts_archive/3_enrich-chart-data/ \
+      -name "*_enriched.db" \
+      -type f \
+      -mtime +$((RETENTION_WEEKS * 7)) \
+      -delete
+```
+
+#### **10. 📋 Reporte Final**
+
+```yaml
+- name: 📋 Reporte final
+  if: always()
+  run: |
+    echo "========================================"
+    echo "🎵 REPORTE DE EJECUCIÓN DE ENRIQUECIMIENTO"
+    echo "========================================"
+    echo "📅 Fecha: $(date)"
+    echo "📌 Disparador: ${{ github.event_name }}"
+    
+    LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
+    if [ -f "$LATEST_DB" ]; then
+      echo "✅ Base de datos enriquecida más reciente: $(basename $LATEST_DB)"
+      SIZE=$(stat -c%s "$LATEST_DB")
+      echo "📊 Tamaño: $((SIZE / 1024)) KB"
+    fi
+```
+
+### Programación Cron
 
 ```cron
 '0 14 * * 1'  # Minuto 0, Hora 14, Cualquier día del mes, Cualquier mes, Lunes
 ```
 
-- **Ejecución**: Todos los lunes a las 14:00 UTC
-- **Diferencia**: 2 horas después del workflow de descarga (`1_download-chart.yml`)
-- **Motivo**: Esperar a que el workflow anterior complete la descarga de los nuevos charts
+- **Ejecución**: Cada lunes a las 14:00 UTC
+- **Desplazamiento**: 2 horas después del Script 1 (12:00 UTC) y 1 hora después del Script 2 (13:00 UTC)
+- **Propósito**: Permite que los workflows anteriores se completen antes de que comience el enriquecimiento
 
-## 🔐 Secretos Requeridos
+### Secretos Requeridos
 
-| Secreto           | Propósito                                              |
-| :---------------- | :----------------------------------------------------- |
-| `YOUTUBE_API_KEY` | Clave de API de YouTube Data v3 para obtener metadatos |
+| Secreto           | Propósito                                                    |
+| :---------------- | :----------------------------------------------------------- |
+| `YOUTUBE_API_KEY` | Clave de API de YouTube Data v3 para recuperar metadatos de video (Capa 1). Opcional; el script cae a Selenium/yt-dlp sin ella. |
 
-## 🔄 Flujo de Integración
-
-```mermaid
-flowchart LR
-    A["1_download-chart.yml<br>Lunes 12:00 UTC"] -- espera 2h --> B["3_enrich-chart-data.yml<br>Lunes 14:00 UTC"]
-    B --> C[("Base Enriquecida")]
-    C --> D["Commit automático"] & E["Retención 78 semanas"]
-    A -- espera 1h --> n1["2_update-artist-db.yml Lunes 13:00 UTC"]
-    n1 --> B
-
-    n1@{ shape: rect}
-```
+------
 
 ## 🚀 Instalación y Configuración Local
 
-### **Requisitos Previos**
+### Requisitos Previos
 
-- Python 3.12 o superior
+- Python 3.7 o superior (3.12 recomendado)
 - Git instalado
-- Acceso a internet
-- Clave de API de YouTube Data v3 (opcional pero recomendada)
+- Acceso a Internet
+- (Opcional) Clave de API de YouTube Data v3 para recuperación más rápida de metadatos
 
-### **Instalación Paso a Paso**
+### Instalación Paso a Paso
 
-1. **Clonar el Repositorio**
+#### **1. Clonar el Repositorio**
 
 ```bash
-git clone https://github.com/adroguetth/Music-Charts-Intelligence
+git clone https://github.com/adroguetth/Music-Charts-Intelligence.git
 cd Music-Charts-Intelligence
 ```
 
-2. **Crear Entorno Virtual (recomendado)**
+#### **2. Crear Entorno Virtual (recomendado)**
 
 ```bash
 python -m venv venv
@@ -723,311 +604,141 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-3. **Instalar Dependencias**
+#### **3. Instalar Dependencias**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Configurar Variables de Entorno**
+#### **4. Configurar Clave API de YouTube (opcional pero recomendado)**
 
 ```bash
 # Linux/Mac
-export YOUTUBE_API_KEY="tu-clave-api"
+export YOUTUBE_API_KEY="tu-clave-api-aqui"
 
-# Windows PowerShell
-$env:YOUTUBE_API_KEY="tu-clave-api"
+# Windows (Command Prompt)
+set YOUTUBE_API_KEY=tu-clave-api-aqui
+
+# Windows (PowerShell)
+$env:YOUTUBE_API_KEY="tu-clave-api-aqui"
 ```
 
-5. **Ejecutar el Script Manualmente**
+#### **5. Ejecutar Prueba Inicial**
 
 ```bash
 python scripts/3_enrich_chart_data.py
 ```
 
-### **Configuración para Desarrollo**
-
-**Variables de Entorno Opcionales**
+### Configuración de Desarrollo
 
 ```bash
-# Para simular entorno de GitHub Actions
+# Simular entorno de GitHub Actions
 export GITHUB_ACTIONS=true
 
-# Para ejecución sin interacción (no pide confirmación)
+# Ejecutar sin confirmación interactiva
 export YOUTUBE_API_KEY="tu-clave-api"
 ```
 
-**Ejecución con Datos de Prueba**
-
-```bash
-# Crear estructura de directorios
-mkdir -p charts_archive/1_download-chart/databases
-
-# Copiar una base de prueba (si existe)
-cp /ruta/a/una/base.db charts_archive/1_download-chart/databases/
-
-# Ejecutar script
-python scripts/3_enrich_chart_data.py
-```
+---
 
 ## 📁 Estructura de Archivos Generada
 
 ```text
 charts_archive/
 ├── 1_download-chart/
-│   ├── latest_chart.csv
 │   ├── databases/
 │   │   ├── youtube_charts_2025-W01.db
 │   │   ├── youtube_charts_2025-W02.db
 │   │   └── ...
 │   └── backup/
-│       └── ...
 ├── 2_countries-genres-artist/
-│   └── artist_countries_genres.db       # Base de datos de artistas (país/género)
+│   └── artist_countries_genres.db       # Base de datos de artistas (descargada temporalmente)
 └── 3_enrich-chart-data/                  # ← Salida de este script
     ├── youtube_charts_2025-W01_enriched.db
     ├── youtube_charts_2025-W02_enriched.db
     └── ...
 ```
-### **Crecimiento de la Base de Datos**
 
-- **Ejecución semanal**: 100 canciones procesadas
-- **Tamaño por base**: ~200-300 KB por archivo `.db`
-- **Almacenamiento anual**: ~15-20 MB (52 semanas × 300 KB)
-- **Retención configurada**: 78 semanas (1.5 años) → ~30-40 MB máximos
+### Crecimiento de la Base de Datos
 
-### **Columnas Generadas por Canción (25 campos)**
+| Métrica                  | Valor                 |
+| :----------------------- | :-------------------- |
+| Canciones semanales      | 100                   |
+| Tamaño por base de datos | 200-300 KB            |
+| Almacenamiento anual     | 15-20 MB              |
+| Retención                | 78 semanas (1.5 años) |
 
-| Categoría           | Campos                                                       |
-| :------------------ | :----------------------------------------------------------- |
-| **Identificadores** | `rank`, `artist_names`, `track_name`                         |
-| **Métricas Chart**  | `periods_on_chart`, `views`, `youtube_url`                   |
-| **Metadatos Video** | `duration_s`, `duration_ms`, `upload_date`, `likes`, `comment_count`, `audio_language` |
-| **Flags Video**     | `is_official_video`, `is_lyric_video`, `is_live_performance` |
-| **Contexto**        | `upload_season`, `channel_type`, `is_collaboration`, `artist_count`, `region_restricted` |
-| **Enriquecimiento** | `artist_country`, `macro_genre`, `artistas_encontrados`      |
-| **Control**         | `error`, `fecha_procesamiento`                               |
+------
 
 ## 🔧 Personalización y Configuración
 
-### **Parámetros Ajustables en el Script**
+### Parámetros Ajustables en el Script
 
 ```python
 # En 3_enrich_chart_data.py
-INPUT_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
-URL_ARTISTAS_DB = "https://github.com/..."  # URL de base de artistas
-OUTPUT_DIR = PROJECT_ROOT / "charts_archive" / "3_enrich-chart-data"
-
-# Timeouts y retardos
-SLEEP_BETWEEN_VIDEOS = 0.1      # Pausa entre videos (segundos)
-YT_DLP_RETRIES = 5               # Reintentos para yt-dlp
-SELENIUM_TIMEOUT = 10             # Timeout para Selenium (segundos)
+SLEEP_BETWEEN_VIDEOS = 0.1    # Pausa entre videos (segundos)
+YT_DLP_RETRIES = 5             # Intentos de reintento de yt-dlp
+SELENIUM_TIMEOUT = 10          # Timeout de carga de página de Selenium (segundos)
 ```
 
-### **Configuración del Workflow**
+### Configuración del Workflow
 
 ```yaml
 # En 3_enrich-chart-data.yml
 env:
-  RETENTION_WEEKS: 78       # Semanas de retención (1.5 años)
+  RETENTION_WEEKS: 78       # Semanas para retener bases de datos
 
-timeout-minutes: 60          # Tiempo máximo total
+timeout-minutes: 60          # Timeout total del job
 ```
 
-### **Añadir Nuevos Delimitadores de Artistas**
+### Añadir Nuevos Delimitadores de Artistas
 
 ```python
-# En extraer_lista_artistas()
-separadores = [
-    '&', 'feat.', 'ft.', ',', ' y ', ' and ', 
-    ' with ', ' x ', ' vs ',  # Existentes
-    ' présentation ', ' en duo avec ',  # Nuevos para francés
-    ' und ', ' & ',            # Nuevos para alemán
-    ' e ', ' com '             # Nuevos para portugués
+# En parse_artist_list()
+separators = [
+    '&', 'feat.', 'ft.', ',', ' y ', ' and ',
+    ' with ', ' x ', ' vs ',           # Existentes
+    ' présentation ', ' en duo avec ', # Francés
+    ' und ', ' & ',                    # Alemán
+    ' e ', ' com '                     # Portugués
 ]
 ```
 
-### **Ampliar Jerarquías de Géneros por País**
+### Ampliar Jerarquías de Género
 
 ```python
-# En JERARQUIA_GENEROS
+# En GENRE_HIERARCHY
 "Nuevo País": [
-    "Género Principal",      # Prioridad 1
-    "Género Secundario",      # Prioridad 2
-    "Género Terciario",       # Prioridad 3
-    "Género de nicho"         # Prioridad 4
+    "Género Prioritario 1",   # Prioridad 1
+    "Género Prioritario 2",   # Prioridad 2
+    "Género Prioritario 3"    # Prioridad 3
 ]
 ```
 
-### **Modificar Reglas del Sistema de Pesos**
-
-```python
-# En determinar_pais_y_genero_colaboracion()
-# Ajustar umbrales o añadir nuevas reglas
-if porcentaje_mayoritario > 0.6:  # Cambiar de 0.5 a 0.6
-    # Nueva lógica...
-```
+---
 
 ## 🐛 Solución de Problemas
-### **Solución de Problemas **
 
-##### **Error: "No module named 'isodate'"**
+### Problemas Comunes y Soluciones
 
-**Causa**: Falta la librería para convertir duración ISO.
+| Error                                 | Causa Probable                 | Solución                                    |
+| :------------------------------------ | :----------------------------- | :------------------------------------------ |
+| `No module named 'isodate'`           | Librería faltante              | `pip install isodate`                       |
+| `Selenium: ChromeDriver not found`    | Chrome no instalado            | `sudo apt-get install google-chrome-stable` |
+| `No database found`                   | El Script 1 no se ha ejecutado | Ejecutar Script 1 primero                   |
+| `Sign in to confirm you're not a bot` | yt-dlp bloqueado por YouTube   | Configurar `YOUTUBE_API_KEY`                |
+| `API key not valid`                   | Clave inválida                 | Verificar clave en Google Cloud Console     |
+| `Quota exceeded`                      | Límite diario alcanzado        | El script cae automáticamente a Selenium    |
 
-```bash
-pip install isodate
-```
+### Métricas de Rendimiento
 
-##### **Error: "Selenium: ChromeDriver not found"**
+| Escenario          | Tiempo       | Notas                      |
+| :----------------- | :----------- | :------------------------- |
+| Con clave API      | ~2 minutos   | 0.3-0.8s por video         |
+| Sin API (Selenium) | 5-7 minutos  | Depende de carga de página |
+| Sin API (yt-dlp)   | 8-10 minutos | Puede ser bloqueado        |
 
-**Causa**: Chrome no instalado o webdriver-manager falla.
-
-```bash
-# Instalar Chrome (Linux)
-sudo apt-get update
-sudo apt-get install -y google-chrome-stable
-
-# Instalar webdriver-manager automáticamente (lo hace el script)
-```
-
-#### **Error: "No database found"**
-
-**Solución** 
-
-```bash
-# Verificar que existe al menos una base de charts
-ls -la charts_archive/1_download-chart/databases/
-# Si no hay, ejecutar primero el workflow de descarga
-```
-
-#### **Error: "Sign in to confirm you're not a bot"**
-
-**Causa**: YouTube bloquea yt-dlp en entornos automatizados.
-
-**Soluciones**:
-
-1. ✅ **Priorizar API**: Asegurar que `YOUTUBE_API_KEY` está configurada
-2. 🔄 **Usar Selenium**: El script fallback automático a Selenium
-3. 🍪 **Exportar cookies** (último recurso):
-
-```bash
-# Exportar cookies desde navegador
-yt-dlp --cookies-from-browser chrome "URL"
-```
-
-#### **Error: "No enriched database found" en reporte final**
-
-**Causa**: El script no pudo generar ninguna base.
-
-**Verificaciones**:
-
-```bash
-# 1. ¿Existen bases de charts de entrada?
-ls -la charts_archive/1_download-chart/databases/
-
-# 2. ¿Hay archivos .db en el directorio de salida?
-ls -la charts_archive/3_enrich-chart-data/
-
-# 3. Revisar logs de error en GitHub Actions
-# Buscar la columna 'error' en ejecuciones anteriores
-```
-
-#### **Error: "API key not valid"**
-
-**Causa**: Clave API inválida o sin permisos.
-
-**Soluciones**:
-
-1. Verificar en [Google Cloud Console](https://console.cloud.google.com/)
-2. Habilitar YouTube Data API v3
-3. Regenerar clave si es necesario
-4. Verificar restricciones de IP/dominio
-
-#### **Error: "Quota exceeded" (límite de cuota excedido)**
-
-**Causa**: Demasiadas solicitudes a la API.
-
-**Soluciones**:
-
-```text
-# 1. Aumentar cuota en Google Cloud (plan de pago)
-# 2. Distribuir ejecuciones en el tiempo
-# 3. El script fallback automáticamente a Selenium
-```
-
-#### **Error en GitHub Actions: "No space left on device"**
-
-**Causa**: Demasiadas bases almacenadas.
-
-**Solución**:
-
-```bash
-# Verificar política de retención
-echo $RETENTION_WEEKS  # Debería ser 78
-
-# Limpiar manualmente si es necesario
-find charts_archive/3_enrich-chart-data -name "*_enriched.db" -mtime +546 -delete
-```
-
-#### **Problema: Procesamiento muy lento (>10 minutos)**
-
-**Causa**: API Key no configurada o fallando.
-
-**Verificaciones**:
-
-```bash
-# 1. ¿Está configurada YOUTUBE_API_KEY?
-echo $YOUTUBE_API_KEY
-
-# 2. Revisar logs: ¿qué capa se está usando?
-# Buscar "⚠️ Error en metadatos" en los logs
-```
-
-### **Comandos de Diagnóstico**
-
-```bash
-# Verificar estructura de directorios
-tree charts_archive/ -L 2
-
-# Contar bases enriquecidas
-ls -1 charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | wc -l
-
-# Ver tamaño total
-du -sh charts_archive/3_enrich-chart-data/
-
-# Consultar una base específica
-sqlite3 charts_archive/3_enrich-chart-data/youtube_charts_2026-W11_enriched.db \
-  "SELECT artist_country, COUNT(*) FROM canciones_enriquecidas GROUP BY artist_country ORDER BY COUNT(*) DESC LIMIT 5;"
-
-# Ver registros con error
-sqlite3 charts_archive/3_enrich-chart-data/youtube_charts_2026-W11_enriched.db \
-  "SELECT rank, track_name, error FROM canciones_enriquecidas WHERE error != '';"
-```
-
-### **Depuración Local**
-
-```bash
-# Ejecutar con logging detallado
-export PYTHONVERBOSE=1
-python scripts/3_enrich_chart_data.py
-
-# Probar un video específico con yt-dlp
-yt-dlp --dump-json "https://youtube.com/watch?v=VIDEO_ID"
-
-# Probar API directamente
-curl -X GET "https://www.googleapis.com/youtube/v3/videos?part=snippet&id=VIDEO_ID&key=YOUR_API_KEY"
-```
-
-
-
-## 📈 Métricas de Rendimiento
-
-| Escenario              | Tiempo        | Observaciones                     |
-| :--------------------- | :------------ | :-------------------------------- |
-| **Con API Key**        | ~2 minutos    | 100 canciones, 0.3-0.8s por video |
-| **Sin API (Selenium)** | ~5-7 minutos  | Depende de velocidad de carga     |
-| **Sin API (yt-dlp)**   | ~8-10 minutos | Puede fallar por bloqueos         |
+------
 
 ## 📄 Licencia y Atribución
 
@@ -1035,107 +746,22 @@ curl -X GET "https://www.googleapis.com/youtube/v3/videos?part=snippet&id=VIDEO_
 - **Autor**: Alfonso Droguett
   - 🔗 **LinkedIn:** [Alfonso Droguett](https://www.linkedin.com/in/adroguetth/)
   - 🌐 **Portafolio web:** [adroguett-portfolio.cl](https://www.adroguett-portfolio.cl/)
-  - 📧 **Correo electrónico:** adroguett.consultor@gmail.com
-
-### **Tecnologías Utilizadas**
-
-| Tecnología              | Propósito                                | Versión     |
-| :---------------------- | :--------------------------------------- | :---------- |
-| **Python**              | Lenguaje principal                       | 3.12        |
-| **YouTube Data API v3** | Metadatos de video (capa 1)              | -           |
-| **Selenium**            | Respaldo con navegador headless (capa 2) | ≥4.15.0     |
-| **yt-dlp**              | Último recurso anti-bloqueo (capa 3)     | ≥2023.10.13 |
-| **SQLite**              | Almacenamiento de resultados             | -           |
-| **GitHub Actions**      | Automatización CI/CD                     | -           |
-
-### **Atribuciones Especiales**
-
-- **yt-dlp**: Inspiración para manejo de bloqueos y rotación de clientes
-- **Comunidad Open Source**: Por las librerías que hacen posible este proyecto
-
-## 🤝 Contribución
-
-### **Cómo Contribuir**
-
-1. **Reportar problemas** con registros completos (incluir logs de error)
-2. **Proponer mejoras** con casos de uso concretos
-3. **Añadir nuevos mapeos de género** con ejemplos de artistas
-4. **Contribuir con variantes de países** (especialmente para regiones subrepresentadas)
-5. **Mantener compatibilidad** con la estructura de base de datos existente
-
-### **Guía de Contribución Rápida**
-
-```bash
-# 1. Fork el repositorio
-# 2. Clonar tu fork
-git clone https://github.com/tu-usuario/Music-Charts-Intelligence
-
-# 3. Crear rama para tu contribución
-git checkout -b feature/nueva-funcionalidad
-
-# 4. Hacer cambios y probar localmente
-python scripts/3_enrich_chart_data.py --test
-
-# 5. Commit con mensaje descriptivo
-git commit -m "Añade soporte para nuevo género X"
-
-# 6. Push y crear Pull Request
-git push origin feature/nueva-funcionalidad
-```
-
-### **Áreas Prioritarias de Contribución**
-
-- ✅ Ampliar `JERARQUIA_GENEROS` para países faltantes
-- ✅ Mejorar detección de colaboraciones con nuevos patrones
-- ✅ Optimizar selectores CSS de Selenium (cambios frecuentes en YouTube)
-- ✅ Añadir más idiomas a la detección de escritura
-- ✅ Crear tests automatizados
-
-## 🧪 Limitaciones Conocidas y Mejoras Futuras
-
-### **Limitaciones Actuales**
-
-- **Dependencia de API**: El sistema depende de YouTube Data API v3 que tiene cuota diaria (10,000 unidades)
-- **Bloqueos de YouTube**: yt-dlp puede ser bloqueado en entornos CI sin cookies/PO Tokens
-- **Selenium en CI**: Requiere Chrome instalado y puede ser más lento en entornos sin GPU
-- **Selectores CSS**: Los selectores de Selenium pueden romperse con cambios en YouTube
-- **Artistas Nuevos**: Artistas emergentes recientemente pueden no aparecer en la base de artistas
-- **Géneros Nicho**: Algunos micro-géneros pueden no tener mapeos en la jerarquía
-- **Colaboraciones Complejas**: Colaboraciones con 5+ artistas pueden ser difíciles de resolver
-
-### **Casos Conocidos con Comportamiento Especial**
-
-| Caso                                                         | Comportamiento Actual        | Mejora Propuesta               |
-| :----------------------------------------------------------- | :--------------------------- | :----------------------------- |
-| **Grupos K-Pop con miembros extranjeros**                    | País: Corea del Sur          | Detectar miembros individuales |
-| **MCs Brasileños**                                           | Género: Sertanejo (fallback) | Priorizar Funk Brasileiro      |
-| **Colaboraciones Latinas con artista principal de otro país** | Puede dar Multipais          | Analizar orden de mención      |
-| **Videos bloqueados por región**                             | `region_restricted: true`    | Intentar con proxy/vPN         |
-
-## 📊 Métricas de Éxito del Proyecto
-
-### **Logros Actuales**
-
-| Métrica                       | Valor                     |
-| :---------------------------- | :------------------------ |
-| **Tiempo de procesamiento**   | 2 minutos (100 canciones) |
-| **Tasa de éxito API**         | ~98% (con clave válida)   |
-| **Países detectados**         | 28 por semana             |
-| **Géneros distintos**         | 15 por semana             |
-| **Colaboraciones multi-país** | ~24% del total            |
-| **Artistas sin país**         | <3%                       |
-
-### **Objetivos para V2.0**
-
-| Métrica                     | Objetivo                  |
-| :-------------------------- | :------------------------ |
-| **Tiempo de procesamiento** | <1 minuto (100 canciones) |
-| **Tasa de éxito API**       | 99.5%                     |
-| **Países detectados**       | 35+ por semana            |
-| **Géneros distintos**       | 20+ por semana            |
-| **Artistas sin país**       | <1%                       |
+  - 📧 **Email:** adroguett.consultor@gmail.com
+- **Fuentes de Datos**:
+  - API de YouTube Data v3
+  - Sitio web de YouTube (vía Selenium/yt-dlp)
+  - Base de datos de artistas del Script 2
 
 ------
 
-**⭐ Si encuentras útil este proyecto, ¡considera darle una estrella en GitHub!**
+## 🤝 Contribución
 
+1. Reportar problemas con registros completos
+2. Proponer mejoras con casos de uso
+3. Añadir nuevas jerarquías de género para países faltantes
+4. Mejorar patrones de detección de colaboraciones
+5. Mantener compatibilidad con el esquema de base de datos existente
+
+------
+
+**⭐ Si este proyecto te resulta útil, ¡considera darle una estrella en GitHub!**
