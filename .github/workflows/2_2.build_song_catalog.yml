@@ -121,7 +121,7 @@ jobs:
         if [ -f "charts_archive/2_2_build-song-catalog/build_song.db" ]; then
           COUNT=$(sqlite3 charts_archive/2_2_build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
           echo "✅ Total songs in catalog: $COUNT"
-          echo "📀 Database size: $(du -h charts_archive/2_2_build-song-catalog/build_song.db | cut -f1)"
+          echo "🤖 Database size: $(du -h charts_archive/2_2_build-song-catalog/build_song.db | cut -f1)"
         else
           echo "⚠️ Catalog database not found"
         fi
