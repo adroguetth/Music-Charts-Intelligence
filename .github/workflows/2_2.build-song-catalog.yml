@@ -89,7 +89,7 @@ jobs:
         else
           DATE=$(date +'%Y-%m-%d')
           WEEK=$(date +'%Y-W%W')
-          git commit -m "📀 Update song catalog ${DATE} (Week ${WEEK}) [Automated]"
+          git commit -m "🤖 Update song catalog ${DATE} (Week ${WEEK}) [Automated]"
           
           echo "⬇️ Pulling latest changes with rebase..."
           git pull --rebase origin main
