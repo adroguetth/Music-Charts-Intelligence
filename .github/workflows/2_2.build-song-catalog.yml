@@ -14,7 +14,7 @@ on:
     paths:
       - 'charts_archive/1_download-chart/databases/*.db'
       - 'scripts/2_2.build_song_catalog.py'
-      - '.github/workflows/2.2.build_song_catalog.yml'
+      - '.github/workflows/2_2.build_song_catalog.yml'
 
 env:
   RETENTION_DAYS: 30
