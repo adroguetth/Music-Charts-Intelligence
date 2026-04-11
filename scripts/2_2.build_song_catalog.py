@@ -61,8 +61,8 @@ REPO_ROOT = Path(__file__).parent.parent
 SOURCE_DIR = REPO_ROOT / "charts_archive" / "1_download-chart" / "databases"
 
 # Target: Where the canonical song catalog will be maintained
-# Using 2_2.build_song_catalog to match the naming pattern (like 1_download-chart)
-TARGET_DIR = REPO_ROOT / "charts_archive" / "2_2.build_song_catalog"
+# Using 2_2.build-song-catalog to match the naming pattern (like 1_download-chart)
+TARGET_DIR = REPO_ROOT / "charts_archive" / "2_2.build-song-catalog"
 TARGET_DB_NAME = "build_song.db"
 
 # Create target directory structure if it doesn't exist
