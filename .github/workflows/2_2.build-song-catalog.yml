@@ -47,7 +47,7 @@ jobs:
     
     - name: 📁 Create directory structure
       run: |
-        mkdir -p charts_archive/2_2.build-song-catalog
+        mkdir -p charts_archive/2_2.build_song_catalog
     
     - name: 🚀 Run song catalog builder
       run: |
@@ -59,16 +59,16 @@ jobs:
       run: |
         echo "📊 Verifying execution results..."
         
-        echo "📂 Contents of charts_archive/2_2.build-song-catalog/:"
-        ls -lah charts_archive/2_2.build-song-catalog/
+        echo "📂 Contents of charts_archive/2_2.build_song_catalog/:"
+        ls -lah charts_archive/2_2.build_song_catalog/
         
         echo -e "\n🎵 Catalog database:"
-        if [ -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
-          SIZE=$(stat -c%s "charts_archive/2_2.build-song-catalog/build_song.db")
+        if [ -f "charts_archive/2_2.build_song_catalog/build_song.db" ]; then
+          SIZE=$(stat -c%s "charts_archive/2_2.build_song_catalog/build_song.db")
           echo "✅ build_song.db exists, size: $((SIZE / 1024)) KB"
           
           # Display number of records (requires sqlite3)
-          COUNT=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
+          COUNT=$(sqlite3 charts_archive/2_2.build_song_catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
           echo "📈 Total unique songs: $COUNT"
         else
           echo "⚠️ build_song.db not found"
@@ -82,7 +82,7 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
         # Only stage catalog files
-        git add charts_archive/2_2.build-song-catalog/
+        git add charts_archive/2_2.build_song_catalog/
         
         if git diff --cached --quiet; then
           echo "🔭 No changes to commit"
@@ -105,7 +105,7 @@ jobs:
       with:
         name: song-catalog-${{ github.run_number }}
         path: |
-          charts_archive/2_2.build-song-catalog/
+          charts_archive/2_2.build_song_catalog/
         retention-days: ${{ env.RETENTION_DAYS }}
     
     - name: 📋 Final report
@@ -117,10 +117,10 @@ jobs:
         echo "📅 Date: $(date)"
         echo "📌 Trigger: ${{ github.event_name }}"
         echo ""
-        if [ -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
-          COUNT=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
+        if [ -f "charts_archive/2_2.build_song_catalog/build_song.db" ]; then
+          COUNT=$(sqlite3 charts_archive/2_2.build_song_catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
           echo "✅ Total songs in catalog: $COUNT"
-          echo "🤖 Database size: $(du -h charts_archive/2_2.build-song-catalog/build_song.db | cut -f1)"
+          echo "🤖 Database size: $(du -h charts_archive/2_2.build_song_catalog/build_song.db | cut -f1)"
         else
           echo "⚠️ Catalog database not found"
         fi
