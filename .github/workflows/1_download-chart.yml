@@ -100,7 +100,7 @@ jobs:
         else
           DATE=$(date +'%Y-%m-%d')
           WEEK=$(date +'%Y-W%W')
-          git commit -m "📊 YouTube Chart Update ${DATE} (Week ${WEEK}) [Automated]"
+          git commit -m "🤖 YouTube Chart Update ${DATE} (Week ${WEEK}) [Automated]"
 
           # 🔥 IMPORTANTE: Pull latest changes before pushing
           echo "⬇️ Pulling latest changes with rebase..."
