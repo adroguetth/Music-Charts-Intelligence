@@ -13,7 +13,7 @@ on:
       - main
     paths:
       - 'charts_archive/1_download-chart/databases/*.db'
-      - 'scripts/2.2.build_song_catalog.py'
+      - 'scripts/2_2.build_song_catalog.py'
       - '.github/workflows/2.2.build_song_catalog.yml'
 
 env:
@@ -51,7 +51,7 @@ jobs:
     
     - name: 🚀 Run song catalog builder
       run: |
-        python scripts/2.2.build_song_catalog.py
+        python scripts/2_2.build_song_catalog.py
       env:
         GITHUB_ACTIONS: true
     
