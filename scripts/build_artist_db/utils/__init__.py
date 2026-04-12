@@ -22,6 +22,7 @@ from .db_utils import (
     get_artists_from_chart_db,
 )
 from .artist_parser import split_artists
+from .country_utils import validate_and_normalize_country
 
 __all__ = [
     # text_utils
@@ -42,11 +43,6 @@ __all__ = [
     "get_artists_from_chart_db",
     # artist_parser
     "split_artists",
-]
-
-from .country_utils import validate_and_normalize_country
-
-__all__ = [
-    ...
+    # country_utils
     "validate_and_normalize_country",
 ]
