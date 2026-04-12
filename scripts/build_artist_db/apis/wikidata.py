@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple
 
 from ..config import logger
 from ..utils.cache import get_cache, get_http_sessions
-from ..country_detector import validate_and_normalize_country
+from ..utils.country_utils import validate_and_normalize_country  # ← Corregido: import desde utils
 
 
 def search_wikidata_country_cached(artist: str) -> Optional[str]:
@@ -61,7 +61,8 @@ def search_wikidata_country_cached(artist: str) -> Optional[str]:
             entity = data2['entities'][qid]
             claims = entity.get('claims', {})
 
-            for prop in ['P27', 'P19']:  # P27: country of citizenship, P19: place of birth
+            # P27: country of citizenship, P19: place of birth
+            for prop in ['P27', 'P19']:
                 if prop in claims:
                     for claim in claims[prop]:
                         if 'mainsnak' in claim and 'datavalue' in claim['mainsnak']:
