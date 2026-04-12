@@ -15,8 +15,10 @@ from .config import (
     get_http_sessions,
 )
 
-from .country_detector import search_country, validate_and_normalize_country
+from .country_detector import search_country
 from .genre_detector import search_artist_genre, normalize_genre
+# validate_and_normalize_country now lives in utils
+from .utils.country_utils import validate_and_normalize_country
 
 __all__ = [
     "PROJECT_ROOT",
@@ -26,7 +28,7 @@ __all__ = [
     "get_cache",
     "get_http_sessions",
     "search_country",
-    "validate_and_normalize_country",
     "search_artist_genre",
     "normalize_genre",
+    "validate_and_normalize_country",
 ]
