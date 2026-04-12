@@ -13,7 +13,9 @@ from typing import Optional, Tuple
 from openai import OpenAI
 
 from ..config import logger
-from ..country_detector import validate_and_normalize_country
+from ..utils.country_utils import validate_and_normalize_country
+# Import normalize_genre directly from genre_detector (no risk of cycle because
+# genre_detector does not import deepseek)
 from ..genre_detector import normalize_genre
 
 
