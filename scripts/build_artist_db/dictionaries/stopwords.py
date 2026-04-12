@@ -1,0 +1,73 @@
+"""
+Stopwords for genre filtering.
+
+These words are common descriptors or nationalities that are not actual
+musical genres. They are filtered out during genre extraction to avoid
+false positives.
+"""
+
+GENRE_STOPWORDS = {
+    # Nationalities / Demonyms
+    'american',
+    'british',
+    'canadian',
+    'australian',
+    'indian',
+    'korean',
+    'japanese',
+    'mexican',
+    'spanish',
+    'french',
+    'german',
+    'italian',
+    'brazilian',
+    'argentine',
+    'colombian',
+    'chilean',
+    'peruvian',
+    'venezuelan',
+    'cuban',
+    'dominican',
+    'african',
+    'nigerian',
+    'south african',
+    'kenyan',
+    'egyptian',
+    'moroccan',
+    'israeli',
+    'turkish',
+    'russian',
+    'ukrainian',
+    'polish',
+    'swedish',
+    'norwegian',
+    'danish',
+    'finnish',
+    'dutch',
+    'belgian',
+    'swiss',
+    'austrian',
+    'portuguese',
+    'greek',
+    'irish',
+    'scottish',
+    'welsh',
+    'english',
+
+    # General descriptors (not genres)
+    'famous',
+    'popular',
+    'well-known',
+    'acclaimed',
+    'award-winning',
+    'multi-platinum',
+    'grammy',
+    'grammy-winning',
+    'oscar',
+    'oscar-winning',
+    'best-selling',
+    'successful',
+    'influential',
+    'legendary',
+    'iconic',
+}
