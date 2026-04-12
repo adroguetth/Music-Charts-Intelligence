@@ -10,8 +10,7 @@ from typing import Optional, Tuple, List
 
 from ..config import logger
 from ..utils.cache import get_cache, get_http_sessions
-from ..utils.text_utils import generate_all_variations
-from ..country_detector import validate_and_normalize_country
+from ..utils.country_utils import validate_and_normalize_country  # ← Corregido: import desde utils
 
 
 def extract_genre_from_musicbrainz(mb_data: dict) -> List[Tuple[str, int, str]]:
