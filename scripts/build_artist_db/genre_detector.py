@@ -8,25 +8,28 @@ standardized macro-genre taxonomy.
 """
 
 import time
-import re
 from collections import defaultdict
 from typing import Optional, Tuple, List
 
-from .config import logger, get_cache, get_http_sessions
-from .utils.text_utils import normalize_text, generate_all_variations, detect_script_from_name
+from .config import logger
+from .utils.text_utils import generate_all_variations, detect_script_from_name
 from .apis.musicbrainz import search_musicbrainz_genre_cached
 from .apis.wikidata import search_wikidata_genre_cached
 from .apis.wikipedia import (
     search_wikipedia_infobox_genre_cached,
     search_wikipedia_summary_genre_cached,
 )
-from .apis.deepseek import search_deepseek_fallback
 
-# Dictionary imports (assumed to exist in dictionaries/)
+# Dictionary imports
 from .dictionaries.genres import GENRE_MAPPINGS
 from .dictionaries.macro_genres import MACRO_GENRES, GENERIC_MACROS
-from .dictionaries.country_rules import COUNTRY_GENRE_PRIORITY, COUNTRY_SPECIFIC_RULES, DEFAULT_GENRE_PRIORITY
+from .dictionaries.country_rules import (
+    COUNTRY_GENRE_PRIORITY,
+    COUNTRY_SPECIFIC_RULES,
+    DEFAULT_GENRE_PRIORITY,
+)
 from .dictionaries.stopwords import GENRE_STOPWORDS
+from .utils.text_utils import normalize_text
 
 
 def normalize_genre(genre_text: str) -> Tuple[Optional[str], Optional[str]]:
@@ -338,9 +341,10 @@ def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Opt
             if len(all_candidates) >= MIN_CANDIDATES:
                 break
 
-    # 4. DeepSeek fallback
+    # 4. DeepSeek fallback (local import to avoid circular dependency)
     if not all_candidates:
         logger.debug(f"  🔍 Using DeepSeek fallback for genre: {artist} (country: {country})")
+        from .apis.deepseek import search_deepseek_fallback
         _, deepseek_genre, _ = search_deepseek_fallback(artist, context_country=country)
         if deepseek_genre:
             macro, _ = normalize_genre(deepseek_genre)
