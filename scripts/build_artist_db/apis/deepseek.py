@@ -14,10 +14,6 @@ from openai import OpenAI
 
 from ..config import logger
 from ..utils.country_utils import validate_and_normalize_country
-# Import normalize_genre directly from genre_detector (no risk of cycle because
-# genre_detector does not import deepseek)
-from ..genre_detector import normalize_genre
-
 
 # Global client and cache
 _DEEPSEEK_CLIENT = None
@@ -124,6 +120,8 @@ Do not include any additional text outside the JSON object.
 
             genre = None
             if genre_raw:
+                # Local import to avoid circular dependency with genre_detector
+                from ..genre_detector import normalize_genre
                 macro, _ = normalize_genre(genre_raw)
                 genre = macro if macro else genre_raw
 
