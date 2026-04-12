@@ -10,9 +10,7 @@ from typing import Optional, List, Tuple
 
 from ..config import logger
 from ..utils.cache import get_cache, get_http_sessions
-from ..utils.text_utils import normalize_text
-from ..country_detector import validate_and_normalize_country
-from ..genre_detector import normalize_genre
+from ..utils.country_utils import validate_and_normalize_country  # ← Corregido: import desde utils
 
 
 # Stopwords to filter out false positives in genre extraction
