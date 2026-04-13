@@ -1,4 +1,4 @@
-name: 2.2 - Build Song Catalog (Respardo)
+name: 2.2 - Build Song Catalog
 
 on:
   schedule:
