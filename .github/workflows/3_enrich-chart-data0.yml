@@ -1,9 +1,9 @@
-name: 3- Enrich Chart Data
+name: 3- Enrich Chart Data (respardo)
 
 on:
   schedule:
     # Run every Monday at 14:00 UTC (2 hours after download workflow)
-    - cron: '0 14 * * 1'
+    # - cron: '0 14 * * 1'
   
   # Allow manual workflow execution
   workflow_dispatch:
