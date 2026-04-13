@@ -1350,7 +1350,7 @@ def create_output_table(conn: sqlite3.Connection):
     the pipeline should always produce exactly 100 clean rows, never append
     on top of a previous run.
 
-    The primary key column 'id' references the song catalog's artist_track.id.
+    The column 'id' references the song catalog's artist_track.id.
 
     Args:
         conn: Open SQLite connection to the output database
@@ -1360,8 +1360,8 @@ def create_output_table(conn: sqlite3.Connection):
     cursor.execute('DROP TABLE IF EXISTS enriched_songs')
     cursor.execute('''
         CREATE TABLE enriched_songs (
-            id INTEGER PRIMARY KEY,
             rank INTEGER,
+            id INTEGER PRIMARY KEY,
             artist_names TEXT,
             track_name TEXT,
             periods_on_chart INTEGER,
@@ -1408,10 +1408,10 @@ def insert_enriched_row(conn: sqlite3.Connection, row: dict):
         row: Dict with keys matching the enriched_songs schema
     """
     cursor = conn.cursor()
-    # Column count: 25 columns (id through error)
+    # Column count: 25 columns (rank, id, ... error)
     cursor.execute('''
         INSERT INTO enriched_songs (
-            id, rank, artist_names, track_name, periods_on_chart, views, youtube_url,
+            rank, id, artist_names, track_name, periods_on_chart, views, youtube_url,
             duration_s, duration_ms, upload_date, likes, comment_count,
             audio_language, is_official_video, is_lyric_video, is_live_performance,
             upload_season, channel_type, is_collaboration, artist_count,
@@ -1419,7 +1419,7 @@ def insert_enriched_row(conn: sqlite3.Connection, row: dict):
             artists_found, error
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        row['id'], row['rank'], row['artist_names'], row['track_name'],
+        row['rank'], row['id'], row['artist_names'], row['track_name'],
         row['periods_on_chart'], row['views'], row['youtube_url'],
         row['duration_s'], row['duration_ms'], row['upload_date'],
         row['likes'], row['comment_count'], row['audio_language'],
@@ -1529,8 +1529,8 @@ def main():
 
         # Build output row
         row = {
-            'id': song_id,
             'rank': song.get('Rank'),
+            'id': song_id,
             'artist_names': artists_csv,
             'track_name': song.get('Track Name'),
             'periods_on_chart': song.get('Periods on Chart'),
