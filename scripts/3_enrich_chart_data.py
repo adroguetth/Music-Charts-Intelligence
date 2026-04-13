@@ -7,14 +7,13 @@ Enriches weekly chart data with YouTube metadata and artist origin information.
 
 Workflow:
 - Reads the latest chart database (SQLite) from charts_archive/1_download-chart/databases/
-- Loads the local artist metadata database (artist_countries_genres.db) from
-  charts_archive/2_1.countries-genres-artist/
+- Loads artist metadata from charts_archive/2_1.countries-genres-artist/artist_countries_genres.db
+- Loads song catalog from charts_archive/2_2.build-song-catalog/build_song.db to retrieve song_id
 - Fetches YouTube video metadata using a three-layer fallback system:
     1. YouTube Data API v3 (fastest, requires API key)
     2. Selenium browser automation (when API is unavailable)
     3. yt-dlp with anti-blocking options (last resort)
 - Applies a weighted collaboration algorithm to resolve country/genre for multi-artist tracks
-- Links each song to the canonical song catalog (build_song.db) via song_catalog_id
 - Saves enriched results to charts_archive/3_enrich-chart-data/ as {name}_enriched.db
 
 Requirements:
@@ -53,8 +52,8 @@ INPUT_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases
 # Local artist metadata database (country + macro-genre per artist)
 ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_1.countries-genres-artist" / "artist_countries_genres.db"
 
-# Canonical song catalog (built by script 2_2)
-CATALOG_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_2.build-song-catalog" / "build_song.db"
+# Local song catalog database (id mapping for artist-track pairs)
+SONG_CATALOG_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_2.build-song-catalog" / "build_song.db"
 
 # Output: enriched database written here
 OUTPUT_DIR = PROJECT_ROOT / "charts_archive" / "3_enrich-chart-data"
@@ -1156,7 +1155,7 @@ def fetch_video_metadata(url: str, artists_csv: str = "", api_key: str = None) -
 
 # ---------------------------------------------------------------------
 # DATABASE UTILITIES
-# Input/output SQLite operations for chart data and the artist lookup DB.
+# Input/output SQLite operations for chart data, artist lookup, and song catalog.
 # ---------------------------------------------------------------------
 
 def find_latest_chart_db() -> Path:
@@ -1231,23 +1230,25 @@ def load_chart_songs(db_path: Path) -> list:
     return songs
 
 
-def build_artist_lookup(db_path: Path) -> dict:
+def load_artist_lookup() -> dict:
     """
     Load artist records from the local SQLite file into an in-memory dict for O(1) lookups.
 
-    The normalized name is used as the key to handle minor spelling differences
-    between the chart data and the artist database.
-
-    Args:
-        db_path: Path to the artist_countries_genres.db file
+    The file is expected at charts_archive/2_1.countries-genres-artist/artist_countries_genres.db
 
     Returns:
         dict: {normalized_name: (country, macro_genre)} mapping
-    """
-    if not db_path.exists():
-        raise FileNotFoundError(f"Artist metadata DB not found: {db_path}")
 
-    conn = sqlite3.connect(db_path)
+    Raises:
+        SystemExit: If the artist database file does not exist.
+    """
+    if not ARTIST_DB_PATH.exists():
+        print(f"❌ Artist database not found at: {ARTIST_DB_PATH}")
+        print("   Please ensure the file exists before running this script.")
+        sys.exit(1)
+
+    print("🌍 Loading artist metadata database from local path...")
+    conn = sqlite3.connect(ARTIST_DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT name, country, macro_genre FROM artist")
     rows = cursor.fetchall()
@@ -1258,8 +1259,39 @@ def build_artist_lookup(db_path: Path) -> dict:
         key = normalize_name(raw_name)
         artist_lookup[key] = (country, genre)
 
-    print(f"   ✅ Loaded {len(artist_lookup)} artists from local artist DB.")
+    print(f"   ✅ Loaded {len(artist_lookup)} artists from local DB.")
     return artist_lookup
+
+
+def load_song_catalog_lookup() -> dict:
+    """
+    Load the song catalog (artist_track table) into an in-memory dict for O(1) lookups.
+
+    The key is a tuple of (artist_names, track_name) exactly as stored.
+    The value is the auto-increment 'id'.
+
+    Returns:
+        dict: {(artist_names, track_name): id}
+
+    Note: If the catalog file does not exist, an empty dict is returned.
+    """
+    catalog_lookup = {}
+    if not SONG_CATALOG_DB_PATH.exists():
+        print(f"⚠️  Song catalog not found at {SONG_CATALOG_DB_PATH}. song_id will be NULL.")
+        return catalog_lookup
+
+    print("📀 Loading song catalog for ID mapping...")
+    conn = sqlite3.connect(SONG_CATALOG_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT artist_names, track_name, id FROM artist_track")
+    rows = cursor.fetchall()
+    conn.close()
+
+    for artist_names, track_name, song_id in rows:
+        catalog_lookup[(artist_names, track_name)] = song_id
+
+    print(f"   ✅ Loaded {len(catalog_lookup)} songs from catalog.")
+    return catalog_lookup
 
 
 def get_artist_info(artist_names: str, artist_lookup: dict) -> list:
@@ -1268,7 +1300,7 @@ def get_artist_info(artist_names: str, artist_lookup: dict) -> list:
 
     Args:
         artist_names: Raw 'Artist Names' string from the chart row
-        artist_lookup: Dict returned by build_artist_lookup()
+        artist_lookup: Dict returned by load_artist_lookup()
 
     Returns:
         list[dict]: One entry per artist with keys 'name', 'country', 'genre'
@@ -1283,27 +1315,6 @@ def get_artist_info(artist_names: str, artist_lookup: dict) -> list:
         country, genre = artist_lookup.get(key, (None, None))
         result.append({'name': name, 'country': country, 'genre': genre})
     return result
-
-
-def get_catalog_id(artist_names: str, track_name: str, catalog_conn: sqlite3.Connection) -> Optional[int]:
-    """
-    Retrieve the surrogate primary key (id) from the canonical song catalog.
-
-    Args:
-        artist_names: Raw 'Artist Names' string from the chart row
-        track_name: Track name
-        catalog_conn: SQLite connection to the catalog database
-
-    Returns:
-        Optional[int]: catalog id if found, else None
-    """
-    cursor = catalog_conn.cursor()
-    cursor.execute(
-        "SELECT id FROM artist_track WHERE artist_names = ? AND track_name = ?",
-        (artist_names, track_name)
-    )
-    row = cursor.fetchone()
-    return row[0] if row else None
 
 
 def create_output_table(conn: sqlite3.Connection):
@@ -1346,16 +1357,16 @@ def create_output_table(conn: sqlite3.Connection):
             artist_country TEXT,
             macro_genre TEXT,
             artists_found TEXT,
-            song_catalog_id INTEGER,
+            song_id INTEGER,
             error TEXT,
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (song_catalog_id) REFERENCES artist_track(id)
+            FOREIGN KEY (song_id) REFERENCES artist_track(id)
         )
     ''')
     cursor.execute('CREATE INDEX idx_country ON enriched_songs(artist_country)')
     cursor.execute('CREATE INDEX idx_genre ON enriched_songs(macro_genre)')
     cursor.execute('CREATE INDEX idx_upload_date ON enriched_songs(upload_date)')
-    cursor.execute('CREATE INDEX idx_catalog_id ON enriched_songs(song_catalog_id)')
+    cursor.execute('CREATE INDEX idx_song_id ON enriched_songs(song_id)')
     cursor.execute('CREATE INDEX idx_error ON enriched_songs(error)')
     conn.commit()
 
@@ -1376,7 +1387,7 @@ def insert_enriched_row(conn: sqlite3.Connection, row: dict):
             audio_language, is_official_video, is_lyric_video, is_live_performance,
             upload_season, channel_type, is_collaboration, artist_count,
             region_restricted, artist_country, macro_genre,
-            artists_found, song_catalog_id, error
+            artists_found, song_id, error
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         row['rank'], row['artist_names'], row['track_name'],
@@ -1386,8 +1397,7 @@ def insert_enriched_row(conn: sqlite3.Connection, row: dict):
         row['is_official_video'], row['is_lyric_video'], row['is_live_performance'],
         row['upload_season'], row['channel_type'], row['is_collaboration'],
         row['artist_count'], row['region_restricted'], row['artist_country'],
-        row['macro_genre'], row['artists_found'], row['song_catalog_id'],
-        row['error']
+        row['macro_genre'], row['artists_found'], row['song_id'], row['error']
     ))
     conn.commit()
 
@@ -1402,13 +1412,12 @@ def main():
 
     Workflow:
     1.  Locate the latest weekly chart database
-    2.  Load the local artist metadata database
-    3.  Connect to the song catalog (if available)
+    2.  Load artist metadata from local DB
+    3.  Load song catalog for ID mapping
     4.  Verify yt-dlp is installed (install if missing)
     5.  Load chart songs from SQLite
     6.  Create the output enriched database
-    7.  For each song: fetch YouTube metadata, resolve country/genre,
-        lookup catalog id, write row
+    7.  For each song: fetch YouTube metadata, resolve country/genre, look up song_id, write row
     8.  Print summary statistics
 
     Returns:
@@ -1417,7 +1426,6 @@ def main():
     print("\n" + "=" * 70)
     print("🎵 CHART ENRICHMENT PIPELINE (API → Selenium → yt-dlp)")
     print("   METADATA EXTRACTION + ARTIST COUNTRY/GENRE RESOLUTION")
-    print("   WITH CATALOG LINKING")
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
 
@@ -1430,26 +1438,13 @@ def main():
         print(f"   ❌ {e}")
         sys.exit(1)
 
-    # 2. Load local artist metadata database
+    # 2. Load artist metadata database from local path
     print("\n2. 🌍 LOADING ARTIST METADATA DATABASE...")
-    if not ARTIST_DB_PATH.exists():
-        print(f"   ❌ Artist DB not found at {ARTIST_DB_PATH}")
-        print("      Please run script 2_1 first to download artist_countries_genres.db")
-        sys.exit(1)
-    try:
-        artist_lookup = build_artist_lookup(ARTIST_DB_PATH)
-    except Exception as e:
-        print(f"   ❌ Error loading artist DB: {e}")
-        sys.exit(1)
+    artist_lookup = load_artist_lookup()
 
-    # 3. Connect to song catalog (if exists)
-    print("\n3. 🗂️  CONNECTING TO SONG CATALOG...")
-    catalog_conn = None
-    if CATALOG_DB_PATH.exists():
-        catalog_conn = sqlite3.connect(CATALOG_DB_PATH)
-        print(f"   ✅ Catalog found: {CATALOG_DB_PATH}")
-    else:
-        print("   ⚠️  Catalog not found – song_catalog_id will be NULL.")
+    # 3. Load song catalog for ID mapping
+    print("\n3. 📀 LOADING SONG CATALOG...")
+    song_catalog_lookup = load_song_catalog_lookup()
 
     # 4. Ensure yt-dlp is available (install silently if not)
     print("\n4. 🔧 CHECKING DEPENDENCIES...")
@@ -1496,14 +1491,12 @@ def main():
         artists_info = get_artist_info(artists_csv, artist_lookup)
         final_country, final_genre = resolve_country_and_genre(artists_info)
 
+        # Look up song_id from catalog
+        song_id = song_catalog_lookup.get((artists_csv, song['Track Name']), None)
+
         # Count how many artists were successfully matched against the lookup DB
         matched = sum(1 for a in artists_info if a['country'] is not None)
         total_arts = len(artists_info) if artists_info else 1
-
-        # Lookup catalog ID if catalog is available
-        catalog_id = None
-        if catalog_conn:
-            catalog_id = get_catalog_id(artists_csv, song['Track Name'], catalog_conn)
 
         # Build output row
         row = {
@@ -1530,7 +1523,7 @@ def main():
             'artist_country': final_country,
             'macro_genre': final_genre,
             'artists_found': f"{matched}/{total_arts}",
-            'song_catalog_id': catalog_id,
+            'song_id': song_id,
             'error': metadata['error']
         }
 
@@ -1548,14 +1541,14 @@ def main():
             badges.append("🎤")
         if metadata['is_collaboration']:
             badges.append(f"👥{metadata['artist_count']}")
-        if catalog_id:
-            badges.append(f"🆔{catalog_id}")
         if final_country not in ["Unknown", "Multi-country"]:
             badges.append(f"🌍{final_country[:2]}")
         elif final_country == "Multi-country":
             badges.append("🌐")
         if matched < total_arts:
             badges.append(f"⚠️{matched}/{total_arts}")
+        if song_id is not None:
+            badges.append(f"🆔{song_id}")
 
         if badges:
             print(f"({' '.join(badges)}) → {final_country[:15]}, {final_genre[:15]}")
@@ -1567,8 +1560,6 @@ def main():
         time.sleep(0.1)
 
     conn_out.close()
-    if catalog_conn:
-        catalog_conn.close()
 
     # 8. Summary statistics
     print("\n8. 📊 FINAL SUMMARY:")
@@ -1577,9 +1568,6 @@ def main():
 
     cur.execute("SELECT COUNT(*) FROM enriched_songs")
     total = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM enriched_songs WHERE song_catalog_id IS NOT NULL")
-    linked = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM enriched_songs WHERE artist_country = 'Multi-country'")
     multi_country = cur.fetchone()[0]
@@ -1602,16 +1590,19 @@ def main():
     cur.execute("SELECT COUNT(*) FROM enriched_songs WHERE error != ''")
     error_count = cur.fetchone()[0]
 
+    cur.execute("SELECT COUNT(*) FROM enriched_songs WHERE song_id IS NOT NULL")
+    songs_with_id = cur.fetchone()[0]
+
     conn_stats.close()
 
     print(f"   💾 Output database: {output_db_path}")
     print(f"      📊 Total songs:              {total}")
-    print(f"      🔗 Linked to catalog:         {linked} ({linked / total * 100:.1f}%)")
     print(f"      🌐 Multi-country collabs:    {multi_country} ({multi_country / total * 100:.1f}%)")
     print(f"      🗺️  Distinct countries:       {unique_countries}")
     print(f"      🎵 Distinct genres:           {unique_genres}")
     print(f"      ❓ Songs with unknown country: {unknown_count} ({unknown_count / total * 100:.1f}%)")
     print(f"      ⚠️  Songs with metadata errors: {error_count} ({error_count / total * 100:.1f}%)")
+    print(f"      🆔 Songs with catalog ID:      {songs_with_id} ({songs_with_id / total * 100:.1f}%)")
 
     print("\n" + "=" * 70)
     print("✅ ENRICHMENT PIPELINE COMPLETED SUCCESSFULLY")
