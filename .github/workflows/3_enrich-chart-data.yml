@@ -1,0 +1,172 @@
+name: 3 - Enrich Chart Data
+
+on:
+  schedule:
+    # Run every Monday at 14:15 UTC (after 2_2.build-song-catalog)
+    - cron: '15 14 * * 1'
+  
+  workflow_dispatch:
+  
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/3_enrich_chart_data.py'
+      - 'charts_archive/2_2.build-song-catalog/build_song.db'
+      - '.github/workflows/3_enrich-chart-data.yml'
+
+env:
+  RETENTION_WEEKS: 78
+
+jobs:
+  enrich-chart-data:
+    name: Enrich YouTube Chart Data
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    permissions:
+      contents: write
+    
+    steps:
+    - name: 📚 Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: 'pip'
+    
+    - name: 📦 Install dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: 📁 Create directory structure
+      run: |
+        mkdir -p charts_archive/1_download-chart/databases
+        mkdir -p charts_archive/3_enrich-chart-data
+    
+    - name: 🔍 Verify catalog database exists
+      run: |
+        if [ ! -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
+          echo "❌ Song catalog database not found at charts_archive/2_2.build-song-catalog/build_song.db"
+          echo "   Please ensure script 2_2 has run successfully before this workflow."
+          exit 1
+        fi
+        echo "✅ Song catalog database found"
+        SIZE=$(stat -c%s "charts_archive/2_2.build-song-catalog/build_song.db")
+        echo "   Size: $((SIZE / 1024)) KB"
+    
+    - name: 🚀 Run enrichment script
+      run: |
+        python scripts/3_enrich_chart_data.py
+      env:
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        GITHUB_ACTIONS: true
+    
+    - name: ✅ Verify results
+      run: |
+        echo "📊 Verifying execution results..."
+        
+        echo "📂 Contents of charts_archive/3_enrich-chart-data/:"
+        ls -lah charts_archive/3_enrich-chart-data/
+        
+        echo -e "\n🗃️ Enriched databases:"
+        ls -lah charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null || echo "No enriched databases found"
+        
+        echo -e "\n📈 File statistics:"
+        find charts_archive/3_enrich-chart-data -type f -exec ls -lh {} \; | awk '{print $5, $9}' 2>/dev/null || echo "No files found"
+    
+    - name: 📤 Commit and push changes
+      run: |
+        echo "📝 Preparing commit..."
+        
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        git add charts_archive/3_enrich-chart-data/
+        
+        if git diff --cached --quiet; then
+          echo "🔭 No changes to commit"
+        else
+          DATE=$(date +'%Y-%m-%d')
+          WEEK=$(date +'%Y-W%W')
+          git commit -m "🤖 Enriched chart data (catalog-linked) ${DATE} (Week ${WEEK}) [Automated]"
+          
+          echo "⬇️ Pulling latest changes with rebase..."
+          git pull --rebase origin main
+          
+          echo "⬆️ Pushing changes to repository..."
+          git push origin HEAD:main
+          echo "✅ Changes pushed successfully"
+        fi
+    
+    - name: 📦 Upload artifacts (on failure)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: enrich-debug-${{ github.run_number }}
+        path: |
+          scripts/3_enrich_chart_data.py.log
+          charts_archive/3_enrich-chart-data/
+        retention-days: 7
+    
+    - name: 🧹 Clean old databases
+      run: |
+        echo "🧹 Cleaning enriched databases older than ${{ env.RETENTION_WEEKS }} weeks..."
+        
+        find charts_archive/3_enrich-chart-data/ \
+          -name "*_enriched.db" \
+          -type f \
+          -mtime +$((RETENTION_WEEKS * 7)) \
+          -delete
+        
+        echo "✅ Cleanup completed"
+    
+    - name: 📋 Final report
+      if: always()
+      run: |
+        echo "========================================"
+        echo "🎵 ENRICHMENT EXECUTION REPORT"
+        echo "========================================"
+        echo "📅 Date: $(date)"
+        echo "📌 Trigger: ${{ github.event_name }}"
+        echo "🔗 Commit: ${{ github.sha }}"
+        echo ""
+        
+        LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
+        
+        if [ -f "$LATEST_DB" ]; then
+          echo "✅ Latest enriched database: $(basename $LATEST_DB)"
+          SIZE=$(stat -c%s "$LATEST_DB")
+          echo "📊 Size: $((SIZE / 1024)) KB"
+          
+          if command -v sqlite3 &> /dev/null; then
+            echo ""
+            echo "📊 Database statistics:"
+            TOTAL=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs;" 2>/dev/null || echo "N/A")
+            LINKED=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE song_catalog_id IS NOT NULL;" 2>/dev/null || echo "N/A")
+            MULTI=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE artist_country = 'Multi-country';" 2>/dev/null || echo "N/A")
+            ERROR=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE error != '';" 2>/dev/null || echo "N/A")
+            
+            echo "   • Total songs: $TOTAL"
+            echo "   • Linked to catalog: $LINKED ($(( LINKED * 100 / TOTAL ))%)"
+            echo "   • Multi-country: $MULTI"
+            echo "   • With errors: $ERROR"
+          fi
+        else
+          echo "⚠️ No enriched database found"
+        fi
+        
+        TOTAL_DBS=$(find charts_archive/3_enrich-chart-data -name "*_enriched.db" 2>/dev/null | wc -l)
+        if [ "$TOTAL_DBS" -gt 0 ]; then
+          echo ""
+          echo "📦 Total enriched databases: $TOTAL_DBS"
+          echo "📊 Retention policy: ${{ env.RETENTION_WEEKS }} weeks (1.5 years)"
+        fi
+        
+        echo ""
+        echo "✅ Process completed"
+        echo "========================================"
