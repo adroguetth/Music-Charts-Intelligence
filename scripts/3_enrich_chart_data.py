@@ -1350,7 +1350,9 @@ def create_output_table(conn: sqlite3.Connection):
     the pipeline should always produce exactly 100 clean rows, never append
     on top of a previous run.
 
-    The column 'id' references the song catalog's artist_track.id.
+    The column 'id' is a foreign key referencing artist_track.id. It is defined
+    as UNIQUE rather than PRIMARY KEY so that the implicit rowid preserves the
+    insertion order (by rank) as the default physical ordering.
 
     Args:
         conn: Open SQLite connection to the output database
@@ -1361,7 +1363,7 @@ def create_output_table(conn: sqlite3.Connection):
     cursor.execute('''
         CREATE TABLE enriched_songs (
             rank INTEGER,
-            id INTEGER PRIMARY KEY,
+            id INTEGER UNIQUE,
             artist_names TEXT,
             track_name TEXT,
             periods_on_chart INTEGER,
@@ -1520,7 +1522,7 @@ def main():
         artists_info = get_artist_info(artists_csv, artist_lookup)
         final_country, final_genre = resolve_country_and_genre(artists_info)
 
-        # Look up song_id from catalog; this becomes the primary key 'id'
+        # Look up song_id from catalog; this becomes the foreign key 'id'
         song_id = song_catalog_lookup.get((artists_csv, song['Track Name']), None)
 
         # Count how many artists were successfully matched against the lookup DB
