@@ -1400,11 +1400,15 @@ def insert_enriched_row(conn: sqlite3.Connection, row: dict):
     """
     Insert a single enriched song record into the output table.
 
+    The INSERT statement explicitly lists all columns except 'processed_at'
+    (which has a DEFAULT value). Exactly 25 values are provided.
+
     Args:
         conn: Open SQLite connection
         row: Dict with keys matching the enriched_songs schema
     """
     cursor = conn.cursor()
+    # Column count: 25 columns (id through error)
     cursor.execute('''
         INSERT INTO enriched_songs (
             id, rank, artist_names, track_name, periods_on_chart, views, youtube_url,
@@ -1413,7 +1417,7 @@ def insert_enriched_row(conn: sqlite3.Connection, row: dict):
             upload_season, channel_type, is_collaboration, artist_count,
             region_restricted, artist_country, macro_genre,
             artists_found, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         row['id'], row['rank'], row['artist_names'], row['track_name'],
         row['periods_on_chart'], row['views'], row['youtube_url'],
