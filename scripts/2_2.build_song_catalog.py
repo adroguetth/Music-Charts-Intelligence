@@ -10,7 +10,7 @@ Features:
 - Automatic detection of most recent weekly chart database
 - Integration with pre-downloaded artist metadata DB (artist_countries_genres.db)
 - Weighted country/genre resolution for multi-artist collaborations
-- Idempotent insertion: calculates attributes only once per unique song
+- Idempotent insertion and update: calculates attributes only once per unique song
 - Surrogate primary key (id) with auto-increment
 - Comprehensive logging and error handling
 
@@ -18,11 +18,11 @@ Data Flow:
 1. Scan charts_archive/1_download-chart/databases/ for latest youtube_charts_20XX-WXX.db
 2. Load artist metadata from charts_archive/2_1.countries-genres-artist/artist_countries_genres.db
 3. Extract distinct (Artist Names, Track Name) tuples from source
-4. For each new song:
-   a. Parse artist list and resolve each artist's country/genre via lookup
-   b. Apply collaboration weight algorithm to determine final country/genre
-   c. Insert record with auto-generated ID and resolved attributes
-5. Skip existing songs (no recalculation)
+4. For each song:
+   a. If new: resolve country/genre and insert
+   b. If existing but missing country/genre: resolve and update
+   c. If existing and complete: skip
+5. Display statistics and sample records
 
 Database Schema (artist_track table):
     id             INTEGER PRIMARY KEY AUTOINCREMENT
@@ -732,14 +732,15 @@ def migrate_data() -> int:
         target_conn.close()
         return 0
 
-    # 6. Idempotent insertion with country/genre resolution
-    print("\n6. 💾 PERFORMING IDEMPOTENT INSERTION (calculating country/genre for new songs)...")
+    # 6. Idempotent insertion/update with country/genre resolution
+    print("\n6. 💾 PERFORMING IDEMPOTENT INSERTION (calculating country/genre for new or incomplete songs)...")
     target_cursor = target_conn.cursor()
     insert_stmt = """
         INSERT INTO artist_track (artist_names, track_name, artist_country, macro_genre, artists_found)
         VALUES (?, ?, ?, ?, ?)
     """
     inserted_count = 0
+    updated_count = 0
     skipped_count = 0
     progress_interval = max(1, total_extracted // 4)
 
@@ -747,24 +748,45 @@ def migrate_data() -> int:
         artist_names = row['artist_names']
         track_name = row['track_name']
 
-        if not record_exists(target_cursor, artist_names, track_name):
-            # Resolve country/genre for this new song
+        # Check if song exists and whether country is already resolved
+        target_cursor.execute(
+            "SELECT id, artist_country FROM artist_track WHERE artist_names = ? AND track_name = ?",
+            (artist_names, track_name)
+        )
+        existing = target_cursor.fetchone()
+
+        if not existing:
+            # New song: resolve and insert
             artists_info = get_artist_info_list(artist_names, artist_lookup)
             country, genre, artists_found = resolve_country_and_genre(artists_info)
             target_cursor.execute(insert_stmt, (artist_names, track_name, country, genre, artists_found))
             inserted_count += 1
         else:
-            skipped_count += 1
+            song_id, current_country = existing
+            if current_country is None:
+                # Existing song with missing country/genre: resolve and update
+                artists_info = get_artist_info_list(artist_names, artist_lookup)
+                country, genre, artists_found = resolve_country_and_genre(artists_info)
+                target_cursor.execute(
+                    """UPDATE artist_track 
+                       SET artist_country = ?, macro_genre = ?, artists_found = ?
+                       WHERE id = ?""",
+                    (country, genre, artists_found, song_id)
+                )
+                updated_count += 1
+            else:
+                skipped_count += 1
 
         if idx % progress_interval == 0 or idx == total_extracted:
             progress_pct = (idx / total_extracted) * 100
             print(f"   📈 Progress: {idx:,}/{total_extracted:,} ({progress_pct:.1f}%) - "
-                  f"Inserted: {inserted_count:,}, Skipped: {skipped_count:,}")
+                  f"Inserted: {inserted_count:,}, Updated: {updated_count:,}, Skipped: {skipped_count:,}")
 
     target_conn.commit()
-    print(f"\n   ✅ Insertion completed:")
+    print(f"\n   ✅ Insertion/Update completed:")
     print(f"      🆕 New records inserted: {inserted_count:,}")
-    print(f"      ⏭️  Already existed: {skipped_count:,}")
+    print(f"      🔄 Existing records updated: {updated_count:,}")
+    print(f"      ⏭️  Already complete: {skipped_count:,}")
 
     # 7. Verification and statistics
     print("\n7. 📊 VERIFICATION AND STATISTICS...")
@@ -798,10 +820,10 @@ def migrate_data() -> int:
     target_conn.close()
 
     print("\n" + "=" * 70)
-    if inserted_count > 0:
-        print(f"✅ CATALOG UPDATED: Added {inserted_count:,} new songs with resolved country/genre")
+    if inserted_count > 0 or updated_count > 0:
+        print(f"✅ CATALOG UPDATED: Added {inserted_count:,} new songs, updated {updated_count:,} existing records with country/genre")
     else:
-        print("✅ CATALOG UNCHANGED: No new songs to add")
+        print("✅ CATALOG UNCHANGED: No new songs or incomplete records to process")
     print("=" * 70)
     return 0
 
