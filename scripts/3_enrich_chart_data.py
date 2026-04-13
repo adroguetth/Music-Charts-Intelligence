@@ -8,7 +8,7 @@ Enriches weekly chart data with YouTube metadata and artist origin information.
 Workflow:
 - Reads the latest chart database (SQLite) from charts_archive/1_download-chart/databases/
 - Loads artist metadata from charts_archive/2_1.countries-genres-artist/artist_countries_genres.db
-- Loads song catalog from charts_archive/2_2.build-song-catalog/build_song.db to retrieve song_id
+- Loads song catalog from charts_archive/2_2.build-song-catalog/build_song.db to retrieve canonical song ID
 - Fetches YouTube video metadata using a three-layer fallback system:
     1. YouTube Data API v3 (fastest, requires API key)
     2. Selenium browser automation (when API is unavailable)
@@ -1279,7 +1279,7 @@ def load_song_catalog_lookup() -> dict:
     if not SONG_CATALOG_DB_PATH.exists():
         print(f"⚠️  Song catalog not found at {SONG_CATALOG_DB_PATH}.")
         print("   Please run 2_2.build_song_catalog.py first to create the catalog.")
-        print("   Continuing with song_id = NULL for all records.")
+        print("   Continuing with id = NULL for all records.")
         return catalog_lookup
 
     print(f"📀 Loading song catalog for ID mapping from: {SONG_CATALOG_DB_PATH}")
@@ -1350,6 +1350,8 @@ def create_output_table(conn: sqlite3.Connection):
     the pipeline should always produce exactly 100 clean rows, never append
     on top of a previous run.
 
+    The primary key column 'id' references the song catalog's artist_track.id.
+
     Args:
         conn: Open SQLite connection to the output database
     """
@@ -1358,7 +1360,7 @@ def create_output_table(conn: sqlite3.Connection):
     cursor.execute('DROP TABLE IF EXISTS enriched_songs')
     cursor.execute('''
         CREATE TABLE enriched_songs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             rank INTEGER,
             artist_names TEXT,
             track_name TEXT,
@@ -1382,16 +1384,14 @@ def create_output_table(conn: sqlite3.Connection):
             artist_country TEXT,
             macro_genre TEXT,
             artists_found TEXT,
-            song_id INTEGER,
             error TEXT,
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (song_id) REFERENCES artist_track(id)
+            FOREIGN KEY (id) REFERENCES artist_track(id)
         )
     ''')
     cursor.execute('CREATE INDEX idx_country ON enriched_songs(artist_country)')
     cursor.execute('CREATE INDEX idx_genre ON enriched_songs(macro_genre)')
     cursor.execute('CREATE INDEX idx_upload_date ON enriched_songs(upload_date)')
-    cursor.execute('CREATE INDEX idx_song_id ON enriched_songs(song_id)')
     cursor.execute('CREATE INDEX idx_error ON enriched_songs(error)')
     conn.commit()
 
@@ -1407,22 +1407,22 @@ def insert_enriched_row(conn: sqlite3.Connection, row: dict):
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO enriched_songs (
-            rank, artist_names, track_name, periods_on_chart, views, youtube_url,
+            id, rank, artist_names, track_name, periods_on_chart, views, youtube_url,
             duration_s, duration_ms, upload_date, likes, comment_count,
             audio_language, is_official_video, is_lyric_video, is_live_performance,
             upload_season, channel_type, is_collaboration, artist_count,
             region_restricted, artist_country, macro_genre,
-            artists_found, song_id, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            artists_found, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        row['rank'], row['artist_names'], row['track_name'],
+        row['id'], row['rank'], row['artist_names'], row['track_name'],
         row['periods_on_chart'], row['views'], row['youtube_url'],
         row['duration_s'], row['duration_ms'], row['upload_date'],
         row['likes'], row['comment_count'], row['audio_language'],
         row['is_official_video'], row['is_lyric_video'], row['is_live_performance'],
         row['upload_season'], row['channel_type'], row['is_collaboration'],
         row['artist_count'], row['region_restricted'], row['artist_country'],
-        row['macro_genre'], row['artists_found'], row['song_id'], row['error']
+        row['macro_genre'], row['artists_found'], row['error']
     ))
     conn.commit()
 
@@ -1516,7 +1516,7 @@ def main():
         artists_info = get_artist_info(artists_csv, artist_lookup)
         final_country, final_genre = resolve_country_and_genre(artists_info)
 
-        # Look up song_id from catalog
+        # Look up song_id from catalog; this becomes the primary key 'id'
         song_id = song_catalog_lookup.get((artists_csv, song['Track Name']), None)
 
         # Count how many artists were successfully matched against the lookup DB
@@ -1525,6 +1525,7 @@ def main():
 
         # Build output row
         row = {
+            'id': song_id,
             'rank': song.get('Rank'),
             'artist_names': artists_csv,
             'track_name': song.get('Track Name'),
@@ -1548,7 +1549,6 @@ def main():
             'artist_country': final_country,
             'macro_genre': final_genre,
             'artists_found': f"{matched}/{total_arts}",
-            'song_id': song_id,
             'error': metadata['error']
         }
 
@@ -1615,7 +1615,7 @@ def main():
     cur.execute("SELECT COUNT(*) FROM enriched_songs WHERE error != ''")
     error_count = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM enriched_songs WHERE song_id IS NOT NULL")
+    cur.execute("SELECT COUNT(*) FROM enriched_songs WHERE id IS NOT NULL")
     songs_with_id = cur.fetchone()[0]
 
     conn_stats.close()
