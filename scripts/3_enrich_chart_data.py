@@ -1277,21 +1277,46 @@ def load_song_catalog_lookup() -> dict:
     """
     catalog_lookup = {}
     if not SONG_CATALOG_DB_PATH.exists():
-        print(f"⚠️  Song catalog not found at {SONG_CATALOG_DB_PATH}. song_id will be NULL.")
+        print(f"⚠️  Song catalog not found at {SONG_CATALOG_DB_PATH}.")
+        print("   Please run 2_2.build_song_catalog.py first to create the catalog.")
+        print("   Continuing with song_id = NULL for all records.")
         return catalog_lookup
 
-    print("📀 Loading song catalog for ID mapping...")
-    conn = sqlite3.connect(SONG_CATALOG_DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT artist_names, track_name, id FROM artist_track")
-    rows = cursor.fetchall()
-    conn.close()
+    print(f"📀 Loading song catalog for ID mapping from: {SONG_CATALOG_DB_PATH}")
+    try:
+        conn = sqlite3.connect(SONG_CATALOG_DB_PATH)
+        cursor = conn.cursor()
 
-    for artist_names, track_name, song_id in rows:
-        catalog_lookup[(artist_names, track_name)] = song_id
+        # Verify that the expected table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='artist_track'")
+        if not cursor.fetchone():
+            print("   ❌ Table 'artist_track' not found in catalog database.")
+            print("      Please ensure 2_2.build_song_catalog.py has been run successfully.")
+            conn.close()
+            return catalog_lookup
 
-    print(f"   ✅ Loaded {len(catalog_lookup)} songs from catalog.")
-    return catalog_lookup
+        cursor.execute("SELECT artist_names, track_name, id FROM artist_track")
+        rows = cursor.fetchall()
+        conn.close()
+
+        for artist_names, track_name, song_id in rows:
+            catalog_lookup[(artist_names, track_name)] = song_id
+
+        print(f"   ✅ Loaded {len(catalog_lookup)} songs from catalog.")
+
+        # Show first 5 entries for verification
+        if rows:
+            print("   📋 Sample entries from catalog (first 5):")
+            for i, (art, trk, sid) in enumerate(rows[:5], 1):
+                art_short = art[:30] + "..." if len(art) > 30 else art
+                trk_short = trk[:30] + "..." if len(trk) > 30 else trk
+                print(f"      {i}. ID {sid:4d} | {art_short} - {trk_short}")
+
+        return catalog_lookup
+
+    except sqlite3.Error as e:
+        print(f"   ❌ Error reading song catalog: {e}")
+        return catalog_lookup
 
 
 def get_artist_info(artist_names: str, artist_lookup: dict) -> list:
