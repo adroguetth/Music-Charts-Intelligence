@@ -121,7 +121,7 @@ COUNTRY_TO_CONTINENT = {
     "French Guiana": "America",
     # Europe
     "United Kingdom": "Europe", "Ireland": "Europe", "France": "Europe", "Belgium": "Europe",
-    "Netherlands": "Europe", "Germany": "Europe", "Austria": "Europe", "Switzerland": "Europe",
+    "Netherlands": "Europe", "Germany": "Europe", "Austria": "Europe", "Switzerland": "201",
     "Italy": "Europe", "Spain": "Europe", "Portugal": "Europe", "Greece": "Europe",
     "Sweden": "Europe", "Norway": "Europe", "Denmark": "Europe", "Finland": "Europe",
     "Iceland": "Europe", "Luxembourg": "Europe", "Monaco": "Europe", "Liechtenstein": "Europe",
@@ -1003,9 +1003,68 @@ def migrate_data() -> int:
         return 1
     
     # -------------------------------------------------------------------------
-    # Phase 5: Data Extraction and Transformation
+    # Phase 5: Repair Historical Incomplete Records (NEW)
     # -------------------------------------------------------------------------
-    print("\n5. 📤 EXTRACTING ARTIST-TRACK PAIRS FROM SOURCE...")
+    print("\n5. 🔧 PHASE 5: REPAIRING HISTORICAL INCOMPLETE RECORDS...")
+    
+    # Query to find records with missing/empty/Unknown country or genre
+    incomplete_query = """
+        SELECT artist_names, track_name
+        FROM artist_track
+        WHERE artist_country IS NULL
+           OR artist_country = ''
+           OR artist_country = 'Unknown'
+           OR macro_genre IS NULL
+           OR macro_genre = ''
+           OR macro_genre = 'Unknown'
+    """
+    target_cursor.execute(incomplete_query)
+    incomplete_rows = target_cursor.fetchall()
+    total_incomplete = len(incomplete_rows)
+    print(f"   📋 Found {total_incomplete:,} records with incomplete data.")
+    
+    update_stmt = """
+        UPDATE artist_track
+        SET artist_country = ?, macro_genre = ?, artists_found = ?
+        WHERE artist_names = ? AND track_name = ?
+    """
+    repaired_count = 0
+    error_repair_count = 0
+    
+    if total_incomplete > 0:
+        progress_interval = max(1, total_incomplete // 4)
+        for idx, (artist_names, track_name) in enumerate(incomplete_rows, 1):
+            try:
+                artists_info = get_artist_info(artist_names, artist_lookup)
+                final_country, final_genre = resolve_country_and_genre(artists_info)
+                matched = sum(1 for a in artists_info if a['country'] is not None)
+                total_arts = len(artists_info) if artists_info else 1
+                artists_found_str = f"{matched}/{total_arts}"
+                target_cursor.execute(update_stmt, (
+                    final_country, final_genre, artists_found_str,
+                    artist_names, track_name
+                ))
+                repaired_count += 1
+            except sqlite3.Error as e:
+                error_repair_count += 1
+                if error_repair_count <= 5:
+                    print(f"   ⚠️  Error repairing: {artist_names[:30]}... - {track_name[:30]}... : {e}")
+            if idx % progress_interval == 0 or idx == total_incomplete:
+                pct = (idx / total_incomplete) * 100
+                print(f"   📈 Repair progress: {idx:,}/{total_incomplete:,} ({pct:.1f}%) - Repaired: {repaired_count:,}")
+        
+        target_conn.commit()
+        print(f"\n   ✅ Phase 5 completed:")
+        print(f"      🔧 Records repaired: {repaired_count:,}")
+        if error_repair_count > 0:
+            print(f"      ⚠️  Repair errors: {error_repair_count}")
+    else:
+        print("   ✅ No incomplete records found. Skipping repair phase.")
+    
+    # -------------------------------------------------------------------------
+    # Phase 6: Data Extraction and Transformation (from current chart)
+    # -------------------------------------------------------------------------
+    print("\n6. 📤 EXTRACTING ARTIST-TRACK PAIRS FROM CURRENT CHART...")
     
     # Extract distinct artist-track pairs from source
     # Using DISTINCT to reduce processing overhead for duplicates within source
@@ -1027,7 +1086,7 @@ def migrate_data() -> int:
         all_rows = source_cursor.fetchall()
         total_extracted = len(all_rows)
         
-        print(f"   ✅ Extracted {total_extracted:,} distinct artist-track pairs")
+        print(f"   ✅ Extracted {total_extracted:,} distinct artist-track pairs from chart")
         
         if total_extracted == 0:
             print(f"   ⚠️  No valid records found in source database")
@@ -1042,33 +1101,25 @@ def migrate_data() -> int:
         return 1
     
     # -------------------------------------------------------------------------
-    # Phase 6: Idempotent Insertion / Conditional Update with Country/Genre Resolution
+    # Phase 7: Idempotent Insertion (new songs only)
     # -------------------------------------------------------------------------
-    print("\n6. 💾 PERFORMING IDEMPOTENT OPERATIONS...")
-    print("   🔬 Resolving country and macro-genre for new/incomplete records...")
+    print("\n7. 💾 PROCESSING CURRENT CHART (INSERT NEW SONGS ONLY)...")
     
     insert_statement = """
         INSERT INTO artist_track (artist_names, track_name, artist_country, macro_genre, artists_found)
         VALUES (?, ?, ?, ?, ?)
     """
     
-    update_statement = """
-        UPDATE artist_track
-        SET artist_country = ?, macro_genre = ?, artists_found = ?
+    # Query to check if record already exists (since incomplete ones were repaired, we just check existence)
+    check_exist_query = """
+        SELECT 1 FROM artist_track
         WHERE artist_names = ? AND track_name = ?
-    """
-    
-    # Query to fetch existing country/genre for a given artist-track pair
-    check_query = """
-        SELECT artist_country, macro_genre
-        FROM artist_track
-        WHERE artist_names = ? AND track_name = ?
+        LIMIT 1
     """
     
     inserted_count = 0
-    updated_count = 0
     skipped_count = 0
-    error_count = 0
+    error_insert_count = 0
     
     # Calculate progress intervals for user feedback (25%, 50%, 75%, 100%)
     progress_interval = max(1, total_extracted // 4)
@@ -1078,11 +1129,11 @@ def migrate_data() -> int:
         track_name = row['track_name']
         
         try:
-            # Check current state in catalog
-            target_cursor.execute(check_query, (artist_names, track_name))
-            existing = target_cursor.fetchone()
+            # Check if record already exists in catalog
+            target_cursor.execute(check_exist_query, (artist_names, track_name))
+            exists = target_cursor.fetchone() is not None
             
-            if needs_country_genre_update(existing):
+            if not exists:
                 # Resolve country and genre using collaboration weight algorithm
                 artists_info = get_artist_info(artist_names, artist_lookup)
                 final_country, final_genre = resolve_country_and_genre(artists_info)
@@ -1092,47 +1143,38 @@ def migrate_data() -> int:
                 total_arts = len(artists_info) if artists_info else 1
                 artists_found_str = f"{matched}/{total_arts}"
                 
-                if existing is None:
-                    # Insert new record
-                    target_cursor.execute(insert_statement, (
-                        artist_names, track_name, final_country, final_genre, artists_found_str
-                    ))
-                    inserted_count += 1
-                else:
-                    # Update existing record with missing/invalid data
-                    target_cursor.execute(update_statement, (
-                        final_country, final_genre, artists_found_str, artist_names, track_name
-                    ))
-                    updated_count += 1
+                target_cursor.execute(insert_statement, (
+                    artist_names, track_name, final_country, final_genre, artists_found_str
+                ))
+                inserted_count += 1
             else:
                 skipped_count += 1
                 
         except sqlite3.Error as e:
-            error_count += 1
+            error_insert_count += 1
             # Limit error noise to first 5 occurrences
-            if error_count <= 5:
-                print(f"   ⚠️  Error processing: {artist_names[:30]}... - {track_name[:30]}... : {e}")
+            if error_insert_count <= 5:
+                print(f"   ⚠️  Error inserting: {artist_names[:30]}... - {track_name[:30]}... : {e}")
         
         # Progress reporting at calculated intervals
         if idx % progress_interval == 0 or idx == total_extracted:
             progress_pct = (idx / total_extracted) * 100
-            print(f"   📈 Progress: {idx:,}/{total_extracted:,} ({progress_pct:.1f}%) - "
-                  f"Inserted: {inserted_count:,}, Updated: {updated_count:,}, Skipped: {skipped_count:,}")
+            print(f"   📈 Chart progress: {idx:,}/{total_extracted:,} ({progress_pct:.1f}%) - "
+                  f"Inserted: {inserted_count:,}, Skipped: {skipped_count:,}")
     
     # Commit all pending transactions atomically
     target_conn.commit()
     
-    print(f"\n   ✅ Operations completed:")
-    print(f"      🆕 New records inserted: {inserted_count:,}")
-    print(f"      🔄 Existing records updated: {updated_count:,}")
-    print(f"      ⏭️  Valid records skipped: {skipped_count:,}")
-    if error_count > 0:
-        print(f"      ⚠️  Errors encountered: {error_count}")
+    print(f"\n   ✅ Phase 7 completed:")
+    print(f"      🆕 New songs inserted: {inserted_count:,}")
+    print(f"      ⏭️  Already in catalog: {skipped_count:,}")
+    if error_insert_count > 0:
+        print(f"      ⚠️  Insert errors: {error_insert_count}")
     
     # -------------------------------------------------------------------------
-    # Phase 7: Verification and Statistics
+    # Phase 8: Verification and Statistics
     # -------------------------------------------------------------------------
-    print("\n7. 📊 VERIFICATION AND STATISTICS...")
+    print("\n8. 📊 VERIFICATION AND STATISTICS...")
     
     final_count, final_max_id = get_catalog_statistics(target_conn)
     
@@ -1170,16 +1212,13 @@ def migrate_data() -> int:
         print(f"            🌍 {country} | 🎵 {genre} | 👥 {found}")
     
     # -------------------------------------------------------------------------
-    # Phase 8: Cleanup
+    # Phase 9: Cleanup
     # -------------------------------------------------------------------------
     source_conn.close()
     target_conn.close()
     
     print("\n" + "=" * 70)
-    if inserted_count > 0 or updated_count > 0:
-        print(f"✅ CATALOG UPDATED: Added {inserted_count:,} songs, Updated {updated_count:,} songs")
-    else:
-        print(f"✅ CATALOG UNCHANGED: No new songs or updates required")
+    print(f"✅ CATALOG UPDATE COMPLETE: Repaired {repaired_count:,} records, Inserted {inserted_count:,} new songs")
     print("=" * 70)
     
     return 0
