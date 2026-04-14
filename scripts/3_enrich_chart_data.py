@@ -3,17 +3,16 @@
 """
 YouTube Charts Data Enrichment Pipeline
 =========================================
-Enriches weekly chart data with YouTube metadata and artist origin information.
+Enriches weekly chart data with YouTube metadata and catalog information.
 
 Workflow:
 - Reads the latest chart database (SQLite) from charts_archive/1_download-chart/databases/
-- Loads artist metadata from charts_archive/2_1.countries-genres-artist/artist_countries_genres.db
-- Loads song catalog from charts_archive/2_2.build-song-catalog/build_song.db to retrieve canonical song ID
+- Loads song catalog from charts_archive/2_2.build-song-catalog/build_song.db to retrieve song_id,
+  artist_country, macro_genre, and artists_found
 - Fetches YouTube video metadata using a three-layer fallback system:
     1. YouTube Data API v3 (fastest, requires API key)
     2. Selenium browser automation (when API is unavailable)
     3. yt-dlp with anti-blocking options (last resort)
-- Applies a weighted collaboration algorithm to resolve country/genre for multi-artist tracks
 - Saves enriched results to charts_archive/3_enrich-chart-data/ as {name}_enriched.db
 
 Requirements:
@@ -33,12 +32,9 @@ import sys
 import re
 import time
 import sqlite3
-import tempfile
-import requests
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from collections import Counter
 
 # ---------------------------------------------------------------------
 # PATH CONFIGURATION
@@ -49,10 +45,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent  # Music-Charts-Intelligence/
 # Input: most recent weekly chart database
 INPUT_DB_DIR = PROJECT_ROOT / "charts_archive" / "1_download-chart" / "databases"
 
-# Local artist metadata database (country + macro-genre per artist)
-ARTIST_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_1.countries-genres-artist" / "artist_countries_genres.db"
-
-# Local song catalog database (id mapping for artist-track pairs)
+# Local song catalog database (id, country, genre, artists_found)
 SONG_CATALOG_DB_PATH = PROJECT_ROOT / "charts_archive" / "2_2.build-song-catalog" / "build_song.db"
 
 # Output: enriched database written here
@@ -64,583 +57,6 @@ YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
 
 # Detect GitHub Actions environment to suppress interactive prompts
 IN_GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
-
-
-# ---------------------------------------------------------------------
-# LOOKUP TABLES
-# Country → Continent mapping used by the collaboration weight algorithm.
-# Continent-level resolution is the fallback when per-country logic is
-# inconclusive (e.g., 3+ countries with no clear majority).
-# ---------------------------------------------------------------------
-COUNTRY_TO_CONTINENT = {
-    # Asia
-    "South Korea": "Asia", "Japan": "Asia", "China": "Asia", "Taiwan": "Asia",
-    "Hong Kong": "Asia", "Thailand": "Asia", "Vietnam": "Asia", "Philippines": "Asia",
-    "Indonesia": "Asia", "Malaysia": "Asia", "Singapore": "Asia", "India": "Asia",
-    "Pakistan": "Asia", "Bangladesh": "Asia", "Sri Lanka": "Asia", "Nepal": "Asia",
-    "Bhutan": "Asia", "Maldives": "Asia", "Kazakhstan": "Asia", "Uzbekistan": "Asia",
-    "Turkmenistan": "Asia", "Kyrgyzstan": "Asia", "Tajikistan": "Asia", "Mongolia": "Asia",
-    "Myanmar": "Asia", "Laos": "Asia", "Cambodia": "Asia", "Afghanistan": "Asia",
-    "Iran": "Asia", "Iraq": "Asia", "Syria": "Asia", "Lebanon": "Asia", "Jordan": "Asia",
-    "Israel": "Asia", "Palestine": "Asia", "Saudi Arabia": "Asia", "Yemen": "Asia",
-    "Oman": "Asia", "United Arab Emirates": "Asia", "Qatar": "Asia", "Kuwait": "Asia",
-    "Bahrain": "Asia", "Turkey": "Asia", "Cyprus": "Asia", "Azerbaijan": "Asia",
-    "Georgia": "Asia", "Armenia": "Asia", "Russia": "Asia",
-    # North America
-    "United States": "America", "Canada": "America", "Mexico": "America",
-    "Guatemala": "America", "Honduras": "America", "El Salvador": "America",
-    "Nicaragua": "America", "Costa Rica": "America", "Panama": "America",
-    "Belize": "America",
-    # Caribbean
-    "Cuba": "America", "Jamaica": "America", "Haiti": "America", "Dominican Republic": "America",
-    "Puerto Rico": "America", "Bahamas": "America", "Trinidad and Tobago": "America",
-    "Barbados": "America", "Saint Lucia": "America", "Grenada": "America",
-    "Saint Vincent and the Grenadines": "America", "Antigua and Barbuda": "America",
-    "Dominica": "America", "Saint Kitts and Nevis": "America",
-    # South America
-    "Colombia": "America", "Venezuela": "America", "Ecuador": "America", "Peru": "America",
-    "Bolivia": "America", "Chile": "America", "Argentina": "America", "Paraguay": "America",
-    "Uruguay": "America", "Brazil": "America", "Guyana": "America", "Suriname": "America",
-    "French Guiana": "America",
-    # Europe
-    "United Kingdom": "Europe", "Ireland": "Europe", "France": "Europe", "Belgium": "Europe",
-    "Netherlands": "Europe", "Germany": "Europe", "Austria": "Europe", "Switzerland": "Europe",
-    "Italy": "Europe", "Spain": "Europe", "Portugal": "Europe", "Greece": "Europe",
-    "Sweden": "Europe", "Norway": "Europe", "Denmark": "Europe", "Finland": "Europe",
-    "Iceland": "Europe", "Luxembourg": "Europe", "Monaco": "Europe", "Liechtenstein": "Europe",
-    "Andorra": "Europe", "San Marino": "Europe", "Malta": "Europe", "Poland": "Europe",
-    "Czech Republic": "Europe", "Slovakia": "Europe", "Hungary": "Europe", "Romania": "Europe",
-    "Bulgaria": "Europe", "Serbia": "Europe", "Croatia": "Europe", "Bosnia and Herzegovina": "Europe",
-    "Montenegro": "Europe", "North Macedonia": "Europe", "Kosovo": "Europe", "Albania": "Europe",
-    "Slovenia": "Europe", "Lithuania": "Europe", "Latvia": "Europe", "Estonia": "Europe",
-    "Belarus": "Europe", "Moldova": "Europe", "Ukraine": "Europe",
-    # Africa
-    "Nigeria": "Africa", "Ghana": "Africa", "South Africa": "Africa", "Tanzania": "Africa",
-    "Kenya": "Africa", "Uganda": "Africa", "Zimbabwe": "Africa", "Zambia": "Africa",
-    "Mozambique": "Africa", "Angola": "Africa", "Ethiopia": "Africa", "Rwanda": "Africa",
-    "Senegal": "Africa", "Mali": "Africa", "Ivory Coast": "Africa", "Cameroon": "Africa",
-    "Benin": "Africa", "Togo": "Africa", "Burkina Faso": "Africa", "Niger": "Africa",
-    "Chad": "Africa", "Central African Republic": "Africa", "Equatorial Guinea": "Africa",
-    "Gabon": "Africa", "Republic of the Congo": "Africa", "Democratic Republic of the Congo": "Africa",
-    "Burundi": "Africa", "Djibouti": "Africa", "Eritrea": "Africa", "Somalia": "Africa",
-    "Sudan": "Africa", "South Sudan": "Africa", "Malawi": "Africa", "Botswana": "Africa",
-    "Namibia": "Africa", "Lesotho": "Africa", "Eswatini": "Africa", "Madagascar": "Africa",
-    "Comoros": "Africa", "Mauritius": "Africa", "Seychelles": "Africa", "Cabo Verde": "Africa",
-    "São Tomé and Príncipe": "Africa",
-    # Oceania
-    "Australia": "Oceania", "New Zealand": "Oceania", "Papua New Guinea": "Oceania",
-    "Fiji": "Oceania", "Samoa": "Oceania", "Tonga": "Oceania", "Solomon Islands": "Oceania",
-    "Vanuatu": "Oceania", "Micronesia": "Oceania", "Marshall Islands": "Oceania",
-    "Palau": "Oceania", "Nauru": "Oceania", "Kiribati": "Oceania", "Tuvalu": "Oceania",
-    "Hawaii": "Oceania"
-}
-
-# Country → ordered list of genres, from most to least culturally dominant.
-# This hierarchy drives genre inference when artist-level genre data is absent
-# or when no single genre holds a majority across collaborating artists.
-GENRE_HIERARCHY = {
-    # North America
-    "United States": [
-        "Pop", "Hip-Hop/Rap", "R&B/Soul", "Country", "Rock",
-        "Alternative", "Electronic/Dance", "Reggaeton/Latin Trap",
-        "Jazz/Blues", "Classical"
-    ],
-    "Canada": [
-        "Pop", "Hip-Hop/Rap", "Rock", "Alternative",
-        "Electronic/Dance", "R&B/Soul", "Reggaeton/Latin Trap",
-        "Country", "Classical"
-    ],
-    "Mexico": [
-        "Regional Mexican", "Reggaeton/Latin Trap", "Pop",
-        "Bachata", "Cumbia", "Rock", "Tropical/Salsa/Merengue/Bolero",
-        "Classical"
-    ],
-    # Central America
-    "Guatemala": ["Reggaeton/Latin Trap", "Bachata", "Cumbia", "Dancehall/Reggae", "Tropical/Salsa/Merengue/Bolero"],
-    "Honduras": ["Reggaeton/Latin Trap", "Bachata", "Cumbia", "Dancehall/Reggae", "Tropical/Salsa/Merengue/Bolero"],
-    "El Salvador": ["Reggaeton/Latin Trap", "Bachata", "Cumbia", "Dancehall/Reggae"],
-    "Nicaragua": ["Reggaeton/Latin Trap", "Bachata", "Cumbia", "Dancehall/Reggae"],
-    "Costa Rica": ["Reggaeton/Latin Trap", "Pop", "Bachata", "Cumbia", "Dancehall/Reggae", "Tropical/Salsa/Merengue/Bolero"],
-    "Panama": [
-        "Reggaeton/Latin Trap", "Dancehall/Reggae",
-        "Tropical/Salsa/Merengue/Bolero", "Cumbia", "Pop"
-    ],
-    "Belize": ["Dancehall/Reggae", "Reggaeton/Latin Trap", "Pop", "Cumbia"],
-    # Caribbean
-    "Jamaica": ["Dancehall/Reggae"],
-    "Puerto Rico": ["Reggaeton/Latin Trap", "Pop"],
-    "Dominican Republic": [
-        "Reggaeton/Latin Trap", "Bachata", "Tropical/Salsa/Merengue/Bolero", "Dancehall/Reggae"
-    ],
-    "Cuba": [
-        "Reggaeton/Latin Trap", "Tropical/Salsa/Merengue/Bolero",
-        "Pop", "Jazz/Blues"
-    ],
-    "Haiti": ["Reggaeton/Latin Trap", "Tropical/Salsa/Merengue/Bolero", "Pop"],
-    "Trinidad and Tobago": [
-        "Tropical/Salsa/Merengue/Bolero", "Dancehall/Reggae",
-        "Reggaeton/Latin Trap", "Pop"
-    ],
-    "Bahamas": ["Pop", "Dancehall/Reggae", "R&B/Soul"],
-    "Barbados": ["Pop", "Dancehall/Reggae", "R&B/Soul", "Reggaeton/Latin Trap"],
-    "Saint Lucia": ["Pop", "Dancehall/Reggae", "Reggaeton/Latin Trap"],
-    "Grenada": ["Pop", "Dancehall/Reggae", "Reggaeton/Latin Trap"],
-    "Saint Vincent and the Grenadines": ["Pop", "Dancehall/Reggae", "Reggaeton/Latin Trap"],
-    "Antigua and Barbuda": ["Pop", "Dancehall/Reggae", "Reggaeton/Latin Trap"],
-    "Dominica": ["Pop", "Dancehall/Reggae", "Reggaeton/Latin Trap"],
-    "Saint Kitts and Nevis": ["Pop", "Dancehall/Reggae", "Reggaeton/Latin Trap"],
-    # South America
-    "Colombia": [
-        "Reggaeton/Latin Trap", "Cumbia", "Vallenato",
-        "Tropical/Salsa/Merengue/Bolero", "Pop", "Rock"
-    ],
-    "Venezuela": [
-        "Reggaeton/Latin Trap", "Tropical/Salsa/Merengue/Bolero",
-        "Pop", "Rock", "Classical"
-    ],
-    "Ecuador": ["Reggaeton/Latin Trap", "Cumbia", "Folk/Roots", "Pop"],
-    "Peru": ["Reggaeton/Latin Trap", "Cumbia", "Folk/Roots", "Pop"],
-    "Bolivia": ["Reggaeton/Latin Trap", "Cumbia", "Folk/Roots", "Pop"],
-    "Chile": ["Reggaeton/Latin Trap", "Cumbia", "Pop", "Rock", "Folk/Roots", "Classical"],
-    "Argentina": [
-        "Reggaeton/Latin Trap", "Cumbia", "Rock", "Pop", "Folk/Roots",
-        "Classical"
-    ],
-    "Paraguay": ["Reggaeton/Latin Trap", "Cumbia", "Folk/Roots", "Pop"],
-    "Uruguay": ["Reggaeton/Latin Trap", "Cumbia", "Pop", "Rock", "Electronic/Dance", "Classical"],
-    "Brazil": [
-        "Sertanejo", "Brazilian Funk", "Reggaeton/Latin Trap",
-        "Pop", "Rock", "Hip-Hop/Rap", "Forro", "Axe", "MPB",
-        "Classical"
-    ],
-    "Guyana": ["Dancehall/Reggae", "Reggaeton/Latin Trap", "Pop"],
-    "Suriname": ["Dancehall/Reggae", "Reggaeton/Latin Trap", "Pop"],
-    "French Guiana": ["Dancehall/Reggae", "Reggaeton/Latin Trap", "Pop", "Kizomba/Zouk"],
-    # Western Europe
-    "Spain": [
-        "Reggaeton/Latin Trap", "Pop", "Hip-Hop/Rap",
-        "Flamenco/Copla", "Rock", "Electronic/Dance",
-        "Classical"
-    ],
-    "Portugal": [
-        "Pop", "Hip-Hop/Rap", "Folk/Roots",
-        "Kizomba/Zouk", "Reggaeton/Latin Trap", "Rock", "Fado",
-        "Classical"
-    ],
-    "United Kingdom": [
-        "Pop", "Hip-Hop/Rap", "Rock", "Alternative",
-        "Electronic/Dance", "Afrobeats", "Dancehall/Reggae",
-        "R&B/Soul", "Classical"
-    ],
-    "Ireland": [
-        "Pop", "Rock", "Alternative", "Hip-Hop/Rap",
-        "Folk/Roots", "Electronic/Dance", "Classical"
-    ],
-    "France": [
-        "Pop", "Hip-Hop/Rap", "Electronic/Dance", "Afrobeats",
-        "Chanson", "R&B/Soul", "Rock", "Classical"
-    ],
-    "Belgium": ["Pop", "Hip-Hop/Rap", "Electronic/Dance", "Rock", "Chanson", "Classical"],
-    "Netherlands": ["Pop", "Electronic/Dance", "Hip-Hop/Rap", "Rock", "Alternative", "Classical"],
-    "Germany": [
-        "Hip-Hop/Rap", "Pop", "Electronic/Dance", "Schlager",
-        "Rock", "Alternative", "Classical"
-    ],
-    "Austria": [
-        "Pop", "Hip-Hop/Rap", "Schlager", "Rock", "Alpine Folk",
-        "Classical"
-    ],
-    "Switzerland": [
-        "Pop", "Hip-Hop/Rap", "Alpine Folk", "Rock",
-        "Electronic/Dance", "Schlager", "Classical"
-    ],
-    "Italy": [
-        "Pop", "Hip-Hop/Rap", "Italian Song", "Rock", "Electronic/Dance",
-        "Classical"
-    ],
-    "Greece": ["Pop", "Hip-Hop/Rap", "Laiko", "Rock", "Electronic/Dance", "Classical"],
-    "Sweden": ["Pop", "Hip-Hop/Rap", "Electronic/Dance", "Rock", "Metal", "Dansband", "Classical"],
-    "Norway": ["Pop", "Hip-Hop/Rap", "Metal", "Electronic/Dance", "Rock", "Dansband", "Classical"],
-    "Denmark": ["Pop", "Hip-Hop/Rap", "Electronic/Dance", "Rock", "Dansband", "Classical"],
-    "Finland": ["Pop", "Metal", "Hip-Hop/Rap", "Rock", "Iskelma", "Electronic/Dance", "Classical"],
-    "Iceland": ["Pop", "Alternative", "Rock", "Hip-Hop/Rap", "Electronic/Dance", "Classical"],
-    # Small European states
-    "Luxembourg": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Chanson"],
-    "Monaco": ["Pop", "Hip-Hop/Rap", "Chanson", "Electronic/Dance"],
-    "Liechtenstein": ["Pop", "Rock", "Alpine Folk", "Schlager"],
-    "Andorra": ["Pop", "Reggaeton/Latin Trap", "Rock", "Flamenco/Copla"],
-    "San Marino": ["Pop", "Rock", "Italian Song"],
-    "Malta": ["Pop", "Rock", "Hip-Hop/Rap", "Electronic/Dance"],
-    "Cyprus": ["Pop", "Rock", "Hip-Hop/Rap", "Laiko", "Electronic/Dance"],
-    # Eastern Europe and Balkans
-    "Russia": [
-        "Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Classical",
-        "Folk"
-    ],
-    "Ukraine": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Folk"],
-    "Poland": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Classical"],
-    "Czech Republic": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Classical"],
-    "Slovakia": ["Pop", "Hip-Hop/Rap", "Rock"],
-    "Hungary": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Classical"],
-    "Romania": ["Manele", "Pop", "Hip-Hop/Rap", "Electronic/Dance", "Rock"],
-    "Bulgaria": ["Chalga", "Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance"],
-    "Serbia": ["Turbo-folk", "Pop", "Hip-Hop/Rap", "Electronic/Dance", "Rock"],
-    "Croatia": ["Pop", "Turbo-folk", "Rock", "Hip-Hop/Rap", "Electronic/Dance"],
-    "Bosnia and Herzegovina": ["Turbo-folk", "Pop", "Rock", "Hip-Hop/Rap"],
-    "Montenegro": ["Turbo-folk", "Pop", "Rock"],
-    "North Macedonia": ["Turbo-folk", "Pop", "Rock"],
-    "Kosovo": ["Tallava", "Pop", "Hip-Hop/Rap", "Turbo-folk", "Rock"],
-    "Albania": ["Tallava", "Pop", "Hip-Hop/Rap", "Rock"],
-    "Slovenia": ["Pop", "Rock", "Hip-Hop/Rap", "Electronic/Dance"],
-    "Lithuania": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance"],
-    "Latvia": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance"],
-    "Estonia": ["Pop", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Folk"],
-    "Belarus": ["Pop", "Rock", "Hip-Hop/Rap"],
-    "Moldova": ["Pop", "Rock", "Hip-Hop/Rap", "Manele"],
-    # Middle East and North Africa
-    "Turkey": ["Turkish Pop/Rock", "Pop", "Hip-Hop/Rap", "Rock", "Arabesk", "Classical"],
-    "Israel": ["Israeli Pop/Rock", "Pop", "Hip-Hop/Rap", "Rock", "Mizrahi", "Classical"],
-    "Lebanon": ["Arabic Pop/Rock", "Pop", "Hip-Hop/Rap"],
-    "Syria": ["Arabic Pop/Rock"],
-    "Jordan": ["Arabic Pop/Rock", "Pop", "Hip-Hop/Rap"],
-    "Iraq": ["Arabic Pop/Rock", "Pop", "Hip-Hop/Rap"],
-    "Iran": ["Pop", "Hip-Hop/Rap", "Rock", "Classical Persian"],
-    "Egypt": ["Arabic Pop/Rock", "Shaabi", "Hip-Hop/Rap"],
-    "Morocco": ["Arabic Pop/Rock", "Gnawa", "Hip-Hop/Rap", "Chaabi"],
-    "Algeria": ["Arabic Pop/Rock", "Hip-Hop/Rap", "Rai"],
-    "Tunisia": ["Arabic Pop/Rock", "Hip-Hop/Rap"],
-    "Libya": ["Arabic Pop/Rock"],
-    "Saudi Arabia": ["Arabic Pop/Rock", "Hip-Hop/Rap", "Khaliji"],
-    "United Arab Emirates": ["Arabic Pop/Rock", "Hip-Hop/Rap", "Khaliji"],
-    "Kuwait": ["Arabic Pop/Rock", "Hip-Hop/Rap", "Khaliji"],
-    "Qatar": ["Arabic Pop/Rock", "Hip-Hop/Rap", "Khaliji"],
-    "Bahrain": ["Arabic Pop/Rock", "Khaliji"],
-    "Oman": ["Arabic Pop/Rock", "Khaliji"],
-    "Yemen": ["Arabic Pop/Rock"],
-    # Sub-Saharan Africa
-    "Nigeria": ["Afrobeats", "Hip-Hop/Rap", "Gospel", "Juju", "Fuji"],
-    "Ghana": ["Afrobeats", "Highlife", "Hip-Hop/Rap", "Gospel"],
-    "South Africa": [
-        "Amapiano", "Kwaito", "Hip-Hop/Rap", "Afrobeats",
-        "Electronic/Dance", "Maskandi", "Mbaqanga", "Gqom", "Afro-soul"
-    ],
-    "Tanzania": ["Bongo Flava", "Taarab", "Afrobeats", "Hip-Hop/Rap"],
-    "Kenya": ["Afrobeats", "Gengetone", "Kapuka", "Benga", "Hip-Hop/Rap"],
-    "Uganda": ["Afrobeats", "Hip-Hop/Rap"],
-    "Zimbabwe": ["Zim Dancehall", "Afrobeats", "Amapiano", "Sungura"],
-    "Zambia": ["Amapiano", "Afrobeats", "Hip-Hop/Rap"],
-    "Mozambique": ["Marrabenta", "Amapiano", "Afrobeats", "Kizomba/Zouk"],
-    "Angola": ["Kuduro", "Kizomba/Zouk", "Afrobeats", "Semba"],
-    "Ethiopia": ["Ethio-jazz", "Pop", "Hip-Hop/Rap"],
-    "Rwanda": ["Afrobeats", "Hip-Hop/Rap"],
-    "Senegal": ["Mbalax", "Afrobeats", "Hip-Hop/Rap"],
-    "Mali": ["Afrobeats", "Desert Blues"],
-    "Ivory Coast": ["Coupe-Decale", "Afrobeats", "Zouglou", "Hip-Hop/Rap"],
-    "Cameroon": ["Afrobeats", "Bikutsi", "Makossa", "Hip-Hop/Rap"],
-    "Benin": ["Afrobeats", "Gospel"],
-    "Togo": ["Afrobeats"],
-    "Burkina Faso": ["Afrobeats"],
-    "Niger": ["Afrobeats"],
-    "Chad": ["Afrobeats"],
-    "Central African Republic": ["Afrobeats"],
-    "Equatorial Guinea": ["Afrobeats"],
-    "Gabon": ["Afrobeats"],
-    "Republic of the Congo": ["Soukous/Ndombolo", "Afrobeats"],
-    "Democratic Republic of the Congo": ["Soukous/Ndombolo", "Afrobeats", "Rumba"],
-    "Burundi": ["Afrobeats"],
-    "Djibouti": ["Afrobeats"],
-    "Eritrea": ["Afrobeats"],
-    "Somalia": ["Afrobeats", "Qaraami"],
-    "Sudan": ["Afrobeats", "Hip-Hop/Rap"],
-    "South Sudan": ["Afrobeats"],
-    "Malawi": ["Afrobeats"],
-    "Botswana": ["Afrobeats", "Amapiano"],
-    "Namibia": ["Afrobeats", "Amapiano"],
-    "Lesotho": ["Afrobeats", "Amapiano"],
-    "Eswatini": ["Afrobeats", "Amapiano"],
-    "Madagascar": ["Salegy", "Afrobeats"],
-    "Comoros": ["Afrobeats", "Taarab"],
-    "Mauritius": ["Sega", "Afrobeats", "Kizomba/Zouk"],
-    "Seychelles": ["Sega", "Afrobeats", "Kizomba/Zouk"],
-    "Cabo Verde": ["Kizomba/Zouk", "Coladeira", "Funana", "Morna"],
-    "São Tomé and Príncipe": ["Afrobeats", "Kizomba/Zouk"],
-    # Asia
-    "India": [
-        "Indian Pop", "Hip-Hop/Rap", "Bollywood", "Indian Classical",
-        "Rock", "Electronic/Dance"
-    ],
-    "Pakistan": ["Pakistani Pop", "Hip-Hop/Rap", "Qawwali", "Rock"],
-    "Bangladesh": ["Bangladeshi Pop/Rock", "Hip-Hop/Rap", "Folk"],
-    "Sri Lanka": ["Sri Lankan Pop/Rock", "Baila", "Hip-Hop/Rap"],
-    "Nepal": ["Nepali Pop/Rock", "Hip-Hop/Rap", "Folk"],
-    "Bhutan": ["Bhutanese Pop/Rock", "Rigsar"],
-    "Maldives": ["Maldivian Pop/Rock", "Boduberu fusion"],
-    "South Korea": [
-        "K-Pop/K-Rock", "Hip-Hop/Rap", "Rock", "Ballad", "Trot",
-        "Classical"
-    ],
-    "Japan": [
-        "J-Pop/J-Rock", "Hip-Hop/Rap", "Rock", "Electronic/Dance", "Enka", "City Pop",
-        "Classical"
-    ],
-    "China": [
-        "C-Pop/C-Rock", "Hip-Hop/Rap", "Folk", "Rock",
-        "Classical"
-    ],
-    "Taiwan": ["TW-Pop/TW-Rock", "Hip-Hop/Rap", "Rock", "Mandopop", "Classical"],
-    "Hong Kong": ["HK-Pop/HK-Rock", "Cantopop", "Hip-Hop/Rap", "Classical"],
-    "Macau": ["Macanese Pop/Rock", "Cantopop", "Pop"],
-    "Mongolia": ["Mongolian Pop/Rock/Metal", "Folk Metal", "Hip-Hop/Rap"],
-    "Indonesia": [
-        "Indonesian Pop/Dangdut", "Rock", "Hip-Hop/Rap",
-        "Electronic/Dance", "Keroncong"
-    ],
-    "Malaysia": [
-        "Malaysian Pop", "Indonesian Pop/Dangdut", "K-Pop/K-Rock",
-        "J-Pop/J-Rock", "Hip-Hop/Rap"
-    ],
-    "Singapore": [
-        "Singaporean Pop", "K-Pop/K-Rock", "J-Pop/J-Rock",
-        "C-Pop/C-Rock", "Hip-Hop/Rap"
-    ],
-    "Philippines": [
-        "OPM", "K-Pop/K-Rock", "J-Pop/J-Rock", "Pop",
-        "Rock", "Hip-Hop/Rap"
-    ],
-    "Thailand": [
-        "T-Pop/T-Rock", "K-Pop/K-Rock", "J-Pop/J-Rock",
-        "Luk Thung", "Mor Lam", "Hip-Hop/Rap"
-    ],
-    "Vietnam": [
-        "V-Pop/V-Rock", "K-Pop/K-Rock", "Hip-Hop/Rap",
-        "Vietnamese Bolero", "Folk"
-    ],
-    "Myanmar": ["Burmese Pop/Rock", "Hip-Hop/Rap"],
-    "Cambodia": ["Cambodian Pop/Rock", "Hip-Hop/Rap", "Folk"],
-    "Laos": ["Lao Pop/Rock", "Mor Lam", "Hip-Hop/Rap"],
-    "Brunei": ["Bruneian Pop/Rock", "Malaysian Pop", "K-Pop/K-Rock"],
-    "Timor-Leste": ["Timorese Pop/Rock", "Dancehall/Reggae", "Folk"],
-    # Central Asia and Caucasus
-    "Kazakhstan": ["Q-pop/Q-rock", "Pop", "Hip-Hop/Rap", "Folk"],
-    "Uzbekistan": ["Pop", "Hip-Hop/Rap", "Folk", "Rock"],
-    "Turkmenistan": ["Pop", "Folk"],
-    "Kyrgyzstan": ["Pop", "Hip-Hop/Rap", "Folk"],
-    "Tajikistan": ["Pop", "Folk"],
-    "Azerbaijan": ["Pop", "Hip-Hop/Rap", "Mugham", "Rock"],
-    "Georgia": ["Pop", "Hip-Hop/Rap", "Folk", "Rock"],
-    "Armenia": ["Pop", "Hip-Hop/Rap", "Folk", "Rock", "Classical"],
-    # Oceania
-    "Australia": [
-        "Pop", "Hip-Hop/Rap", "Rock", "Alternative",
-        "Electronic/Dance", "Country", "Aboriginal Australian Pop/Rock",
-        "Classical"
-    ],
-    "New Zealand": [
-        "Pop", "Hip-Hop/Rap", "Rock", "Alternative",
-        "Maori Pop/Rock", "Electronic/Dance", "Pacific Reggae",
-        "Classical"
-    ],
-    "Papua New Guinea": ["PNG Pop/Rock", "Dancehall/Reggae", "Stringband", "Folk"],
-    "Fiji": ["Pasifika Pop/Rock", "Dancehall/Reggae", "Folk", "Indian Pop"],
-    "Samoa": ["Pasifika Pop/Rock", "Dancehall/Reggae", "Folk"],
-    "Tonga": ["Pasifika Pop/Rock", "Dancehall/Reggae", "Folk"],
-    "Solomon Islands": ["Pasifika Pop/Rock", "Folk"],
-    "Vanuatu": ["Pasifika Pop/Rock", "Folk"],
-    "Micronesia": ["Pasifika Pop/Rock", "Folk"],
-    "Marshall Islands": ["Pasifika Pop/Rock", "Folk"],
-    "Palau": ["Pasifika Pop/Rock", "Folk"],
-    "Nauru": ["Pasifika Pop/Rock", "Folk"],
-    "Kiribati": ["Pasifika Pop/Rock", "Folk"],
-    "Tuvalu": ["Pasifika Pop/Rock", "Folk"],
-    "Hawaii": ["Hawaiian Pop/Rock", "Pop", "Reggae", "Slack Key Guitar"],
-}
-
-# Safe default when no country data is available
-DEFAULT_GENRE = "Pop"
-
-
-# ---------------------------------------------------------------------
-# COLLABORATION WEIGHT SYSTEM
-# Helper functions that resolve country and genre for multi-artist tracks.
-# The decision rules below implement a tiered majority logic:
-#   > 50% same country   → assign that country
-#   = 50% (two countries) → assign the majority country
-#   < 50% but same continent (≤2 countries) → assign relative majority country
-#   otherwise            → "Multi-country" / "Multi-genre"
-# ---------------------------------------------------------------------
-
-def get_continent(country: str) -> str:
-    """
-    Map a country name to its continent identifier.
-
-    Args:
-        country: Full country name (e.g., 'Brazil')
-
-    Returns:
-        str: Continent label, or 'Unknown' if not found in lookup table
-    """
-    return COUNTRY_TO_CONTINENT.get(country, "Unknown")
-
-
-def infer_genre_by_country(artists_info: list) -> str:
-    """
-    Infer the most representative genre for a set of artists from the same country.
-
-    Logic:
-    1. If a single genre accounts for >50% of artists, use it directly.
-    2. Otherwise, walk the country's GENRE_HIERARCHY list and return the
-       first genre that appears in the known artist genres.
-    3. Fall back to the top of the hierarchy if no match is found.
-
-    Args:
-        artists_info: List of dicts with keys 'pais'/'country' and 'genre'
-
-    Returns:
-        str: Resolved genre label
-    """
-    if not artists_info:
-        return DEFAULT_GENRE
-
-    # Use the primary artist's country to anchor the hierarchy lookup
-    country = artists_info[0]['country']
-    hierarchy = GENRE_HIERARCHY.get(country, [DEFAULT_GENRE])
-
-    known_genres = [a['genre'] for a in artists_info if a['genre']]
-    if not known_genres:
-        return hierarchy[0] if hierarchy else DEFAULT_GENRE
-
-    counter = Counter(known_genres)
-    most_common_genre = counter.most_common(1)[0][0]
-
-    # Absolute majority check
-    if counter[most_common_genre] > len(known_genres) / 2:
-        return most_common_genre
-
-    # Hierarchy-guided tiebreaker
-    for priority_genre in hierarchy:
-        if priority_genre in known_genres:
-            return priority_genre
-
-    return hierarchy[0] if hierarchy else DEFAULT_GENRE
-
-
-def resolve_country_and_genre(artists_info: list) -> tuple:
-    """
-    Apply the collaboration weight algorithm to determine a single
-    country and genre for a potentially multi-artist track.
-
-    Decision tree:
-        Rule 1 – Absolute majority (>50%): assign majority country + its genre
-        Rule 2 – Exact 50/50 split (2 countries): assign the majority country
-        Rule 3 – Relative majority (<50%): assign if same continent and ≤2 distinct
-                  countries, otherwise 'Multi-country' / 'Multi-genre'
-
-    Args:
-        artists_info: List of dicts with keys 'nombre'/'name', 'country', 'genre'
-
-    Returns:
-        tuple: (country_str, genre_str)
-    """
-    total_artists = len(artists_info)
-    if total_artists == 0:
-        return "Unknown", DEFAULT_GENRE
-
-    # Single artist — straightforward
-    if total_artists == 1:
-        info = artists_info[0]
-        return info['country'] or "Unknown", info['genre'] or DEFAULT_GENRE
-
-    # Filter artists with known country
-    known = [a for a in artists_info if a['country'] is not None]
-    if not known:
-        return "Unknown", DEFAULT_GENRE
-
-    known_countries = [a['country'] for a in known]
-    country_counter = Counter(known_countries)
-    majority_country = country_counter.most_common(1)[0][0]
-    majority_count = country_counter[majority_country]
-    majority_pct = majority_count / total_artists
-
-    continents = [get_continent(c) for c in known_countries if c]
-    continent_counter = Counter(continents)
-    distinct_continents = len(continent_counter)
-    distinct_countries = len(country_counter)
-
-    # Rule 1: Absolute majority (>50%)
-    if majority_pct > 0.5:
-        # Fill unknown-country slots with the majority country before genre inference
-        filled = []
-        for a in artists_info:
-            if a['country'] is None:
-                filled.append({'country': majority_country, 'genre': None})
-            else:
-                filled.append(a)
-        majority_artists = [a for a in filled if a['country'] == majority_country]
-        genre = infer_genre_by_country(majority_artists)
-        return majority_country, genre
-
-    # Rule 2: Exact 50/50 split between exactly 2 countries
-    if majority_pct == 0.5:
-        if distinct_countries == 2:
-            majority_artists = [a for a in known if a['country'] == majority_country]
-            genre = infer_genre_by_country(majority_artists)
-            return majority_country, genre
-        else:
-            return "Multi-country", "Multi-genre"
-
-    # Rule 3: Relative majority (<50%) — same-continent, ≤2 countries
-    if majority_pct < 0.5:
-        if distinct_continents == 1 and distinct_countries <= 2:
-            majority_artists = [a for a in known if a['country'] == majority_country]
-            genre = infer_genre_by_country(majority_artists)
-            return majority_country, genre
-        else:
-            return "Multi-country", "Multi-genre"
-
-    # Safety net — should never be reached with valid input
-    return "Multi-country", "Multi-genre"
-
-
-def normalize_name(name: str) -> str:
-    """
-    Normalize an artist name for fuzzy matching against the artist database.
-
-    Transforms to lowercase, strips extra whitespace, and removes punctuation
-    so that "Bad Bunny", "bad bunny", and "bad  bunny!" all resolve to the
-    same dictionary key.
-
-    Args:
-        name: Raw artist name string
-
-    Returns:
-        str: Normalized name suitable for dict lookup
-    """
-    if name is None:
-        return ""
-    name = re.sub(r'\s+', ' ', str(name)).strip().lower()
-    name = re.sub(r'[^\w\s]', '', name)
-    return name
-
-
-def parse_artist_list(artist_names: str) -> list:
-    """
-    Split a raw 'Artist Names' CSV field into individual artist name strings.
-
-    Handles the most common delimiters found in YouTube Charts exports:
-    &, feat., ft., comma, 'y', 'and', 'with', 'x', 'vs'.
-
-    Args:
-        artist_names: Raw string from the 'Artist Names' chart column
-
-    Returns:
-        list[str]: Individual artist names, whitespace-stripped
-    """
-    if artist_names is None:
-        return []
-    text = artist_names
-    for sep in ['&', 'feat.', 'ft.', ',', ' y ', ' and ', ' with ', ' x ', ' vs ']:
-        text = text.replace(sep, '|')
-    return [part.strip() for part in text.split('|') if part.strip()]
 
 
 # ---------------------------------------------------------------------
@@ -1155,7 +571,7 @@ def fetch_video_metadata(url: str, artists_csv: str = "", api_key: str = None) -
 
 # ---------------------------------------------------------------------
 # DATABASE UTILITIES
-# Input/output SQLite operations for chart data, artist lookup, and song catalog.
+# Input/output SQLite operations for chart data and song catalog.
 # ---------------------------------------------------------------------
 
 def find_latest_chart_db() -> Path:
@@ -1230,48 +646,15 @@ def load_chart_songs(db_path: Path) -> list:
     return songs
 
 
-def load_artist_lookup() -> dict:
-    """
-    Load artist records from the local SQLite file into an in-memory dict for O(1) lookups.
-
-    The file is expected at charts_archive/2_1.countries-genres-artist/artist_countries_genres.db
-
-    Returns:
-        dict: {normalized_name: (country, macro_genre)} mapping
-
-    Raises:
-        SystemExit: If the artist database file does not exist.
-    """
-    if not ARTIST_DB_PATH.exists():
-        print(f"❌ Artist database not found at: {ARTIST_DB_PATH}")
-        print("   Please ensure the file exists before running this script.")
-        sys.exit(1)
-
-    print("🌍 Loading artist metadata database from local path...")
-    conn = sqlite3.connect(ARTIST_DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, country, macro_genre FROM artist")
-    rows = cursor.fetchall()
-    conn.close()
-
-    artist_lookup = {}
-    for raw_name, country, genre in rows:
-        key = normalize_name(raw_name)
-        artist_lookup[key] = (country, genre)
-
-    print(f"   ✅ Loaded {len(artist_lookup)} artists from local DB.")
-    return artist_lookup
-
-
 def load_song_catalog_lookup() -> dict:
     """
     Load the song catalog (artist_track table) into an in-memory dict for O(1) lookups.
 
     The key is a tuple of (artist_names, track_name) exactly as stored.
-    The value is the auto-increment 'id'.
+    The value is a tuple of (id, artist_country, macro_genre, artists_found).
 
     Returns:
-        dict: {(artist_names, track_name): id}
+        dict: {(artist_names, track_name): (id, country, genre, artists_found)}
 
     Note: If the catalog file does not exist, an empty dict is returned.
     """
@@ -1279,7 +662,7 @@ def load_song_catalog_lookup() -> dict:
     if not SONG_CATALOG_DB_PATH.exists():
         print(f"⚠️  Song catalog not found at {SONG_CATALOG_DB_PATH}.")
         print("   Please run 2_2.build_song_catalog.py first to create the catalog.")
-        print("   Continuing with id = NULL for all records.")
+        print("   Continuing with id = NULL and empty country/genre for all records.")
         return catalog_lookup
 
     print(f"📀 Loading song catalog for ID mapping from: {SONG_CATALOG_DB_PATH}")
@@ -1295,51 +678,32 @@ def load_song_catalog_lookup() -> dict:
             conn.close()
             return catalog_lookup
 
-        cursor.execute("SELECT artist_names, track_name, id FROM artist_track")
+        cursor.execute("""
+            SELECT artist_names, track_name, id, artist_country, macro_genre, artists_found
+            FROM artist_track
+        """)
         rows = cursor.fetchall()
         conn.close()
 
-        for artist_names, track_name, song_id in rows:
-            catalog_lookup[(artist_names, track_name)] = song_id
+        for artist_names, track_name, song_id, country, genre, found in rows:
+            catalog_lookup[(artist_names, track_name)] = (song_id, country, genre, found)
 
         print(f"   ✅ Loaded {len(catalog_lookup)} songs from catalog.")
 
         # Show first 5 entries for verification
         if rows:
             print("   📋 Sample entries from catalog (first 5):")
-            for i, (art, trk, sid) in enumerate(rows[:5], 1):
+            for i, (art, trk, sid, country, genre, found) in enumerate(rows[:5], 1):
                 art_short = art[:30] + "..." if len(art) > 30 else art
                 trk_short = trk[:30] + "..." if len(trk) > 30 else trk
                 print(f"      {i}. ID {sid:4d} | {art_short} - {trk_short}")
+                print(f"         🌍 {country} | 🎵 {genre} | 👥 {found}")
 
         return catalog_lookup
 
     except sqlite3.Error as e:
         print(f"   ❌ Error reading song catalog: {e}")
         return catalog_lookup
-
-
-def get_artist_info(artist_names: str, artist_lookup: dict) -> list:
-    """
-    Resolve each artist in a track's 'Artist Names' field against the lookup dict.
-
-    Args:
-        artist_names: Raw 'Artist Names' string from the chart row
-        artist_lookup: Dict returned by load_artist_lookup()
-
-    Returns:
-        list[dict]: One entry per artist with keys 'name', 'country', 'genre'
-    """
-    names = parse_artist_list(artist_names)
-    if not names:
-        return []
-
-    result = []
-    for name in names:
-        key = normalize_name(name)
-        country, genre = artist_lookup.get(key, (None, None))
-        result.append({'name': name, 'country': country, 'genre': genre})
-    return result
 
 
 def create_output_table(conn: sqlite3.Connection):
@@ -1443,20 +807,19 @@ def main():
 
     Workflow:
     1.  Locate the latest weekly chart database
-    2.  Load artist metadata from local DB
-    3.  Load song catalog for ID mapping
-    4.  Verify yt-dlp is installed (install if missing)
-    5.  Load chart songs from SQLite
-    6.  Create the output enriched database
-    7.  For each song: fetch YouTube metadata, resolve country/genre, look up song_id, write row
-    8.  Print summary statistics
+    2.  Load song catalog for ID, country, genre, and artists_found
+    3.  Verify yt-dlp is installed (install if missing)
+    4.  Load chart songs from SQLite
+    5.  Create the output enriched database
+    6.  For each song: fetch YouTube metadata, look up catalog data, write row
+    7.  Print summary statistics
 
     Returns:
         int: Exit code — 0 on success, 1 on critical error
     """
     print("\n" + "=" * 70)
     print("🎵 CHART ENRICHMENT PIPELINE (API → Selenium → yt-dlp)")
-    print("   METADATA EXTRACTION + ARTIST COUNTRY/GENRE RESOLUTION")
+    print("   METADATA EXTRACTION + CATALOG INTEGRATION")
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
 
@@ -1469,16 +832,12 @@ def main():
         print(f"   ❌ {e}")
         sys.exit(1)
 
-    # 2. Load artist metadata database from local path
-    print("\n2. 🌍 LOADING ARTIST METADATA DATABASE...")
-    artist_lookup = load_artist_lookup()
-
-    # 3. Load song catalog for ID mapping
-    print("\n3. 📀 LOADING SONG CATALOG...")
+    # 2. Load song catalog for ID, country, genre, and artists_found
+    print("\n2. 📀 LOADING SONG CATALOG...")
     song_catalog_lookup = load_song_catalog_lookup()
 
-    # 4. Ensure yt-dlp is available (install silently if not)
-    print("\n4. 🔧 CHECKING DEPENDENCIES...")
+    # 3. Ensure yt-dlp is available (install silently if not)
+    print("\n3. 🔧 CHECKING DEPENDENCIES...")
     try:
         import yt_dlp
         print("   ✅ yt-dlp available")
@@ -1488,8 +847,8 @@ def main():
         import yt_dlp
         print("   ✅ yt-dlp installed")
 
-    # 5. Load chart songs
-    print(f"\n5. 📖 READING CHART DATA FROM {chart_db_path.name}...")
+    # 4. Load chart songs
+    print(f"\n4. 📖 READING CHART DATA FROM {chart_db_path.name}...")
     try:
         songs = load_chart_songs(chart_db_path)
         print(f"   ✅ {len(songs)} songs loaded")
@@ -1497,15 +856,15 @@ def main():
         print(f"   ❌ Error reading chart database: {e}")
         sys.exit(1)
 
-    # 6. Prepare output database
-    print("\n6. 🗃️  PREPARING OUTPUT DATABASE...")
+    # 5. Prepare output database
+    print("\n5. 🗃️  PREPARING OUTPUT DATABASE...")
     output_db_path = OUTPUT_DIR / f"{chart_db_path.stem}_enriched.db"
     conn_out = sqlite3.connect(output_db_path)
     create_output_table(conn_out)
     print(f"   ✅ Output path: {output_db_path}")
 
-    # 7. Process each song
-    print(f"\n7. 🎬 ENRICHING {len(songs)} SONGS...")
+    # 6. Process each song
+    print(f"\n6. 🎬 ENRICHING {len(songs)} SONGS...")
     print("   ⏱️  This may take several minutes depending on retrieval layer used...")
 
     for i, song in enumerate(songs, 1):
@@ -1518,16 +877,12 @@ def main():
         # Fetch YouTube metadata (three-layer fallback)
         metadata = fetch_video_metadata(url, artists_csv, YOUTUBE_API_KEY)
 
-        # Resolve artist country and genre via the collaboration weight algorithm
-        artists_info = get_artist_info(artists_csv, artist_lookup)
-        final_country, final_genre = resolve_country_and_genre(artists_info)
-
-        # Look up song_id from catalog; this becomes the foreign key 'id'
-        song_id = song_catalog_lookup.get((artists_csv, song['Track Name']), None)
-
-        # Count how many artists were successfully matched against the lookup DB
-        matched = sum(1 for a in artists_info if a['country'] is not None)
-        total_arts = len(artists_info) if artists_info else 1
+        # Look up catalog data
+        catalog_entry = song_catalog_lookup.get((artists_csv, song['Track Name']))
+        if catalog_entry:
+            song_id, artist_country, macro_genre, artists_found = catalog_entry
+        else:
+            song_id, artist_country, macro_genre, artists_found = None, "Unknown", "Pop", "0/0"
 
         # Build output row
         row = {
@@ -1552,9 +907,9 @@ def main():
             'is_collaboration': metadata['is_collaboration'],
             'artist_count': metadata['artist_count'],
             'region_restricted': metadata['region_restricted'],
-            'artist_country': final_country,
-            'macro_genre': final_genre,
-            'artists_found': f"{matched}/{total_arts}",
+            'artist_country': artist_country,
+            'macro_genre': macro_genre,
+            'artists_found': artists_found,
             'error': metadata['error']
         }
 
@@ -1572,17 +927,15 @@ def main():
             badges.append("🎤")
         if metadata['is_collaboration']:
             badges.append(f"👥{metadata['artist_count']}")
-        if final_country not in ["Unknown", "Multi-country"]:
-            badges.append(f"🌍{final_country[:2]}")
-        elif final_country == "Multi-country":
+        if artist_country not in ["Unknown", "Multi-country"]:
+            badges.append(f"🌍{artist_country[:2]}")
+        elif artist_country == "Multi-country":
             badges.append("🌐")
-        if matched < total_arts:
-            badges.append(f"⚠️{matched}/{total_arts}")
         if song_id is not None:
             badges.append(f"🆔{song_id}")
 
         if badges:
-            print(f"({' '.join(badges)}) → {final_country[:15]}, {final_genre[:15]}")
+            print(f"({' '.join(badges)}) → {artist_country[:15]}, {macro_genre[:15]}")
         else:
             error_display = metadata['error'][:20] if metadata['error'] else "No data"
             print(f"({error_display})")
@@ -1592,8 +945,8 @@ def main():
 
     conn_out.close()
 
-    # 8. Summary statistics
-    print("\n8. 📊 FINAL SUMMARY:")
+    # 7. Summary statistics
+    print("\n7. 📊 FINAL SUMMARY:")
     conn_stats = sqlite3.connect(output_db_path)
     cur = conn_stats.cursor()
 
