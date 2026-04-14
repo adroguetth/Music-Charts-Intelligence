@@ -12,7 +12,6 @@ on:
       - main
     paths:
       - 'scripts/3_enrich_chart_data.py'
-      - 'charts_archive/2_1.countries-genres-artist/artist_countries_genres.db'
       - 'charts_archive/2_2.build-song-catalog/build_song.db'
       - '.github/workflows/3_enrich-chart-data.yml'
 
@@ -49,27 +48,16 @@ jobs:
         mkdir -p charts_archive/1_download-chart/databases
         mkdir -p charts_archive/3_enrich-chart-data
     
-    - name: 🔍 Verify artist metadata database exists
-      run: |
-        if [ ! -f "charts_archive/2_1.countries-genres-artist/artist_countries_genres.db" ]; then
-          echo "❌ Artist metadata database not found at charts_archive/2_1.countries-genres-artist/artist_countries_genres.db"
-          echo "   Please ensure script 2_1 has run successfully before this workflow."
-          exit 1
-        fi
-        echo "✅ Artist metadata database found"
-        SIZE=$(stat -c%s "charts_archive/2_1.countries-genres-artist/artist_countries_genres.db")
-        echo "   Size: $((SIZE / 1024)) KB"
-    
     - name: 🔍 Verify song catalog database exists
       run: |
         if [ ! -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
-          echo "⚠️  Song catalog database not found at charts_archive/2_2.build-song-catalog/build_song.db"
-          echo "   song_catalog_id will be NULL in enriched output."
-        else
-          echo "✅ Song catalog database found"
-          SIZE=$(stat -c%s "charts_archive/2_2.build-song-catalog/build_song.db")
-          echo "   Size: $((SIZE / 1024)) KB"
+          echo "❌ Song catalog database not found at charts_archive/2_2.build-song-catalog/build_song.db"
+          echo "   Please ensure script 2_2 has run successfully before this workflow."
+          exit 1
         fi
+        echo "✅ Song catalog database found"
+        SIZE=$(stat -c%s "charts_archive/2_2.build-song-catalog/build_song.db")
+        echo "   Size: $((SIZE / 1024)) KB"
     
     - name: 🚀 Run enrichment script
       run: |
@@ -159,7 +147,7 @@ jobs:
             echo ""
             echo "📊 Database statistics:"
             TOTAL=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs;" 2>/dev/null || echo "N/A")
-            LINKED=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE song_catalog_id IS NOT NULL;" 2>/dev/null || echo "N/A")
+            LINKED=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE id IS NOT NULL;" 2>/dev/null || echo "N/A")
             MULTI=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE artist_country = 'Multi-country';" 2>/dev/null || echo "N/A")
             ERROR=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE error != '';" 2>/dev/null || echo "N/A")
             
