@@ -3,7 +3,7 @@ name: 2.2 - Build Song Catalog
 on:
   schedule:
     # Run every Monday at 13:15 UTC (after Script 1 and Script 2.1)
-    - cron: '15 13 * * 1'
+    # - cron: '15 13 * * 1'
   
   workflow_dispatch:
   
