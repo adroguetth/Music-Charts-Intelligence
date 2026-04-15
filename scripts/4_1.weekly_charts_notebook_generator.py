@@ -39,6 +39,7 @@ import json
 import requests
 import hashlib
 import argparse
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any, List
@@ -613,40 +614,69 @@ Provide a DETAILED executive summary (30 lines) that:
 
     prompt = prompts.get(section, f"Analyze this music data: {data_summary}")
 
-    try:
-        # Set max_tokens higher for introduction and executive_summary
-        if section in ["introduction", "executive_summary"]:
-            max_tokens = 2000  # Increased to allow for 30 lines
-        else:
-            max_tokens = 600
-            
-        response = requests.post(
-            Config.DEEPSEEK_API_URL,
-            headers={
-                "Authorization": f"Bearer {Config.DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": "You are an expert music data analyst. Provide concise, insightful analysis. Use a professional yet accessible tone."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": max_tokens
-            },
-            timeout=30
-        )
+        # Determine timeout based on section length
+    if section in ["introduction", "executive_summary"]:
+        max_tokens = 2000
+        timeout_seconds = 90  # ← Cambiado de 30 a 90
+    else:
+        max_tokens = 600
+        timeout_seconds = 30
 
-        if response.status_code == 200:
-            insight = response.json()["choices"][0]["message"]["content"].strip()
-            cache.save_insight(section, df, data_summary, insight)
-            return insight
-        else:
-            return f"AI API error: {response.status_code} - {response.text[:200]}"
+    # Retry logic with exponential backoff
+    max_retries = 3
+    base_delay = 2
 
-    except Exception as e:
-        return f"AI insight unavailable: {str(e)}"
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                Config.DEEPSEEK_API_URL,
+                headers={
+                    "Authorization": f"Bearer {Config.DEEPSEEK_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": "You are an expert music data analyst. Provide concise, insightful analysis. Use a professional yet accessible tone."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": max_tokens
+                },
+                timeout=timeout_seconds  # ← Ahora usa 90 para secciones largas
+            )
+
+            if response.status_code == 200:
+                insight = response.json()["choices"][0]["message"]["content"].strip()
+                cache.save_insight(section, df, data_summary, insight)
+                return insight
+            else:
+                # Non-200 response, retry only if it's a server error (5xx)
+                if 500 <= response.status_code < 600 and attempt < max_retries - 1:
+                    wait = base_delay ** attempt
+                    print(f"   API error {response.status_code}, retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                else:
+                    return f"AI API error: {response.status_code} - {response.text[:200]}"
+
+        except requests.Timeout:
+            if attempt < max_retries - 1:
+                wait = base_delay ** attempt
+                print(f"   Timeout (>{timeout_seconds}s), retrying in {wait}s... (attempt {attempt+1}/{max_retries})")
+                time.sleep(wait)
+            else:
+                return f"AI insight unavailable: Timeout after {timeout_seconds}s and {max_retries} attempts."
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = base_delay ** attempt
+                print(f"   Error: {e}, retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                return f"AI insight unavailable: {str(e)}"
+
+    return "AI insight unavailable after multiple retries."
 
 
 # ============================================================
