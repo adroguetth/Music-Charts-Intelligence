@@ -76,7 +76,7 @@ This diagram shows the **high-level pipeline** of the entire system:
    - **Insert Row**: Saves enriched data with catalog ID as foreign key
 7. **Output**: Enriched database ready for Script 4 (notebook generation)
 
-### **Diagram 2: 3-Layer Metadata Retrieval System**
+### **Diagram 2: 3-Layer Metadata Retrieval System** (OK)
 
 <img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_EN/Diagrams/3_enrich_chart_data/2.png" alt="Diagram 2: 3-Layer Metadata Retrieval" width="500">
 
