@@ -76,9 +76,9 @@ This diagram shows the **high-level pipeline** of the entire system:
    - **Insert Row**: Saves enriched data with catalog ID as foreign key
 7. **Output**: Enriched database ready for Script 4 (notebook generation)
 
-### **Diagram 2: 3-Layer Metadata Retrieval System** (OK)
+### **Diagram 2: 3-Layer Metadata Retrieval System**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_EN/Diagrams/3_enrich_chart_data/2.png" alt="Diagram 2: 3-Layer Metadata Retrieval" width="500">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_EN/Diagrams/3_enrich_chart_data/2.png" alt="Diagram 2: 3-Layer Metadata Retrieval" width="600">
 
 This diagram details the **cascading retrieval strategy** for YouTube video metadata:
 
@@ -109,7 +109,7 @@ This diagram details the **cascading retrieval strategy** for YouTube video meta
 
 ### **Diagram 3: Song Catalog Integration (Updated)**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_EN/Diagrams/3_enrich_chart_data/3.png" alt="Diagram 3: Song Catalog Integration" width="500">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_EN/Diagrams/3_enrich_chart_data/3.png" alt="Diagram 3: Song Catalog Integration" width="650">
 
 This diagram shows the **catalog lookup flow** that replaces the former collaboration weighting system:
 
