@@ -44,7 +44,48 @@ The script extracts video duration, likes, comments, upload date, audio language
 | 🟢 Dark Green | Output   | Enriched database                                        |
 
 ### **Diagram 1: Main Flow Overview**
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_EN/Diagrams/3_enrich_chart_data/1.png" alt="Diagram 1: Main Flow Overview" width="500">
+```mermaid
+flowchart TD
+    A["📁 charts_archive/1_download-chart/databases/"]
+    B["Locate most recent chart database<br/>youtube_charts_YYYY-WXX.db"]
+    C["Download artist database from GitHub<br/>artist_countries_genres.db"]
+    D["Build lookup dictionary<br/>{normalized_name: (country, genre)}"]
+    E["Load 100 songs from chart_data table"]
+    F["Create enriched_songs table<br/>25 columns + indexes"]
+    H["Extract artists from CSV string<br/>split by &, feat., ft., etc."]
+    I["Lookup each artist in dictionary<br/>get country & genre"]
+    J["Apply collaboration weighting algorithm<br/>resolve_country_and_genre()"]
+    K["Fetch YouTube metadata<br/>3-layer fallback"]
+    L["Classify video<br/>type, channel, collaboration, season"]
+    M["Insert enriched row into database"]
+    N["Cleanup: remove temp artist database"]
+    O["💾 Enriched database<br/>youtube_charts_YYYY-WXX_enriched.db"]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> H
+    H --> I
+    I --> J
+    J --> K
+    K --> L
+    L --> M
+    M --> N
+    N --> O
+
+    %% Styles
+    classDef input fill:#4A90D9,stroke:#2E5A8A,color:white
+    classDef process fill:#F5A623,stroke:#C17D11,color:white
+    classDef api fill:#9B59B6,stroke:#6C3483,color:white
+    classDef storage fill:#27AE60,stroke:#1E8449,color:white
+    classDef output fill:#1E8449,stroke:#145A32,color:white
+
+    class A,O storage
+    class B,E,F,H,I,L,M,N process
+    class C,J,K api
+```
 
 This diagram shows the **high-level pipeline** of the entire system:
 
@@ -95,8 +136,74 @@ This diagram details the **cascading retrieval strategy** for YouTube video meta
 5. **Output**: Returns metadata dict with 15+ fields (some may be empty on failure)
 
 ### **Diagram 3: Collaboration Weighting System**
+```mermaid
+flowchart TD
+    START([START])
+    L1A["Extract video_id from URL<br/>11-character pattern"]
+    L1B["Query API for snippet,<br/>contentDetails, statistics"]
+    L1C["Retrieve: duration, likes, comments,<br/>audio language, upload date, restrictions"]
+    D1{"Success?"}
+    OUT1["Return full metadata"]
+    
+    L2A["Launch headless Chrome browser"]
+    L2B["Navigate to video page<br/>wait for title element"]
+    L2C["Extract: title, duration,<br/>channel name, upload date"]
+    D2{"Success?"}
+    OUT2["Return partial metadata<br/>(no likes/comments)"]
+    
+    L3A["Try android client"]
+    L3B["Try ios client"]
+    L3C["Try android+web client"]
+    L3D["Try web client"]
+    L3E["Each attempt: retries + delays<br/>to avoid bot detection"]
+    D3{"Success?"}
+    OUT3["Return full metadata"]
+    FALLBACK["Return empty metadata + error message"]
+    END([END])
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_EN/Diagrams/3_enrich_chart_data/3.png" alt="Diagram 3: Collaboration Weighting System" width="500">
+    START --> L1A
+    L1A --> L1B
+    L1B --> L1C
+    L1C --> D1
+    D1 -->|Yes| OUT1
+    D1 -->|No| L2A
+    
+    L2A --> L2B
+    L2B --> L2C
+    L2C --> D2
+    D2 -->|Yes| OUT2
+    D2 -->|No| L3A
+    
+    L3A --> L3B
+    L3B --> L3C
+    L3C --> L3D
+    L3D --> L3E
+    L3E --> D3
+    D3 -->|Yes| OUT3
+    D3 -->|No| FALLBACK
+    
+    OUT1 --> END
+    OUT2 --> END
+    OUT3 --> END
+    FALLBACK --> END
+
+    %% Styles
+    classDef startEnd fill:#2C3E50,stroke:#1A252F,color:white
+    classDef layer1 fill:#E74C3C,stroke:#C0392B,color:white
+    classDef layer2 fill:#F5A623,stroke:#C17D11,color:white
+    classDef layer3 fill:#9B59B6,stroke:#6C3483,color:white
+    classDef decision fill:#E74C3C,stroke:#C0392B,color:white
+    classDef success fill:#27AE60,stroke:#1E8449,color:white
+    classDef fallback fill:#7F8C8D,stroke:#5D6D7E,color:white
+
+    class START,END startEnd
+    class L1A,L1B,L1C layer1
+    class L2A,L2B,L2C layer2
+    class L3A,L3B,L3C,L3D,L3E layer3
+    class D1,D2,D3 decision
+    class OUT1,OUT2,OUT3 success
+    class FALLBACK fallback
+```
 
 This diagram shows the **intelligent decision engine** for multi-artist tracks:
 
