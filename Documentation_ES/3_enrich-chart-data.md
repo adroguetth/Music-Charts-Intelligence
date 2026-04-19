@@ -60,7 +60,7 @@ El script extrae duración del video, likes, comentarios, fecha de publicación,
 
 ### **Diagrama 1: Vista General del Flujo Principal**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_ES/Diagrams/3_enrich_chart_data/1.png" alt="Diagrama 1: Vista General del Flujo Principal" width="500">
+<img src="https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_ES/Diagramas/3_enrich_chart_data/1.png?raw=true" alt="Diagrama 1: Vista General del Flujo Principal" width="500">
 
 Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
@@ -78,7 +78,8 @@ Este diagrama muestra el **pipeline de alto nivel** de todo el sistema:
 
 ### **Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_ES/Diagrams/3_enrich_chart_data/2.png" alt="Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas" width="600">
+<img src="https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_ES/Diagramas/3_enrich_chart_data/2.png?raw=true" alt="Diagrama 2: Sistema de Recuperación de Metadatos de 3 Capas" width="600">
+
 
 Este diagrama detalla la **estrategia de recuperación en cascada** para metadatos de videos de YouTube:
 
@@ -109,7 +110,7 @@ Este diagrama detalla la **estrategia de recuperación en cascada** para metadat
 
 ### **Diagrama 3: Integración con Catálogo de Canciones**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/refs/heads/main/Documentation_ES/Diagrams/3_enrich_chart_data/3.png" alt="Diagrama 3: Integración con Catálogo de Canciones" width="650">
+<img src="https://github.com/adroguetth/Music-Charts-Intelligence/blob/main/Documentation_ES/Diagramas/3_enrich_chart_data/3.png?raw=true" alt="Diagrama 3: Integración con Catálogo de Canciones" width="650">
 
 Este diagrama muestra el **flujo de búsqueda en el catálogo** que reemplaza al antiguo sistema de ponderación de colaboraciones:
 
