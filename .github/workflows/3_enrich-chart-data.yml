@@ -7,14 +7,6 @@ on:
   
   workflow_dispatch:
   
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/3_enrich_chart_data.py'
-      - 'charts_archive/2_2.build-song-catalog/build_song.db'
-      - '.github/workflows/3_enrich-chart-data.yml'
-
 env:
   RETENTION_WEEKS: 78
 
