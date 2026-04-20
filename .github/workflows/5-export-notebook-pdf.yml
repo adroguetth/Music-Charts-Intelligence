@@ -1,39 +1,125 @@
 name: 5 - Export Notebook to PDF and Drive
 
 on:
-  workflow_dispatch:  # Solo manual por ahora
+  # Scheduled execution: Tuesday at 12:00 UTC
+  schedule:
+    - cron: '0 12 * * 2'
+  
+  # Manual execution only (no automatic triggers on push)
+  workflow_dispatch:
+    inputs:
+      week:
+        description: 'Specific week to export (format: YYYY-WXX). Leave empty for latest'
+        required: false
+        type: string
+      language:
+        description: 'Language to export'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - en
+          - es
+
+env:
+  # Retain artifacts for 30 days
+  RETENTION_DAYS: 30
 
 jobs:
   export-pdf:
-    name: Convertir notebook a PDF y subir a Drive
+    name: Export Notebooks to PDF and Upload to Drive
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 20
+    
+    # No write permissions needed (no commits to repo)
+    permissions:
+      contents: read
+    
     steps:
-      - name: 📚 Checkout repositorio
+      - name: 📚 Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
+      
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: 📦 Instalar dependencias
+          cache: 'pip'
+      
+      - name: 📦 Install dependencies
         run: |
           pip install --upgrade pip
           pip install jupyter nbconvert playwright google-api-python-client google-auth-oauthlib
           playwright install chromium
-
-      - name: 🚀 Ejecutar exportador
-        run: python scripts/5_export_notebook_to_pdf.py
+      
+      - name: 📂 Verify notebook directories
+        run: |
+          echo "📁 Checking notebook directories..."
+          
+          if [ -d "Notebook_EN/weekly" ]; then
+            echo "✅ Notebook_EN/weekly exists"
+            ls -la Notebook_EN/weekly/ | head -10
+          else
+            echo "⚠️ Notebook_EN/weekly not found"
+          fi
+          
+          if [ -d "Notebook_ES/weekly" ]; then
+            echo "✅ Notebook_ES/weekly exists"
+            ls -la Notebook_ES/weekly/ | head -10
+          else
+            echo "⚠️ Notebook_ES/weekly not found"
+          fi
+      
+      - name: 🚀 Run export script
+        run: python scripts/5_export_notebook_to_pdf_v5.py
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
-
-      - name: 🧹 Limpiar archivos temporales
+          # Optional: override week and language via workflow inputs
+          EXPORT_WEEK: ${{ github.event.inputs.week || '' }}
+          EXPORT_LANGUAGE: ${{ github.event.inputs.language || 'both' }}
+      
+      - name: 📤 Upload debug artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-debug-${{ github.run_number }}
+          path: |
+            temp_pdf/
+            scripts/5_export_notebook_to_pdf_v5.py.log
+          retention-days: ${{ env.RETENTION_DAYS }}
+      
+      - name: 🧹 Cleanup
         if: always()
         run: rm -rf temp_pdf/
+      
+      - name: 📋 Final report
+        if: always()
+        run: |
+          echo "========================================"
+          echo "📤 EXPORT EXECUTION REPORT"
+          echo "========================================"
+          echo "📅 Date: $(date)"
+          echo "📌 Trigger: ${{ github.event_name }}"
+          echo ""
+          
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "   • Triggered by: Scheduled cron (Tuesday 12:00 UTC)"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "   • Triggered by: Manual dispatch"
+            echo "   • Week input: ${{ github.event.inputs.week || 'auto' }}"
+            echo "   • Language input: ${{ github.event.inputs.language || 'both' }}"
+          fi
+          
+          echo ""
+          echo "📁 Notebook directories:"
+          echo "   EN: $(ls Notebook_EN/weekly/*.ipynb 2>/dev/null | wc -l) notebooks"
+          echo "   ES: $(ls Notebook_ES/weekly/*.ipynb 2>/dev/null | wc -l) notebooks"
+          
+          echo ""
+          echo "✅ Process completed"
+          echo "========================================"
