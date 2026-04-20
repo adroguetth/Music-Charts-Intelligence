@@ -8,13 +8,6 @@ on:
   # Allow manual workflow execution
   workflow_dispatch:
   
-  # Trigger on push to main branch if Python scripts change
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/*.py'
-
 env:
   # Number of days to retain artifacts
   RETENTION_DAYS: 30
