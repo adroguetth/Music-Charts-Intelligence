@@ -9,7 +9,6 @@ Uso:
 Variables de entorno requeridas:
     GDRIVE_SERVICE_ACCOUNT_JSON (contenido del JSON de la cuenta de servicio, en base64)
     GDRIVE_ROOT_FOLDER_ID      (ID de la carpeta raíz en Drive donde se guardará)
-    (opcional) GDRIVE_FOLDER_ID - si se quiere una subcarpeta específica, pero usaremos estructura fija.
 """
 
 import os
@@ -17,7 +16,6 @@ import sys
 import json
 import base64
 import subprocess
-import glob
 from pathlib import Path
 from datetime import datetime
 from google.oauth2 import service_account
@@ -26,7 +24,9 @@ from googleapiclient.http import MediaFileUpload
 
 # Configuración
 NOTEBOOKS_DIR = Path("Notebook_EN/weekly")
-TEMP_PDF_DIR = Path("temp_pdf")
+TEMP_PDF_DIR = Path("temp_pdf")  # Directorio temporal en la raíz del repo
+
+# Crear directorio de salida si no existe
 TEMP_PDF_DIR.mkdir(exist_ok=True)
 
 # Variables de entorno
@@ -50,13 +50,17 @@ def get_latest_notebook():
 
 def convert_to_pdf(notebook_path):
     """Convierte notebook a PDF usando nbconvert + playwright (Chromium)"""
-    pdf_path = TEMP_PDF_DIR / f"{notebook_path.stem}.pdf"
+    pdf_filename = f"{notebook_path.stem}.pdf"
+    pdf_path = TEMP_PDF_DIR / pdf_filename
+
     # Asegurar que playwright está instalado y los navegadores descargados
     subprocess.run(["playwright", "install", "chromium"], check=False)
-    # Ejecutar nbconvert con --to webpdf (usa Chromium headless)
+
+    # Ejecutar nbconvert con --to webpdf, especificando directorio de salida
     cmd = [
         "jupyter", "nbconvert", "--to", "webpdf",
-        "--output", str(pdf_path),
+        "--output-dir", str(TEMP_PDF_DIR),   # <- CRUCIAL: directorio de salida
+        "--output", pdf_filename,
         str(notebook_path)
     ]
     print(f"🔄 Convirtiendo {notebook_path.name} a PDF...")
@@ -65,6 +69,12 @@ def convert_to_pdf(notebook_path):
         print("❌ Error en nbconvert:")
         print(result.stderr)
         sys.exit(1)
+
+    # Verificar que el PDF se creó
+    if not pdf_path.exists():
+        print(f"❌ No se encontró el PDF generado en {pdf_path}")
+        sys.exit(1)
+
     print(f"✅ PDF generado: {pdf_path}")
     return pdf_path
 
