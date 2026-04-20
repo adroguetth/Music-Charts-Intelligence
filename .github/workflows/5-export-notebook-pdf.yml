@@ -1,15 +1,7 @@
-name: 5 - Export Notebook to PDF and Drive (Manual)
+name: 5 - Export Notebook to PDF and Drive
 
 on:
-  workflow_dispatch:
-    inputs:
-      language:
-        description: 'Idioma del notebook (solo "en" por ahora)'
-        required: true
-        default: 'en'
-        type: choice
-        options:
-          - en
+  workflow_dispatch:  # Solo manual por ahora
 
 jobs:
   export-pdf:
@@ -31,20 +23,16 @@ jobs:
       - name: 📦 Instalar dependencias
         run: |
           pip install --upgrade pip
-          pip install jupyter nbconvert playwright google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install jupyter nbconvert playwright google-api-python-client google-auth-oauthlib
           playwright install chromium
 
-      - name: 🔍 Verificar notebook más reciente
-        run: |
-          echo "Notebooks disponibles en Notebook_EN/weekly:"
-          ls -la Notebook_EN/weekly/
-
-      - name: 🚀 Ejecutar script de exportación
+      - name: 🚀 Ejecutar exportador
         run: python scripts/5_export_notebook_to_pdf.py
         env:
-          GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
-          # GDRIVE_FOLDER_ID no se usa en este script, pero se puede pasar si se desea
 
       - name: 🧹 Limpiar archivos temporales
         if: always()
