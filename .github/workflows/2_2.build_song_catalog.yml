@@ -7,15 +7,6 @@ on:
   
   workflow_dispatch:
   
-  # Trigger when weekly databases are updated or when script/workflow changes
-  push:
-    branches:
-      - main
-    paths:
-      - 'charts_archive/1_download-chart/databases/*.db'
-      - 'scripts/2_2.build_song_catalog.py'
-      - '.github/workflows/2_2.build-song-catalog.yml'
-
 env:
   RETENTION_DAYS: 90
 
