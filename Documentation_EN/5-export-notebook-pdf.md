@@ -64,7 +64,7 @@ This diagram shows the **high-level pipeline** of the entire script:
 
 ### **Diagram 2: Google Drive Folder Structure**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/5_export_notebook_to_pdf/2.png" alt="Diagram 2: Google Drive Folder Structure" width="500">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_EN/Diagrams/5_export_notebook_to_pdf/2.png" alt="Diagram 2: Google Drive Folder Structure" width="700">
 
 This diagram shows the **target folder hierarchy** on Google Drive:
 
