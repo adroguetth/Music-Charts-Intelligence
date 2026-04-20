@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Exporta los notebooks más recientes (EN y ES) a PDF y los sube a Google Drive.
-Crea una carpeta por semana (ej. youtube_charts_2026-W16) y guarda dentro:
-  - EN/youtube_charts_2026-W16.ipynb
-  - EN/youtube_charts_2026-W16.pdf
-  - ES/youtube_charts_2026-W16.ipynb
-  - ES/youtube_charts_2026-W16.pdf
+Exporta los notebooks (EN y ES) de la semana más reciente a PDF y los sube a Google Drive.
+Crea una carpeta por semana (ej. youtube_charts_2026-W16) y dentro:
+  - EN/ (notebook.ipynb + notebook.pdf)
+  - ES/ (notebook.ipynb + notebook.pdf)
 
 Uso:
-    python scripts/5_export_notebook_to_pdf_v2.py
+    python scripts/5_export_notebook_to_pdf_v3.py
 
 Variables de entorno requeridas:
     GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET, GDRIVE_REFRESH_TOKEN, GDRIVE_ROOT_FOLDER_ID
@@ -68,14 +66,20 @@ def get_week_from_filename(filename: str) -> tuple:
     return (0, 0)
 
 
-def get_latest_notebook(directory: Path):
-    """Retorna el notebook más reciente según orden cronológico de semana ISO."""
-    notebooks = list(directory.glob("youtube_charts_*.ipynb"))
-    if not notebooks:
+def get_latest_week_from_all_notebooks():
+    """Escanea ambas carpetas y retorna la semana más reciente (año, semana)."""
+    all_notebooks = []
+    for dir_path in [NOTEBOOKS_EN_DIR, NOTEBOOKS_ES_DIR]:
+        if dir_path.exists():
+            for nb in dir_path.glob("youtube_charts_*.ipynb"):
+                week = get_week_from_filename(nb.name)
+                if week != (0, 0):
+                    all_notebooks.append((week, nb))
+    if not all_notebooks:
         return None
-    # Ordenar por (año, semana) descendente
-    notebooks.sort(key=lambda p: get_week_from_filename(p.name), reverse=True)
-    return notebooks[0]
+    # Ordenar por semana descendente y tomar la primera
+    all_notebooks.sort(key=lambda x: x[0], reverse=True)
+    return all_notebooks[0][0]  # (year, week)
 
 
 def convert_to_pdf(notebook_path: Path) -> Path:
@@ -83,6 +87,7 @@ def convert_to_pdf(notebook_path: Path) -> Path:
     pdf_filename = f"{notebook_path.stem}.pdf"
     pdf_path = TEMP_PDF_DIR / pdf_filename
 
+    # Asegurar playwright
     subprocess.run(["playwright", "install", "chromium"], check=False)
 
     cmd = [
@@ -109,6 +114,7 @@ def create_or_get_folder(service, folder_name, parent_id):
     response = service.files().list(q=query, spaces='drive', fields='files(id)').execute()
     files = response.get('files', [])
     if files:
+        print(f"   📁 Carpeta existente: {folder_name}")
         return files[0]['id']
     else:
         file_metadata = {
@@ -117,6 +123,7 @@ def create_or_get_folder(service, folder_name, parent_id):
             'parents': [parent_id]
         }
         folder = service.files().create(body=file_metadata, fields='id').execute()
+        print(f"   📁 Carpeta creada: {folder_name}")
         return folder['id']
 
 
@@ -125,7 +132,7 @@ def upload_file(service, file_path, parent_folder_id, mime_type):
     media = MediaFileUpload(file_path, mimetype=mime_type)
     metadata = {'name': file_path.name, 'parents': [parent_folder_id]}
     uploaded = service.files().create(body=metadata, media_body=media, fields='id').execute()
-    print(f"   ✅ Subido: {file_path.name} (ID: {uploaded['id']})")
+    print(f"   ✅ Subido: {file_path.name}")
     return uploaded['id']
 
 
@@ -137,29 +144,38 @@ def main():
     print("📤 EXPORTADOR DE NOTEBOOKS (EN + ES) A PDF + DRIVE")
     print("=" * 60)
 
-    # 1. Encontrar el notebook más reciente en EN y ES
-    latest_en = get_latest_notebook(NOTEBOOKS_EN_DIR)
-    latest_es = get_latest_notebook(NOTEBOOKS_ES_DIR)
-
-    if not latest_en and not latest_es:
-        print("❌ No se encontraron notebooks en ningún idioma.")
+    # Verificar que las carpetas de notebooks existen
+    if not NOTEBOOKS_EN_DIR.exists() and not NOTEBOOKS_ES_DIR.exists():
+        print("❌ No existen las carpetas Notebook_EN/weekly o Notebook_ES/weekly")
         sys.exit(1)
 
-    # Determinar la semana más reciente (comparando ambos)
-    candidates = []
-    if latest_en:
-        candidates.append(latest_en)
-    if latest_es:
-        candidates.append(latest_es)
-    candidates.sort(key=lambda p: get_week_from_filename(p.name), reverse=True)
-    latest_week = get_week_from_filename(candidates[0].name)
-    week_str = f"{latest_week[0]}-W{latest_week[1]:02d}"
+    # 1. Determinar la semana más reciente entre todos los notebooks (EN y ES)
+    latest_week = get_latest_week_from_all_notebooks()
+    if not latest_week:
+        print("❌ No se encontraron notebooks en ninguna carpeta.")
+        sys.exit(1)
 
+    year, week = latest_week
+    week_str = f"{year}-W{week:02d}"
     print(f"\n📆 Semana más reciente detectada: {week_str}")
 
-    # 2. Seleccionar los notebooks correspondientes a esa semana (puede que uno de los idiomas no exista)
-    en_notebook = next((p for p in NOTEBOOKS_EN_DIR.glob(f"*{week_str}*.ipynb")), None)
-    es_notebook = next((p for p in NOTEBOOKS_ES_DIR.glob(f"*{week_str}*.ipynb")), None)
+    # 2. Buscar notebooks para esa semana en cada idioma
+    en_notebook = None
+    es_notebook = None
+
+    # Buscar en EN: archivo que contenga la semana (ej. youtube_charts_2026-W16.ipynb)
+    en_pattern = f"*{week_str}*.ipynb"
+    en_matches = list(NOTEBOOKS_EN_DIR.glob(en_pattern)) if NOTEBOOKS_EN_DIR.exists() else []
+    if en_matches:
+        # Si hay múltiples (ej. con sufijos), tomar el primero
+        en_notebook = en_matches[0]
+        print(f"   🇬🇧 Notebook EN encontrado: {en_notebook.name}")
+
+    # Buscar en ES
+    es_matches = list(NOTEBOOKS_ES_DIR.glob(en_pattern)) if NOTEBOOKS_ES_DIR.exists() else []
+    if es_matches:
+        es_notebook = es_matches[0]
+        print(f"   🇪🇸 Notebook ES encontrado: {es_notebook.name}")
 
     if not en_notebook and not es_notebook:
         print("❌ No se encontraron notebooks para la semana más reciente.")
@@ -172,23 +188,27 @@ def main():
     if es_notebook:
         pdfs['es'] = convert_to_pdf(es_notebook)
 
-    # 4. Subir a Drive dentro de una carpeta semanal
+    # 4. Subir a Drive
     service = get_authenticated_service()
 
     # Crear carpeta raíz para la semana (ej. "youtube_charts_2026-W16")
     week_folder_name = f"youtube_charts_{week_str}"
+    print(f"\n📁 Creando/verificando carpeta: {week_folder_name}")
     week_folder_id = create_or_get_folder(service, week_folder_name, ROOT_FOLDER_ID)
 
-    # Subir cada notebook y su PDF dentro de subcarpetas por idioma
+    # Subir cada idioma
     for lang, notebook_path in [('en', en_notebook), ('es', es_notebook)]:
         if not notebook_path:
             continue
         # Crear subcarpeta del idioma (EN o ES)
+        print(f"\n🌐 Procesando idioma: {lang.upper()}")
         lang_folder_id = create_or_get_folder(service, lang.upper(), week_folder_id)
 
         # Subir notebook original
+        print(f"   📓 Subiendo notebook...")
         upload_file(service, notebook_path, lang_folder_id, 'application/x-ipynb+json')
         # Subir PDF
+        print(f"   📄 Subiendo PDF...")
         pdf_path = pdfs[lang]
         upload_file(service, pdf_path, lang_folder_id, 'application/pdf')
 
