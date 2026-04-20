@@ -2,7 +2,7 @@
 
 ![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) ![PDF Export](https://img.shields.io/badge/PDF-Export-red?style=flat-square) ![Google Drive](https://img.shields.io/badge/Google-Drive-4285F4?style=flat-square)
 
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![Jupyter](https://img.shields.io/badge/Jupyter-F37626?style=flat-square&logo=jupyter&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-2B2D42?style=flat-square&logo=playwright&logoColor=white) ![Google Drive API](https://img.shields.io/badge/Google_Drive_API-4285F4?style=flat-square&logo=google-drive&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![Jupyter](https://img.shields.io/badge/Jupyter-F37626?style=flat-square&logo=jupyter&logoColor=white) ![Playwright](https://custom-icon-badges.demolab.com/badge/Playwright-2EAD33?logo=playwright&logoColor=white&style=flat-square) ![Google Drive API](https://img.shields.io/badge/Google_Drive_API-4285F4?style=flat-square&logo=google-drive&logoColor=white)
 
 ## 📥 Quick Downloads
 
