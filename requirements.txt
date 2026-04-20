@@ -1,64 +1,66 @@
-# ===============================================
-# Python Dependencies for YouTube Charts Intelligence
-# ===============================================
-
-# ---------- Script 1: Download Charts ----------
-# Playwright: Browser automation for downloading YouTube Charts
-playwright==1.48.0
-
-# ---------- Script 2: Artist Enrichment ----------
-# Requests: HTTP calls to MusicBrainz, Wikipedia, Wikidata
-requests>=2.28.0
-# Pandas: Data manipulation and analysis
+# ============================================================
+# Script 1: Download YouTube Charts (Playwright + SQLite)
+# ============================================================
+playwright==1.49.1
 pandas==2.2.3
-# NumPy: Numerical operations (pandas dependency)
-numpy==2.1.3
-# OpenAI: DeepSeek API integration (fallback for missing artist data)
-openai>=1.0.0
 
-# ---------- Script 3: Chart Enrichment ----------
-# yt-dlp: YouTube metadata extraction (fallback method)
-yt-dlp>=2023.10.13
-# Google API Client: YouTube Data API v3 integration
-google-api-python-client>=2.86.0
-# isodate: ISO 8601 duration parsing (YouTube API)
-isodate>=0.6.1
-# Selenium: Headless browser fallback for metadata
-selenium>=4.15.0
-# WebDriver Manager: Automatic ChromeDriver management
-webdriver-manager>=4.0.1
+# ============================================================
+# Script 2.1: Artist Country + Genre Detection (Modular)
+# ============================================================
+# (Uses Python standard library only: sqlite3, pathlib, re, datetime, collections)
+# No external dependencies required for the modular version.
+# The original monolithic version required these, but the modular one does not:
+#   - requests (already included below for other scripts)
+#   - openai (for DeepSeek fallback - optional)
+#   - beautifulsoup4 (not needed in modular version)
+#   - lxml (not needed in modular version)
 
-# ---------- Script 4: Notebook Generator ----------
-# Jupyter: Notebook generation and conversion
-jupyter>=1.0.0
-nbconvert>=7.16.0
-nbformat>=5.10.0
-# Visualization (static-only, no JavaScript required)
-matplotlib>=3.7.0
-seaborn>=0.13.0
-squarify>=0.4.3          # Static treemap (replaces plotly)
-# Statistical analysis
-scipy>=1.11.0
-# Google Drive upload (optional, for PDF export)
-google-api-python-client>=2.86.0
-google-auth-httplib2>=0.1.0
-google-auth-oauthlib>=1.0.0
+# ============================================================
+# Script 2.2: Song Catalog Builder
+# ============================================================
+# (Uses Python standard library only: sqlite3, pathlib, re, datetime, collections)
+# No external dependencies required.
 
-# ---------- Removed dependencies ----------
-# plotly>=5.18.0  # REMOVED: Replaced by squarify for static treemaps
+# ============================================================
+# Script 3: YouTube Chart Enrichment (3-layer fallback)
+# ============================================================
+google-api-python-client==2.149.0
+isodate==0.7.2
+yt-dlp==2025.4.15
+selenium==4.27.1
+webdriver-manager==4.0.2
+requests==2.32.3
 
-# ---------- Built-in Modules (NOT required) ----------
-# These come with Python, no need to install:
-# - sqlite3     → Database operations
-# - re          → Regular expressions
-# - datetime    → Date/time handling
-# - pathlib     → Cross-platform paths
-# - tempfile    → Temporary files
-# - os, sys     → System operations
-# - time        → Delays and sleep
-# - collections → Counter, defaultdict
-# - csv         → CSV parsing (legacy support)
-# - subprocess  → Installing missing dependencies
-# - json        → JSON parsing (DeepSeek responses)
-# - hashlib     → Cache key generation
-# - argparse    → CLI argument parsing
+# ============================================================
+# Script 4: Notebook Generator (Jupyter + Visualizations)
+# ============================================================
+jupyter==1.1.1
+nbformat==5.10.4
+nbconvert==7.16.5
+matplotlib==3.10.1
+seaborn==0.13.2
+squarify==0.4.4
+scipy==1.15.2
+numpy==2.2.4
+pandas==2.2.3
+
+# ============================================================
+# Script 5: Export to PDF + Google Drive
+# ============================================================
+# PDF conversion (Playwright-based webpdf, no LaTeX needed)
+playwright==1.49.1  # Already installed for Script 1
+
+# Google Drive API
+google-api-python-client==2.149.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.1
+
+# ============================================================
+# Shared / Optional
+# ============================================================
+# DeepSeek API client (used by Script 2.1 modular and Script 4)
+openai==1.61.1
+
+# For potential future enhancements
+# tqdm==4.67.1  # Progress bars (optional)
+# pytest==8.3.5  # Testing (optional)
