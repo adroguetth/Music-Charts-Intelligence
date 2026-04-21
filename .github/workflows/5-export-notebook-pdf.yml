@@ -1,11 +1,9 @@
 name: 5 - Export Notebook to PDF and Drive
 
 on:
-  # Scheduled execution: Tuesday at 12:00 UTC
   schedule:
     - cron: '0 12 * * 2'
   
-  # Manual execution only (no automatic triggers on push)
   workflow_dispatch:
     inputs:
       week:
@@ -23,7 +21,6 @@ on:
           - es
 
 env:
-  # Retain artifacts for 30 days
   RETENTION_DAYS: 30
 
 jobs:
@@ -32,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     
-    # No write permissions needed (no commits to repo)
     permissions:
       contents: read
     
@@ -79,7 +75,6 @@ jobs:
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
-          # Optional: override week and language via workflow inputs
           EXPORT_WEEK: ${{ github.event.inputs.week || '' }}
           EXPORT_LANGUAGE: ${{ github.event.inputs.language || 'both' }}
       
