@@ -2,14 +2,11 @@ name: 1- Download YouTube Chart
 
 on:
   schedule:
-    # Run every Monday at 12:00 UTC
     - cron: '0 12 * * 1'
   
-  # Allow manual workflow execution
   workflow_dispatch:
-  
+
 env:
-  # Number of days to retain artifacts
   RETENTION_DAYS: 30
 
 jobs:
@@ -18,44 +15,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     
-    # Required permissions for committing changes
     permissions:
       contents: write
     
     steps:
-    # Step 1: Checkout repository
     - name: 📚 Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full history for proper git operations
+        fetch-depth: 0
     
-    # Step 2: Set up Python environment
     - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-        cache: 'pip'  # Cache pip dependencies for faster builds
+        cache: 'pip'
     
-    # Step 3: Install Python dependencies
     - name: 📦 Install dependencies
       run: |
         pip install -r requirements.txt
         python -m playwright install chromium
         python -m playwright install-deps
     
-    # Step 4: Create required directory structure
     - name: 📁 Create directory structure
       run: |
         mkdir -p data charts_archive/1_download-chart/databases charts_archive/1_download-chart/backup
     
-    # Step 5: Execute download script
     - name: 🚀 Run download script
       run: |
         python scripts/1_download.py
       env:
         GITHUB_ACTIONS: true
     
-    # Step 6: Verify execution results
     - name: ✅ Verify results
       run: |
         echo "📊 Verifying execution results..."
@@ -75,19 +65,15 @@ jobs:
         echo -e "\n📈 File statistics:"
         find charts_archive/1_download-chart -type f -exec ls -lh {} \; | awk '{print $5, $9}'
     
-    # Step 7: Commit and push changes to repository
     - name: 📤 Commit and push changes
       run: |
         echo "📝 Preparing commit..."
         
-        # Configure git user for automated commits
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Stage only archive files
         git add charts_archive/
         
-        # Check if there are changes to commit
         if git diff --cached --quiet; then
           echo "🔭 No changes to commit"
         else
@@ -95,7 +81,6 @@ jobs:
           WEEK=$(date +'%Y-W%W')
           git commit -m "🤖 YouTube Chart Update ${DATE} (Week ${WEEK}) [Automated]"
 
-          # 🔥 IMPORTANTE: Pull latest changes before pushing
           echo "⬇️ Pulling latest changes with rebase..."
           git pull --rebase origin main
           
@@ -104,7 +89,6 @@ jobs:
           echo "✅ Changes pushed successfully"
         fi
     
-    # Step 8: Upload artifacts for debugging (only on failure)
     - name: 📦 Upload artifacts (on failure)
       if: failure()
       uses: actions/upload-artifact@v4
@@ -115,7 +99,6 @@ jobs:
           charts_archive/
         retention-days: 7
     
-    # Step 9: Generate final execution report
     - name: 📋 Final report
       if: always()
       run: |
@@ -127,11 +110,9 @@ jobs:
         echo "🔗 Commit: ${{ github.sha }}"
         echo ""
         
-        # Calculate current week identifier
         WEEK_ID=$(python3 -c "from datetime import datetime; y,w,_ = datetime.now().isocalendar(); print(f'{y}-W{w:02d}')")
         DB_FILE="charts_archive/1_download-chart/databases/youtube_charts_${WEEK_ID}.db"
         
-        # Check if weekly database was created/updated
         if [ -f "$DB_FILE" ]; then
           echo "✅ Weekly database updated: $DB_FILE"
           SIZE=$(stat -c%s "$DB_FILE")
@@ -140,21 +121,18 @@ jobs:
           echo "⚠️ Weekly database not found"
         fi
         
-        # Check if latest CSV was created
         if [ -f "charts_archive/1_download-chart/latest_chart.csv" ]; then
           echo "✅ Latest CSV updated"
           LATEST_SIZE=$(stat -c%s "charts_archive/1_download-chart/latest_chart.csv")
           echo "📊 Size: $((LATEST_SIZE / 1024)) KB"
         fi
         
-        # Count total historical databases
         TOTAL_DBS=$(find charts_archive/1_download-chart/databases -name "youtube_charts_*.db" 2>/dev/null | wc -l)
         if [ "$TOTAL_DBS" -gt 0 ]; then
           echo ""
           echo "📦 Total historical databases: $TOTAL_DBS"
         fi
         
-        # Count available backups
         TOTAL_BACKUPS=$(find charts_archive/1_download-chart/backup -name "backup_*.db" 2>/dev/null | wc -l)
         if [ "$TOTAL_BACKUPS" -gt 0 ]; then
           echo "💾 Total available backups: $TOTAL_BACKUPS"
