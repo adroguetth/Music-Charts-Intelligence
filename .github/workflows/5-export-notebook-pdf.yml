@@ -1,18 +1,18 @@
-name: 5 - Export Notebook to PDF and Drive
+name: Export Notebooks to PDF and Upload to Drive
 
 on:
   schedule:
+    # Ejecutar todos los martes a las 12:00 UTC
     - cron: '0 12 * * 2'
-  
   workflow_dispatch:
     inputs:
       week:
-        description: 'Specific week to export (format: YYYY-WXX). Leave empty for latest'
+        description: 'Semana a exportar (formato YYYY-WXX). Dejar vacío para auto-detectar la más reciente.'
         required: false
-        type: string
+        default: ''
       language:
-        description: 'Language to export'
-        required: false
+        description: 'Idioma a exportar'
+        required: true
         default: 'both'
         type: choice
         options:
@@ -24,52 +24,50 @@ env:
   RETENTION_DAYS: 30
 
 jobs:
-  export-pdf:
-    name: Export Notebooks to PDF and Upload to Drive
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    
-    permissions:
-      contents: read
-    
+  export-and-upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
     steps:
-      - name: 📚 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      
-      - name: 🐍 Setup Python
+
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-      
-      - name: 📦 Install dependencies
+
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install jupyter nbconvert playwright google-api-python-client google-auth-oauthlib
           playwright install chromium
-      
-      - name: 📂 Verify notebook directories
+
+      - name: Debug - Check notebook directories
         run: |
-          echo "📁 Checking notebook directories..."
-          
+          echo "📁 Verificando directorios de notebooks..."
+          echo ""
           if [ -d "Notebook_EN/weekly" ]; then
-            echo "✅ Notebook_EN/weekly exists"
-            ls -la Notebook_EN/weekly/ | head -10
+            echo "✅ Notebook_EN/weekly existe"
+            echo "   Archivos encontrados:"
+            ls -la Notebook_EN/weekly/*.ipynb 2>/dev/null | head -5 || echo "   (sin archivos .ipynb)"
           else
-            echo "⚠️ Notebook_EN/weekly not found"
+            echo "⚠️ Notebook_EN/weekly no encontrado"
           fi
-          
+          echo ""
           if [ -d "Notebook_ES/weekly" ]; then
-            echo "✅ Notebook_ES/weekly exists"
-            ls -la Notebook_ES/weekly/ | head -10
+            echo "✅ Notebook_ES/weekly existe"
+            echo "   Archivos encontrados:"
+            ls -la Notebook_ES/weekly/*.ipynb 2>/dev/null | head -5 || echo "   (sin archivos .ipynb)"
           else
-            echo "⚠️ Notebook_ES/weekly not found"
+            echo "⚠️ Notebook_ES/weekly no encontrado"
           fi
-      
-      - name: 🚀 Run export script
-        run: python scripts/5_export_notebook_to_pdf_v5.py
+          echo ""
+
+      - name: Run export script
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -77,44 +75,48 @@ jobs:
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
           EXPORT_WEEK: ${{ github.event.inputs.week || '' }}
           EXPORT_LANGUAGE: ${{ github.event.inputs.language || 'both' }}
-      
-      - name: 📤 Upload debug artifacts (on failure)
-        if: failure()
+        run: |
+          python scripts/5_export_notebook_to_pdf.py
+
+      - name: Upload artifacts (for debugging)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: export-debug-${{ github.run_number }}
+          name: export-pdfs-${{ github.run_id }}
           path: |
             temp_pdf/
-            scripts/5_export_notebook_to_pdf_v5.py.log
+            *.log
           retention-days: ${{ env.RETENTION_DAYS }}
-      
-      - name: 🧹 Cleanup
+          if-no-files-found: ignore
+          compression-level: 6
+          overwrite: true
+
+      - name: Cleanup temporary files
         if: always()
-        run: rm -rf temp_pdf/
-      
-      - name: 📋 Final report
+        run: |
+          rm -rf temp_pdf/
+          rm -f *.log
+
+      - name: Export summary
         if: always()
         run: |
           echo "========================================"
-          echo "📤 EXPORT EXECUTION REPORT"
+          echo "📤 REPORTE DE EXPORTACIÓN"
           echo "========================================"
-          echo "📅 Date: $(date)"
+          echo "📅 Fecha: $(date)"
           echo "📌 Trigger: ${{ github.event_name }}"
           echo ""
-          
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "   • Triggered by: Scheduled cron (Tuesday 12:00 UTC)"
+            echo "   • Activado por: Cron programado (martes 12:00 UTC)"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "   • Triggered by: Manual dispatch"
-            echo "   • Week input: ${{ github.event.inputs.week || 'auto' }}"
-            echo "   • Language input: ${{ github.event.inputs.language || 'both' }}"
+            echo "   • Activado por: Ejecución manual"
+            echo "   • Semana especificada: ${{ github.event.inputs.week || 'auto-detección' }}"
+            echo "   • Idioma especificado: ${{ github.event.inputs.language || 'both' }}"
           fi
-          
           echo ""
-          echo "📁 Notebook directories:"
-          echo "   EN: $(ls Notebook_EN/weekly/*.ipynb 2>/dev/null | wc -l) notebooks"
-          echo "   ES: $(ls Notebook_ES/weekly/*.ipynb 2>/dev/null | wc -l) notebooks"
-          
+          echo "📁 Notebooks en el repositorio:"
+          echo "   EN: $(ls Notebook_EN/weekly/*.ipynb 2>/dev/null | wc -l) archivos"
+          echo "   ES: $(ls Notebook_ES/weekly/*.ipynb 2>/dev/null | wc -l) archivos"
           echo ""
-          echo "✅ Process completed"
+          echo "✅ Proceso completado"
           echo "========================================"
