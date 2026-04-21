@@ -2,16 +2,16 @@ name: Export Notebooks to PDF and Upload to Drive
 
 on:
   schedule:
-    # Ejecutar todos los martes a las 12:00 UTC
+    # Run every Tuesday at 12:00 UTC
     - cron: '0 12 * * 2'
   workflow_dispatch:
     inputs:
       week:
-        description: 'Semana a exportar (formato YYYY-WXX). Dejar vacío para auto-detectar la más reciente.'
+        description: 'Week to export (format YYYY-WXX). Leave blank to auto-detect the most recent.'
         required: false
         default: ''
       language:
-        description: 'Idioma a exportar'
+        description: 'Language to export'
         required: true
         default: 'both'
         type: choice
@@ -48,22 +48,22 @@ jobs:
 
       - name: Debug - Check notebook directories
         run: |
-          echo "📁 Verificando directorios de notebooks..."
+          echo "📁 Checking notebook directories..."
           echo ""
           if [ -d "Notebook_EN/weekly" ]; then
-            echo "✅ Notebook_EN/weekly existe"
-            echo "   Archivos encontrados:"
-            ls -la Notebook_EN/weekly/*.ipynb 2>/dev/null | head -5 || echo "   (sin archivos .ipynb)"
+            echo "✅ Notebook_EN/weekly exists"
+            echo "   Files found:"
+            ls -la Notebook_EN/weekly/*.ipynb 2>/dev/null | head -5 || echo "   (no .ipynb files)"
           else
-            echo "⚠️ Notebook_EN/weekly no encontrado"
+            echo "⚠️ Notebook_EN/weekly not found"
           fi
           echo ""
           if [ -d "Notebook_ES/weekly" ]; then
-            echo "✅ Notebook_ES/weekly existe"
-            echo "   Archivos encontrados:"
-            ls -la Notebook_ES/weekly/*.ipynb 2>/dev/null | head -5 || echo "   (sin archivos .ipynb)"
+            echo "✅ Notebook_ES/weekly exists"
+            echo "   Files found:"
+            ls -la Notebook_ES/weekly/*.ipynb 2>/dev/null | head -5 || echo "   (no .ipynb files)"
           else
-            echo "⚠️ Notebook_ES/weekly no encontrado"
+            echo "⚠️ Notebook_ES/weekly not found"
           fi
           echo ""
 
@@ -101,22 +101,22 @@ jobs:
         if: always()
         run: |
           echo "========================================"
-          echo "📤 REPORTE DE EXPORTACIÓN"
+          echo "📤 EXPORT REPORT"
           echo "========================================"
-          echo "📅 Fecha: $(date)"
+          echo "📅 Date: $(date)"
           echo "📌 Trigger: ${{ github.event_name }}"
           echo ""
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "   • Activado por: Cron programado (martes 12:00 UTC)"
+            echo "   • Triggered by: Scheduled cron (Tuesday 12:00 UTC)"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "   • Activado por: Ejecución manual"
-            echo "   • Semana especificada: ${{ github.event.inputs.week || 'auto-detección' }}"
-            echo "   • Idioma especificado: ${{ github.event.inputs.language || 'both' }}"
+            echo "   • Triggered by: Manual dispatch"
+            echo "   • Week specified: ${{ github.event.inputs.week || 'auto-detection' }}"
+            echo "   • Language specified: ${{ github.event.inputs.language || 'both' }}"
           fi
           echo ""
-          echo "📁 Notebooks en el repositorio:"
-          echo "   EN: $(ls Notebook_EN/weekly/*.ipynb 2>/dev/null | wc -l) archivos"
-          echo "   ES: $(ls Notebook_ES/weekly/*.ipynb 2>/dev/null | wc -l) archivos"
+          echo "📁 Notebooks in repository:"
+          echo "   EN: $(ls Notebook_EN/weekly/*.ipynb 2>/dev/null | wc -l) files"
+          echo "   ES: $(ls Notebook_ES/weekly/*.ipynb 2>/dev/null | wc -l) files"
           echo ""
-          echo "✅ Proceso completado"
+          echo "✅ Process completed"
           echo "========================================"
