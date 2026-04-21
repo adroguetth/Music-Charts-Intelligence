@@ -472,24 +472,14 @@ name: 3 - Enrich Chart Data
 
 on:
   schedule:
-    # Ejecutar cada lunes a las 14:00 UTC (después de que complete Script 2_2)
+    # Ejecutar cada lunes a las 14:00 UTC (después de que complete Script 2.2)
     - cron: '00 14 * * 1'
   
   workflow_dispatch:
-  
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/3_enrich_chart_data.py'
-      - 'charts_archive/2_2.build-song-catalog/build_song.db'  # NUEVO: activar en cambios del catálogo
-      - '.github/workflows/3_enrich-chart-data.yml'
 
 env:
   RETENTION_WEEKS: 78
 ```
-
-
 
 ### Pasos del Job
 
@@ -688,20 +678,37 @@ env:
 
 
 ### Programación Cron
-
-cron
-
 ```cron
 '00 14 * * 1'  # Minuto 0, Hora 14, Cualquier día del mes, Cualquier mes, Lunes
 ```
-
 - **Ejecución**: Cada lunes a las 14:00 UTC
+- **Desfase**: 2 horas después del Script 1 (12:00 UTC) y 45 minutos después del Script 2.2 (13:15 UTC)
+- **Propósito**: Permite que el Script 2.2 complete y genere `build_song.db` antes de que comience el enriquecimiento
 
-- **Desfase**: 2 horas después del Script 1 (12:00 UTC) y 45 minutos después del Script 2_2 (13:15 UTC)
+### Disparadores de Ejecución
 
-- **Propósito**: Permite que el Script 2_2 complete y genere `build_song.db` antes de que comience el enriquecimiento
+Este workflow se ejecuta **solo** en:
 
-  
+- **Ejecución programada**: Cada lunes a las 14:00 UTC
+- **Ejecución manual**: Mediante `workflow_dispatch` desde la interfaz de GitHub Actions
+
+> **Nota**: La ejecución automática en `git push` ha sido desactivada. Los cambios en scripts o en el catálogo de canciones no activan este workflow automáticamente. Para probar cambios, use la ejecución manual o espere la próxima ejecución programada.
+
+### Línea de Tiempo del Flujo de Ejecución
+
+```text
+Lunes 12:00 UTC ─→ Script 1: Descargar charts
+    ↓
+13:00 UTC ─→ Script 2.1: Enriquecimiento de artistas
+    ↓
+13:15 UTC ─→ Script 2.2: Construir catálogo de canciones
+    ↓
+14:00 UTC ─→ Script 3: Enriquecimiento de charts (ESTE WORKFLOW)
+    ↓
+15:00 UTC ─→ Script 4: Generación de notebooks
+    ↓
+Martes 12:00 UTC ─→ Script 5: Exportar a PDF + Drive
+```
 
 ### Secretos Requeridos
 
