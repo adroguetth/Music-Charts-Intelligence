@@ -1,3 +1,4 @@
+
 # Script 5: Notebook to PDF Exporter + Google Drive Uploader
 
 ![MIT License](https://img.shields.io/badge/license-MIT-9ecae1?style=flat-square&logo=open-source-initiative&logoColor=white) ![PDF Export](https://img.shields.io/badge/PDF-Export-red?style=flat-square) ![Google Drive](https://img.shields.io/badge/Google-Drive-4285F4?style=flat-square)
@@ -6,8 +7,8 @@
 
 ## 📥 Quick Downloads
 
-| Document                     | Format                                                       |
-| :--------------------------- | :----------------------------------------------------------- |
+| Document | Format |
+| :------- | :----- |
 | **🇬🇧 English Documentation** | [PDF](https://drive.google.com/file/d/XXXXXXXXXXXXXXXXXX/view?usp=drive_link) |
 | **🇪🇸 Spanish Documentation** | [PDF](https://drive.google.com/file/d/XXXXXXXXXXXXXXXXXX/view?usp=sharing) |
 
@@ -35,13 +36,13 @@ The script scans both English and Spanish notebook directories, determines the m
 
 ### **Legend**
 
-| Color    | Type         | Description                                          |
-| :------- | :----------- | :--------------------------------------------------- |
-| 🔵 Blue   | Input        | Notebook directories (EN and ES)                     |
-| 🟠 Orange | Process      | PDF conversion, folder creation, file upload         |
-| 🟣 Purple | External API | Google Drive API (OAuth 2.0)                         |
-| 🟢 Green  | Output       | Google Drive folder structure                        |
-| 🔴 Red    | Decision     | Conditional checks (notebook exists, week selection) |
+| Color | Type | Description |
+| :---- | :--- | :---------- |
+| 🔵 Blue | Input | Notebook directories (EN and ES) |
+| 🟠 Orange | Process | PDF conversion, folder creation, file upload |
+| 🟣 Purple | External API | Google Drive API (OAuth 2.0) |
+| 🟢 Green | Output | Google Drive folder structure |
+| 🔴 Red | Decision | Conditional checks (notebook exists, week selection) |
 
 ### **Diagram 1: Main Flow Overview**
 
@@ -70,18 +71,21 @@ This diagram shows the **target folder hierarchy** on Google Drive:
 
 ```text
 My Drive/
-└── (GDRIVE_ROOT_FOLDER_ID) # User-specified root folder
-└── weekly/ # Fixed parent folder (created once)
-└── youtube_charts_2026-W16/ # Week-specific folder
-├── EN/ # English language subfolder
-│ ├── youtube_charts_2026-W16.ipynb
-│ └── youtube_charts_2026-W16.pdf
-└── ES/ # Spanish language subfolder
-├── youtube_charts_2026-W16.ipynb
-└── youtube_charts_2026-W16.pdf
+└── (GDRIVE_ROOT_FOLDER_ID)           # User-specified root folder
+    └── weekly/                       # Fixed parent folder (created once)
+        └── youtube_charts_2026-W16/  # Week-specific folder
+            ├── EN/                    # English language subfolder
+            │   ├── youtube_charts_2026-W16.ipynb
+            │   └── youtube_charts_2026-W16.pdf
+            └── ES/                    # Spanish language subfolder
+                ├── youtube_charts_2026-W16.ipynb
+                └── youtube_charts_2026-W16.pdf
 ```
 
+
+
 **Folder Creation Logic:**
+
 - The root folder ID (`GDRIVE_ROOT_FOLDER_ID`) is provided by the user
 - The `weekly/` folder is created once if it doesn't exist
 - Week folders (e.g., `youtube_charts_2026-W16`) are created per execution
@@ -102,21 +106,21 @@ This diagram details the **week selection algorithm**:
 
 **Example:**
 
+```text
 Notebooks:
-
-- youtube_charts_2025-W52.ipynb → (2025, 52)
-
-- youtube_charts_2026-W01.ipynb → (2026, 1)
-
-- youtube_charts_2026-W02.ipynb → (2026, 2)
-
+  - youtube_charts_2025-W52.ipynb → (2025, 52)
+  - youtube_charts_2026-W01.ipynb → (2026, 1)
+  - youtube_charts_2026-W02.ipynb → (2026, 2)
 
 Sorted: (2026, 2) > (2026, 1) > (2025, 52)
 Most recent: (2026, 2) → 2026-W02
+```
+
+
 
 ------
 
-## 🔍 Detailed Analysis of `5_export_notebook_to_pdf_v5.py`
+## 🔍 Detailed Analysis of `5_export_notebook_to_pdf.py`
 
 ### Code Structure
 
@@ -167,15 +171,13 @@ def get_authenticated_service():
     return build('drive', 'v3', credentials=creds)
 ```
 
+
+
 **Authentication Flow:**
 
 1. Credentials are constructed from stored `refresh_token`
-
 2. If the access token has expired, it is automatically refreshed
-
 3. The `drive.file` scope limits access to files created or opened by the app
-
-   
 
 #### **4. Week Detection Functions**
 
@@ -202,13 +204,12 @@ def get_latest_week_from_all_notebooks() -> tuple:
     return all_notebooks[0][0]
 ```
 
+
+
 **Why this matters:**
 
 - Lexicographic sorting of strings (`"2026-W01"` vs `"2025-W52"`) works, but converting to tuples ensures correctness
-
 - Scanning both directories ensures the most recent week across languages is selected
-
-  
 
 #### **5. PDF Conversion**
 
@@ -238,15 +239,13 @@ def convert_to_pdf(notebook_path: Path) -> Path:
     return pdf_path
 ```
 
+
+
 **Key points:**
 
 - `--to webpdf` uses Playwright's Chromium (no LaTeX required)
-
 - `playwright install chromium` ensures the browser is available (idempotent)
-
 - Output directory is explicitly set to avoid path resolution issues
-
-  
 
 #### **6. Google Drive Folder Management**
 
@@ -270,13 +269,12 @@ def create_or_get_folder(service, folder_name: str, parent_id: str) -> str:
         return folder['id']
 ```
 
+
+
 **Idempotency Guarantee:**
 
 - Multiple runs of the script will not create duplicate folders
-
 - Existing folders are detected via API query and reused
-
-  
 
 #### **7. File Upload**
 
@@ -289,13 +287,12 @@ def upload_file(service, file_path: Path, parent_folder_id: str, mime_type: str)
     return uploaded['id']
 ```
 
+
+
 **MIME Types Used:**
 
 - `.ipynb` → `application/x-ipynb+json`
-
 - `.pdf` → `application/pdf`
-
-  
 
 ------
 
@@ -303,26 +300,23 @@ def upload_file(service, file_path: Path, parent_folder_id: str, mime_type: str)
 
 ### Workflow Structure
 
-yaml
-
 ```yaml
-name: 5 - Export Notebook to PDF and Drive
+name: Export Notebooks to PDF and Upload to Drive
 
 on:
-  # Scheduled execution: Tuesday at 12:00 UTC
   schedule:
+    # Run every Tuesday at 12:00 UTC
     - cron: '0 12 * * 2'
   
-  # Manual execution only (no automatic triggers on push)
   workflow_dispatch:
     inputs:
       week:
-        description: 'Specific week to export (format: YYYY-WXX). Leave empty for latest'
+        description: 'Week to export (format YYYY-WXX). Leave empty for auto-detection.'
         required: false
-        type: string
+        default: ''
       language:
         description: 'Language to export'
-        required: false
+        required: true
         default: 'both'
         type: choice
         options:
@@ -334,18 +328,20 @@ env:
   RETENTION_DAYS: 30
 ```
 
+
+
 ### Job Steps
 
-| Step | Name                                  | Purpose                                                      |
-| :--- | :------------------------------------ | :----------------------------------------------------------- |
-| 1    | 📚 Checkout repository                 | Clone repository (read-only)                                 |
-| 2    | 🐍 Setup Python                        | Install Python 3.12 with pip cache                           |
-| 3    | 📦 Install dependencies                | Install jupyter, nbconvert, playwright, Google API libraries |
-| 4    | 📂 Verify notebook directories         | Check existence of EN/ES notebook folders                    |
-| 5    | 🚀 Run export script                   | Execute main PDF export and Drive upload                     |
-| 6    | 📤 Upload debug artifacts (on failure) | Capture logs and temp files for debugging                    |
-| 7    | 🧹 Cleanup                             | Remove temporary PDF files                                   |
-| 8    | 📋 Final report                        | Display execution summary                                    |
+| Step | Name                            | Purpose                                                      |
+| :--- | :------------------------------ | :----------------------------------------------------------- |
+| 1    | 📚 Checkout repository           | Clone repository (minimal depth)                             |
+| 2    | 🐍 Setup Python                  | Install Python 3.12 with pip cache                           |
+| 3    | 📦 Install dependencies          | Install jupyter, nbconvert, playwright, Google API libraries |
+| 4    | 📂 Verify notebook directories   | Check existence of EN/ES notebook folders                    |
+| 5    | 🚀 Run export script             | Execute main PDF export and Drive upload                     |
+| 6    | 📤 Upload artifacts (on failure) | Capture PDFs and logs for debugging                          |
+| 7    | 🧹 Cleanup                       | Remove temporary PDF files                                   |
+| 8    | 📋 Final report                  | Display execution summary                                    |
 
 ### Detailed Steps
 
@@ -412,7 +408,7 @@ env:
 
 ```yaml
 - name: 🚀 Run export script
-  run: python scripts/5_export_notebook_to_pdf_v5.py
+  run: python scripts/5_export_notebook_to_pdf.py
   env:
     GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
     GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -424,17 +420,17 @@ env:
 
 
 
-#### **6. 📤 Upload Debug Artifacts (on failure)**
+#### **6. 📤 Upload Artifacts (on failure)**
 
 ```yaml
-- name: 📤 Upload debug artifacts (on failure)
+- name: 📤 Upload artifacts (on failure)
   if: failure()
   uses: actions/upload-artifact@v4
   with:
     name: export-debug-${{ github.run_number }}
     path: |
       temp_pdf/
-      scripts/5_export_notebook_to_pdf_v5.py.log
+      scripts/5_export_notebook_to_pdf.py.log
     retention-days: ${{ env.RETENTION_DAYS }}
 ```
 
@@ -486,16 +482,17 @@ env:
 ```
 
 - **Execution**: Every Tuesday at 12:00 UTC
-- **Offset**: 21 hours after Script 4_1 (Monday 15:00 UTC)
+- **Offset**: 21 hours after Script 4.1 (Monday 15:00 UTC)
 - **Purpose**: Allows the notebook generation workflow to complete and any manual review before archival
 
 ### Execution Triggers
 
 This workflow runs **only** on:
+
 - **Scheduled execution**: Every Tuesday at 12:00 UTC
 - **Manual execution**: Via `workflow_dispatch` from GitHub Actions UI
 
-> **Note**: Automatic execution on `git push` is intentionally disabled for this workflow. The script only reads notebooks and uploads to Drive without committing changes to the repository. To test changes, use manual dispatch or wait for the next scheduled run.  
+> **Note**: Automatic execution on `git push` is intentionally disabled for this workflow. The script only reads notebooks and uploads to Drive without committing changes to the repository. To test changes, use manual dispatch or wait for the next scheduled run.
 
 ### Execution Timeline
 
@@ -606,8 +603,6 @@ python generate_refresh_token.py
 
 Copy the printed refresh token.
 
-
-
 #### **5. Set Environment Variables**
 
 ```bash
@@ -629,7 +624,7 @@ set GDRIVE_ROOT_FOLDER_ID=1ABCxyz123...
 #### **6. Run Initial Test**
 
 ```bash
-python scripts/5_export_notebook_to_pdf_v5.py
+python scripts/5_export_notebook_to_pdf.py
 ```
 
 
@@ -697,7 +692,7 @@ My Drive/
 ### Adjustable Parameters in Script
 
 ```python
-# In 5_export_notebook_to_pdf_v5.py
+# In 5_export_notebook_to_pdf.py
 NOTEBOOKS_EN_DIR = Path("Notebook_EN/weekly")
 NOTEBOOKS_ES_DIR = Path("Notebook_ES/weekly")
 TEMP_PDF_DIR = Path("temp_pdf")
@@ -768,7 +763,7 @@ week_folder_name = f"week_{year}_{week:02d}"
 ```bash
 # Set debug level before running
 export LOG_LEVEL=DEBUG
-python scripts/5_export_notebook_to_pdf_v5.py
+python scripts/5_export_notebook_to_pdf.py
 ```
 
 
@@ -784,7 +779,7 @@ ls -la Notebook_ES/weekly/
 
 **Test Google Drive authentication separately:**
 
-```bash
+```python
 # quick_test.py
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -853,7 +848,3 @@ print("Authentication successful!")
 - **OAuth Token Expiry**: Refresh tokens can expire if unused for 6+ months (requires re-authorization)
 - **No PDF Compression**: Files are uploaded as-is (no size optimization)
 - **Language Hardcoding**: EN and ES are hardcoded; adding new languages requires script modification
-
-------
-
-**⭐ If you find this project useful, please consider starring it on GitHub!**
