@@ -2,15 +2,13 @@ name: 2.1 - Update Artist Database
 
 on:
   schedule:
-    # Run every Monday at 13:00 UTC (one hour after Monday's download at 12:00 UTC)
     - cron: '0 13 * * 1'
   
-  # Allow manual execution
   workflow_dispatch:
 
 env:
   RETENTION_DAYS: 30
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Advance to Node.js 24
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-artist-database:
@@ -22,13 +20,10 @@ jobs:
       contents: write
     
     steps:
-    # ==================================================
-    # SETUP PHASE
-    # ==================================================
     - name: 📚 Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full history for git operations
+        fetch-depth: 0
 
     - name: 🐍 Setup Python
       uses: actions/setup-python@v5
@@ -39,32 +34,20 @@ jobs:
     - name: 📦 Install dependencies
       run: |
         pip install -r requirements.txt
-        # Playwright is not needed for this modular script
 
     - name: 📁 Ensure directory structure
       run: |
         mkdir -p charts_archive/1_download-chart/databases
         mkdir -p charts_archive/2_1.countries-genres-artist
 
-    # ==================================================
-    # EXECUTION PHASE
-    # ==================================================
     - name: 🚀 Build artist database (modular)
       timeout-minutes: 55
       run: |
         python scripts/2_1.build_artist_db.py
       env:
         GITHUB_ACTIONS: true
-        # DeepSeek API key for fallback artist information
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        # Optional: Add other API tokens as secrets if needed
-        # MUSICBRAINZ_TOKEN: ${{ secrets.MUSICBRAINZ_TOKEN }}
-        # SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-        # SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
 
-    # ==================================================
-    # VALIDATION PHASE
-    # ==================================================
     - name: ✅ Verify database integrity
       run: |
         echo "📊 Verifying artist database..."
@@ -86,9 +69,6 @@ jobs:
           exit 1
         fi
 
-    # ==================================================
-    # PERSISTENCE PHASE
-    # ==================================================
     - name: 📤 Commit and push changes
       run: |
         echo "📝 Preparing commit..."
@@ -112,9 +92,6 @@ jobs:
           echo "✅ Changes pushed successfully"
         fi
 
-    # ==================================================
-    # RECOVERY PHASE (on failure)
-    # ==================================================
     - name: 📦 Upload debug artifacts
       if: failure()
       uses: actions/upload-artifact@v4
@@ -124,9 +101,6 @@ jobs:
           charts_archive/
         retention-days: 7
 
-    # ==================================================
-    # REPORTING PHASE
-    # ==================================================
     - name: 📋 Generate final report
       if: always()
       run: |
