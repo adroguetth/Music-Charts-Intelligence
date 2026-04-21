@@ -45,11 +45,8 @@ jobs:
       - name: 📦 Install Python dependencies
         run: |
           pip install --upgrade pip
-          # Core data science libraries
           pip install pandas numpy matplotlib seaborn scipy requests
-          # Treemap support (replaces plotly for static visualizations)
           pip install squarify
-          # Jupyter notebook generation and execution
           pip install jupyter nbformat nbconvert
 
       - name: 🔍 Determine week to process
@@ -77,10 +74,8 @@ jobs:
 
       - name: ⚡ Execute notebooks to embed outputs
         run: |
-          # Change to repository root to ensure relative paths work
           cd ${{ github.workspace }}
 
-          # Execute English notebook
           EN_NOTEBOOK="Notebook_EN/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb"
           if [ -f "$EN_NOTEBOOK" ]; then
             echo "🇬🇧 Executing English notebook..."
@@ -90,7 +85,6 @@ jobs:
               --output-dir Notebook_EN/weekly/
           fi
 
-          # Execute Spanish notebook
           ES_NOTEBOOK="Notebook_ES/weekly/youtube_charts_${{ steps.get_week.outputs.week }}.ipynb"
           if [ -f "$ES_NOTEBOOK" ]; then
             echo "🇪🇸 Executing Spanish notebook..."
@@ -102,23 +96,19 @@ jobs:
 
       - name: 🧹 Keep only last 6 notebooks locally
         run: |
-          # English notebooks
           cd Notebook_EN/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
 
-          # Spanish notebooks
           cd Notebook_ES/weekly
           ls -1 *.ipynb 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../..
 
-          # English cache
           mkdir -p Notebook_EN/weekly/cache
           cd Notebook_EN/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
           cd ../../../..
 
-          # Spanish cache
           mkdir -p Notebook_ES/weekly/cache
           cd Notebook_ES/weekly/cache
           ls -1 *.json 2>/dev/null | sort -r | tail -n +7 | xargs -r rm -f
