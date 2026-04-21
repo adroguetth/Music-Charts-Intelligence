@@ -339,13 +339,6 @@ on:
   
   # Allow manual workflow execution
   workflow_dispatch:
-  
-  # Trigger on push to main branch if Python scripts change
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/*.py'
 
 env:
   # Number of days to retain artifacts
@@ -463,6 +456,14 @@ jobs:
   - `13:00 UTC` → Script 2: Artist enrichment
   - `14:00 UTC` → Script 3: Chart enrichment
   - `15:00 UTC` → Script 4: Notebook generation (weekly)
+ 
+### Execution Triggers
+
+This workflow runs **only** on:
+- **Scheduled execution**: Every Monday at 12:00 UTC
+- **Manual execution**: Via `workflow_dispatch` from GitHub Actions UI
+
+> **Note**: Automatic execution on `git push` has been disabled. Changes to scripts do not trigger this workflow automatically. To test changes, use manual dispatch or wait for the next scheduled run.
 
 ### Required Secrets
 
