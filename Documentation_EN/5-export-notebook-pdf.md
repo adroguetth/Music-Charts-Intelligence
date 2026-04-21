@@ -334,8 +334,6 @@ env:
   RETENTION_DAYS: 30
 ```
 
-
-
 ### Job Steps
 
 | Step | Name                                  | Purpose                                                      |
@@ -488,25 +486,29 @@ env:
 ```
 
 - **Execution**: Every Tuesday at 12:00 UTC
-
 - **Offset**: 21 hours after Script 4_1 (Monday 15:00 UTC)
-
 - **Purpose**: Allows the notebook generation workflow to complete and any manual review before archival
 
-  
+### Execution Triggers
 
-### Execution Timeline (Monday-Tuesday)
+This workflow runs **only** on:
+- **Scheduled execution**: Every Tuesday at 12:00 UTC
+- **Manual execution**: Via `workflow_dispatch` from GitHub Actions UI
+
+> **Note**: Automatic execution on `git push` is intentionally disabled for this workflow. The script only reads notebooks and uploads to Drive without committing changes to the repository. To test changes, use manual dispatch or wait for the next scheduled run.  
+
+### Execution Timeline
 
 ```text
 Monday 12:00 UTC ─→ Script 1: Download charts
         ↓
-Monday 13:00 UTC ─→ Script 2.1: Artist enrichment
+13:00 UTC ─→ Script 2.1: Artist enrichment
         ↓
-Monday 13:15 UTC ─→ Script 2.2: Song catalog
+13:15 UTC ─→ Script 2.2: Song catalog
         ↓
-Monday 14:00 UTC ─→ Script 3: Chart enrichment
+14:00 UTC ─→ Script 3: Chart enrichment
         ↓
-Monday 15:00 UTC ─→ Script 4: Notebook generation
+15:00 UTC ─→ Script 4: Notebook generation
         ↓
 Tuesday 12:00 UTC ─→ Script 5: Export to PDF + Drive (THIS WORKFLOW)
 ```
