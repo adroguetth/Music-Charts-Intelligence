@@ -1,19 +1,19 @@
-name: 2.2 - Build Song Catalog
+name: 3 - Enrich Chart Data
 
 on:
   schedule:
-    - cron: '15 13 * * 1'
+    - cron: '00 14 * * 1'
   
   workflow_dispatch:
 
 env:
-  RETENTION_DAYS: 90
+  RETENTION_WEEKS: 78
 
 jobs:
-  build-catalog:
-    name: Build and Enrich Song Catalog
+  enrich-chart-data:
+    name: Enrich YouTube Chart Data
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     
     permissions:
       contents: write
@@ -32,120 +32,43 @@ jobs:
     
     - name: 📦 Install dependencies
       run: |
-        echo "✅ No external dependencies required"
-        echo "Python version: $(python --version)"
+        pip install -r requirements.txt
     
     - name: 📁 Create directory structure
       run: |
-        mkdir -p charts_archive/2_2.build-song-catalog
+        mkdir -p charts_archive/1_download-chart/databases
+        mkdir -p charts_archive/3_enrich-chart-data
     
-    - name: 🔍 Verify prerequisites
+    - name: 🔍 Verify song catalog database exists
       run: |
-        echo "🔍 Checking prerequisite files..."
-        
-        if [ ! -f "charts_archive/2_1.countries-genres-artist/artist_countries_genres.db" ]; then
-          echo "❌ Artist metadata database not found at charts_archive/2_1.countries-genres-artist/artist_countries_genres.db"
-          echo "   Please ensure script 2_1 has run successfully before this workflow."
+        if [ ! -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
+          echo "❌ Song catalog database not found at charts_archive/2_2.build-song-catalog/build_song.db"
+          echo "   Please ensure script 2_2 has run successfully before this workflow."
           exit 1
         fi
-        echo "✅ Artist metadata database found"
-        
-        DB_COUNT=$(find charts_archive/1_download-chart/databases -name "*.db" 2>/dev/null | wc -l)
-        if [ "$DB_COUNT" -eq 0 ]; then
-          echo "❌ No chart databases found in charts_archive/1_download-chart/databases/"
-          echo "   Please ensure script 1 has run successfully before this workflow."
-          exit 1
-        fi
-        echo "✅ Found $DB_COUNT chart database(s)"
-        
-        LATEST_DB=$(ls -t charts_archive/1_download-chart/databases/*.db 2>/dev/null | head -1)
-        echo "📆 Latest chart database: $(basename "$LATEST_DB")"
+        echo "✅ Song catalog database found"
+        SIZE=$(stat -c%s "charts_archive/2_2.build-song-catalog/build_song.db")
+        echo "   Size: $((SIZE / 1024)) KB"
     
-    - name: 📊 Pre-execution catalog status
+    - name: 🚀 Run enrichment script
       run: |
-        echo "📊 Current catalog status (before execution):"
-        if [ -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
-          SIZE=$(stat -c%s "charts_archive/2_2.build-song-catalog/build_song.db")
-          echo "   📀 Database size: $((SIZE / 1024)) KB"
-          
-          COUNT=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;" 2>/dev/null || echo "N/A")
-          echo "   🎵 Total songs: $COUNT"
-          
-          if [ "$COUNT" != "N/A" ] && [ "$COUNT" -gt 0 ]; then
-            INCOMPLETE=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-              SELECT COUNT(*) FROM artist_track 
-              WHERE artist_country IS NULL 
-                 OR artist_country = '' 
-                 OR artist_country = 'Unknown'
-                 OR macro_genre IS NULL 
-                 OR macro_genre = '' 
-                 OR macro_genre = 'Unknown';
-            " 2>/dev/null || echo "0")
-            echo "   ⚠️  Incomplete records: $INCOMPLETE"
-          fi
-        else
-          echo "   ℹ️  Catalog does not exist yet - will be created"
-        fi
-    
-    - name: 🚀 Run song catalog builder
-      run: |
-        python scripts/2_2.build_song_catalog.py
+        python scripts/3_enrich_chart_data.py
       env:
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         GITHUB_ACTIONS: true
     
-    - name: 📊 Post-execution catalog status
+    - name: ✅ Verify results
       run: |
-        echo "📊 Updated catalog status (after execution):"
-        if [ -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
-          SIZE=$(stat -c%s "charts_archive/2_2.build-song-catalog/build_song.db")
-          echo "   📀 Database size: $((SIZE / 1024)) KB"
-          
-          COUNT=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
-          echo "   🎵 Total songs: $COUNT"
-          
-          COMPLETE=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT COUNT(*) FROM artist_track 
-            WHERE artist_country IS NOT NULL 
-              AND artist_country != '' 
-              AND artist_country != 'Unknown'
-              AND macro_genre IS NOT NULL 
-              AND macro_genre != '' 
-              AND macro_genre != 'Unknown';
-          ")
-          echo "   ✅ Complete records: $COMPLETE ($(( COMPLETE * 100 / COUNT ))%)"
-          
-          echo "   🌍 Top 5 countries:"
-          sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT artist_country, COUNT(*) as cnt 
-            FROM artist_track 
-            WHERE artist_country NOT IN ('Unknown', 'Multi-country')
-            GROUP BY artist_country 
-            ORDER BY cnt DESC 
-            LIMIT 5;
-          " | while IFS='|' read country cnt; do
-            echo "      • $country: $cnt songs"
-          done
-          
-          echo "   🎵 Top 5 genres:"
-          sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT macro_genre, COUNT(*) as cnt 
-            FROM artist_track 
-            WHERE macro_genre NOT IN ('Unknown', 'Multi-genre')
-            GROUP BY macro_genre 
-            ORDER BY cnt DESC 
-            LIMIT 5;
-          " | while IFS='|' read genre cnt; do
-            echo "      • $genre: $cnt songs"
-          done
-        else
-          echo "   ❌ Catalog database not created"
-          exit 1
-        fi
-    
-    - name: 📂 List output directory
-      run: |
-        echo "📂 Contents of charts_archive/2_2.build-song-catalog/:"
-        ls -lah charts_archive/2_2.build-song-catalog/
+        echo "📊 Verifying execution results..."
+        
+        echo "📂 Contents of charts_archive/3_enrich-chart-data/:"
+        ls -lah charts_archive/3_enrich-chart-data/
+        
+        echo -e "\n🗃️ Enriched databases:"
+        ls -lah charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null || echo "No enriched databases found"
+        
+        echo -e "\n📈 File statistics:"
+        find charts_archive/3_enrich-chart-data -type f -exec ls -lh {} \; | awk '{print $5, $9}' 2>/dev/null || echo "No files found"
     
     - name: 📤 Commit and push changes
       run: |
@@ -154,30 +77,14 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        git add charts_archive/2_2.build-song-catalog/
+        git add charts_archive/3_enrich-chart-data/
         
         if git diff --cached --quiet; then
           echo "🔭 No changes to commit"
         else
-          if [ -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
-            TOTAL=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
-            NEW=$(git diff --cached --numstat | awk '{sum+=$1} END {print sum}')
-          else
-            TOTAL="N/A"
-            NEW="N/A"
-          fi
-          
           DATE=$(date +'%Y-%m-%d')
           WEEK=$(date +'%Y-W%W')
-          git commit -m "🤖 Update song catalog ${DATE} (Week ${WEEK}) [Automated]
-          
-          📊 Catalog statistics:
-          • Total songs: ${TOTAL}
-          • Changes detected: ${NEW} modifications
-          
-          🔄 This update includes:
-          • New songs added from latest weekly chart
-          • Country/genre resolution for incomplete records"
+          git commit -m "🤖 Enriched chart data (catalog-linked) ${DATE} (Week ${WEEK}) [Automated]"
           
           echo "⬇️ Pulling latest changes with rebase..."
           git pull --rebase origin main
@@ -187,81 +94,75 @@ jobs:
           echo "✅ Changes pushed successfully"
         fi
     
-    - name: 📦 Upload catalog artifact
-      if: always()
+    - name: 📦 Upload artifacts (on failure)
+      if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: song-catalog-${{ github.run_number }}
+        name: enrich-debug-${{ github.run_number }}
         path: |
-          charts_archive/2_2.build-song-catalog/
-          scripts/2_2.build_song_catalog.py
-        retention-days: ${{ env.RETENTION_DAYS }}
+          scripts/3_enrich_chart_data.py.log
+          charts_archive/3_enrich-chart-data/
+        retention-days: 7
+    
+    - name: 🧹 Clean old databases
+      run: |
+        echo "🧹 Cleaning enriched databases older than ${{ env.RETENTION_WEEKS }} weeks..."
+        
+        find charts_archive/3_enrich-chart-data/ \
+          -name "*_enriched.db" \
+          -type f \
+          -mtime +$((RETENTION_WEEKS * 7)) \
+          -delete
+        
+        echo "✅ Cleanup completed"
     
     - name: 📋 Final report
       if: always()
       run: |
         echo "========================================"
-        echo "🎵 SONG CATALOG BUILD REPORT"
+        echo "🎵 ENRICHMENT EXECUTION REPORT"
         echo "========================================"
         echo "📅 Date: $(date)"
         echo "📌 Trigger: ${{ github.event_name }}"
-        echo "🔗 Run ID: ${{ github.run_id }}"
+        echo "🔗 Commit: ${{ github.sha }}"
         echo ""
         
-        if [ -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
-          echo "📊 CATALOG STATISTICS:"
+        LATEST_DB=$(ls -t charts_archive/3_enrich-chart-data/*_enriched.db 2>/dev/null | head -1)
+        
+        if [ -f "$LATEST_DB" ]; then
+          echo "✅ Latest enriched database: $(basename $LATEST_DB)"
+          SIZE=$(stat -c%s "$LATEST_DB")
+          echo "📊 Size: $((SIZE / 1024)) KB"
           
-          TOTAL=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
-          echo "   🎵 Total unique songs: $TOTAL"
-          
-          COMPLETE=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT COUNT(*) FROM artist_track 
-            WHERE artist_country NOT IN ('Unknown', '') 
-              AND macro_genre NOT IN ('Unknown', '');
-          " 2>/dev/null || echo "0")
-          echo "   ✅ Complete records: $COMPLETE ($(( COMPLETE * 100 / TOTAL ))%)"
-          
-          MULTI=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT COUNT(*) FROM artist_track WHERE artist_country = 'Multi-country';
-          ")
-          echo "   🌐 Multi-country collaborations: $MULTI ($(( MULTI * 100 / TOTAL ))%)"
-          
-          UNIQUE_COUNTRIES=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT COUNT(DISTINCT artist_country) FROM artist_track 
-            WHERE artist_country NOT IN ('Unknown', 'Multi-country');
-          ")
-          echo "   🌍 Distinct countries represented: $UNIQUE_COUNTRIES"
-          
-          UNIQUE_GENRES=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT COUNT(DISTINCT macro_genre) FROM artist_track 
-            WHERE macro_genre NOT IN ('Unknown', 'Multi-genre');
-          ")
-          echo "   🎵 Distinct genres: $UNIQUE_GENRES"
-          
-          echo ""
-          echo "📀 DATABASE INFO:"
-          echo "   📂 Location: charts_archive/2_2.build-song-catalog/build_song.db"
-          echo "   💾 Size: $(du -h charts_archive/2_2.build-song-catalog/build_song.db | cut -f1)"
-          echo "   🔑 Highest ID: $(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT MAX(id) FROM artist_track;")"
-          
-          echo ""
-          echo "🏆 TOP 3 ARTISTS BY SONG COUNT:"
-          sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
-            SELECT artist_names, COUNT(*) as cnt 
-            FROM artist_track 
-            GROUP BY artist_names 
-            ORDER BY cnt DESC 
-            LIMIT 3;
-          " | while IFS='|' read artist cnt; do
-            ARTIST_SHORT=$(echo "$artist" | cut -c1-50)
-            echo "   • $ARTIST_SHORT: $cnt songs"
-          done
+          if command -v sqlite3 &> /dev/null; then
+            echo ""
+            echo "📊 Database statistics:"
+            TOTAL=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs;" 2>/dev/null || echo "N/A")
+            LINKED=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE id IS NOT NULL;" 2>/dev/null || echo "N/A")
+            MULTI=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE artist_country = 'Multi-country';" 2>/dev/null || echo "N/A")
+            ERROR=$(sqlite3 "$LATEST_DB" "SELECT COUNT(*) FROM enriched_songs WHERE error != '';" 2>/dev/null || echo "N/A")
+            
+            echo "   • Total songs: $TOTAL"
+            if [ "$LINKED" != "N/A" ] && [ "$TOTAL" != "N/A" ] && [ "$TOTAL" -gt 0 ]; then
+              LINKED_PCT=$(( LINKED * 100 / TOTAL ))
+              echo "   • Linked to catalog: $LINKED ($LINKED_PCT%)"
+            else
+              echo "   • Linked to catalog: $LINKED"
+            fi
+            echo "   • Multi-country: $MULTI"
+            echo "   • With errors: $ERROR"
+          fi
         else
-          echo "❌ Catalog database not found"
+          echo "⚠️ No enriched database found"
+        fi
+        
+        TOTAL_DBS=$(find charts_archive/3_enrich-chart-data -name "*_enriched.db" 2>/dev/null | wc -l)
+        if [ "$TOTAL_DBS" -gt 0 ]; then
+          echo ""
+          echo "📦 Total enriched databases: $TOTAL_DBS"
+          echo "📊 Retention policy: ${{ env.RETENTION_WEEKS }} weeks (1.5 years)"
         fi
         
         echo ""
-        echo "📁 ARTIFACT INFO:"
-        echo "   📦 Artifact name: song-catalog-${{ github.run_number }}"
-        echo "   💾 Retention: ${{ env.RETENTION_DAYS }} days"
+        echo "✅ Process completed"
         echo "========================================"
