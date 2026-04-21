@@ -470,14 +470,6 @@ on:
     - cron: '00 14 * * 1'
   
   workflow_dispatch:
-  
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/3_enrich_chart_data.py'
-      - 'charts_archive/2_2.build-song-catalog/build_song.db'  # NEW: trigger on catalog changes
-      - '.github/workflows/3_enrich-chart-data.yml'
 
 env:
   RETENTION_WEEKS: 78
@@ -686,14 +678,34 @@ env:
 ```cron
 '00 14 * * 1'  # Minute 0, Hour 14, Any day of month, Any month, Monday
 ```
-
 - **Execution**: Every Monday at 14:00 UTC
-
 - **Offset**: 2 hours after Script 1 (12:00 UTC) and 45 minutes after Script 2.2 (13:15 UTC)
-
 - **Purpose**: Allows Script 2.2 to complete and generate `build_song.db` before enrichment begins
 
-  
+### Execution Triggers
+
+This workflow runs **only** on:
+
+- **Scheduled execution**: Every Monday at 14:00 UTC
+- **Manual execution**: Via `workflow_dispatch` from GitHub Actions UI
+
+> **Note**: Automatic execution on `git push` has been disabled. Changes to scripts or the song catalog do not trigger this workflow automatically. To test changes, use manual dispatch or wait for the next scheduled run.
+
+### Execution Flow Timeline
+
+```text
+Monday 12:00 UTC ─→ Script 1: Download charts
+    ↓
+13:00 UTC ─→ Script 2.1: Artist enrichment
+    ↓
+13:15 UTC ─→ Script 2.2: Build song catalog
+    ↓
+14:00 UTC ─→ Script 3: Chart enrichment (THIS WORKFLOW)
+    ↓
+15:00 UTC ─→ Script 4: Notebook generation
+    ↓
+Tuesday 12:00 UTC ─→ Script 5: Export to PDF + Drive
+```
 
 ### Required Secrets
 
