@@ -2,11 +2,10 @@ name: 2.2 - Build Song Catalog
 
 on:
   schedule:
-    # Run every Monday at 13:15 UTC (after Script 1 and Script 2.1)
     - cron: '15 13 * * 1'
   
   workflow_dispatch:
-  
+
 env:
   RETENTION_DAYS: 90
 
@@ -33,7 +32,6 @@ jobs:
     
     - name: 📦 Install dependencies
       run: |
-        # Only Python standard library required - no external dependencies
         echo "✅ No external dependencies required"
         echo "Python version: $(python --version)"
     
@@ -45,7 +43,6 @@ jobs:
       run: |
         echo "🔍 Checking prerequisite files..."
         
-        # Check artist metadata database (required for country/genre resolution)
         if [ ! -f "charts_archive/2_1.countries-genres-artist/artist_countries_genres.db" ]; then
           echo "❌ Artist metadata database not found at charts_archive/2_1.countries-genres-artist/artist_countries_genres.db"
           echo "   Please ensure script 2_1 has run successfully before this workflow."
@@ -53,7 +50,6 @@ jobs:
         fi
         echo "✅ Artist metadata database found"
         
-        # Check for chart databases
         DB_COUNT=$(find charts_archive/1_download-chart/databases -name "*.db" 2>/dev/null | wc -l)
         if [ "$DB_COUNT" -eq 0 ]; then
           echo "❌ No chart databases found in charts_archive/1_download-chart/databases/"
@@ -62,7 +58,6 @@ jobs:
         fi
         echo "✅ Found $DB_COUNT chart database(s)"
         
-        # Show latest database
         LATEST_DB=$(ls -t charts_archive/1_download-chart/databases/*.db 2>/dev/null | head -1)
         echo "📆 Latest chart database: $(basename "$LATEST_DB")"
     
@@ -76,7 +71,6 @@ jobs:
           COUNT=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;" 2>/dev/null || echo "N/A")
           echo "   🎵 Total songs: $COUNT"
           
-          # Check for NULL/Unknown values in existing catalog
           if [ "$COUNT" != "N/A" ] && [ "$COUNT" -gt 0 ]; then
             INCOMPLETE=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
               SELECT COUNT(*) FROM artist_track 
@@ -109,7 +103,6 @@ jobs:
           COUNT=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
           echo "   🎵 Total songs: $COUNT"
           
-          # Show statistics about resolved data
           COMPLETE=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
             SELECT COUNT(*) FROM artist_track 
             WHERE artist_country IS NOT NULL 
@@ -121,7 +114,6 @@ jobs:
           ")
           echo "   ✅ Complete records: $COMPLETE ($(( COMPLETE * 100 / COUNT ))%)"
           
-          # Show country distribution
           echo "   🌍 Top 5 countries:"
           sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
             SELECT artist_country, COUNT(*) as cnt 
@@ -134,7 +126,6 @@ jobs:
             echo "      • $country: $cnt songs"
           done
           
-          # Show genre distribution
           echo "   🎵 Top 5 genres:"
           sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "
             SELECT macro_genre, COUNT(*) as cnt 
@@ -163,13 +154,11 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Stage catalog files
         git add charts_archive/2_2.build-song-catalog/
         
         if git diff --cached --quiet; then
           echo "🔭 No changes to commit"
         else
-          # Get statistics for commit message
           if [ -f "charts_archive/2_2.build-song-catalog/build_song.db" ]; then
             TOTAL=$(sqlite3 charts_archive/2_2.build-song-catalog/build_song.db "SELECT COUNT(*) FROM artist_track;")
             NEW=$(git diff --cached --numstat | awk '{sum+=$1} END {print sum}')
