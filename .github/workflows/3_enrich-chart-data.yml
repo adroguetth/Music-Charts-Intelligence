@@ -2,11 +2,10 @@ name: 3 - Enrich Chart Data
 
 on:
   schedule:
-    # Run every Monday at 14:00 UTC (after 2_2.build-song-catalog)
     - cron: '00 14 * * 1'
   
   workflow_dispatch:
-  
+
 env:
   RETENTION_WEEKS: 78
 
