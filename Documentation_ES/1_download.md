@@ -323,22 +323,15 @@ La salida incluye:
 ### Estructura del Workflow
 
 ```yaml
-name: 1- Descargar Chart de YouTube
+name: 1- Download YouTube Chart
 
 on:
   schedule:
-    # Se ejecuta cada lunes a las 12:00 UTC
+    # Ejecutar cada lunes a las 12:00 UTC
     - cron: '0 12 * * 1'
   
-  # Permite ejecución manual del workflow
+  # Permitir ejecución manual del workflow
   workflow_dispatch:
-  
-  # Se dispara con push a main si cambian scripts de Python
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/*.py'
 
 env:
   # Número de días para retener artefactos
@@ -457,6 +450,14 @@ jobs:
   - `13:00 UTC` → Script 2: Enriquecimiento de artistas
   - `14:00 UTC` → Script 3: Enriquecimiento de charts
   - `15:00 UTC` → Script 4: Generación de notebooks
+ 
+### Disparadores de Ejecución
+
+Este workflow se ejecuta **solo** en:
+- **Ejecución programada**: Cada lunes a las 12:00 UTC
+- **Ejecución manual**: Mediante `workflow_dispatch` desde la interfaz de GitHub Actions
+
+> **Nota**: La ejecución automática en `git push` ha sido desactivada. Los cambios en los scripts no activan este workflow automáticamente. Para probar cambios, use la ejecución manual o espere la próxima ejecución programada.
 
 ### Secretos Requeridos
 
