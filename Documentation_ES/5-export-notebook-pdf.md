@@ -10,6 +10,7 @@
 | :-------- | :------ |
 | **🇬🇧 Documentación en Inglés** | [PDF](https://drive.google.com/file/d/XXXXXXXXXXXXXXXXXX/view?usp=drive_link) |
 | **🇪🇸 Documentación en Español** | [PDF](https://drive.google.com/file/d/XXXXXXXXXXXXXXXXXX/view?usp=sharing) |
+| **📁 Notebooks y archivos PDF archivados** | [Google Drive Folder](https://drive.google.com/drive/folders/1RpfyGHsIY5MThE1bfe0Rc3gk03WoYzpR) |
 
 ## 📋 Descripción General
 
