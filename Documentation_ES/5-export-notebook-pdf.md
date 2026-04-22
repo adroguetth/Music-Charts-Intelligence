@@ -92,7 +92,7 @@ Mi Drive/
 
 ### **Diagrama 3: Lógica de Detección de Semana**
 
-<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/5_export_notebook_to_pdf/3.png" alt="Diagrama 3: Lógica de Detección de Semana" width="500">
+<img src="https://raw.githubusercontent.com/adroguetth/Music-Charts-Intelligence/main/Documentation_ES/Diagramas/5_export_notebook_to_pdf/3.png" alt="Diagrama 3: Lógica de Detección de Semana" width="700">
 
 Este diagrama detalla el **algoritmo de selección de semana**:
 
