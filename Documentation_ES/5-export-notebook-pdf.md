@@ -81,7 +81,8 @@ Mi Drive/
                 ├── youtube_charts_2026-W16.ipynb
                 └── youtube_charts_2026-W16.pdf
 
-``
+```
+
 **Lógica de Creación de Carpetas:**
 
 - El ID de la carpeta raíz (`GDRIVE_ROOT_FOLDER_ID`) es proporcionado por el usuario
