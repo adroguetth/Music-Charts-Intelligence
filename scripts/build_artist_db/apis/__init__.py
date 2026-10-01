@@ -23,7 +23,7 @@ from .wikipedia import (
     search_wikipedia_infobox_genre_cached,
     search_wikipedia_summary_genre_cached,
 )
-from .deepseek import search_deepseek_fallback, _get_deepseek_client
+from .ia_search_engine import search_ia_fallback, _get_ia_client
 
 __all__ = [
     # MusicBrainz
