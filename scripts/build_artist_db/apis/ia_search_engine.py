@@ -18,7 +18,7 @@ from ..utils.country_utils import validate_and_normalize_country
 # Meta API settings
 META_BASE_URL = "https://api.meta.ai/v1"
 META_MODEL = "muse-spark-1.3-contributor"
-META_REASONING_EFFORT = "high"  # high = fewer hallucinations. Not minimal/low/medium/max.
+META_REASONING_EFFORT = "medium"
 
 # Global client and cache
 _IA_CLIENT = None
