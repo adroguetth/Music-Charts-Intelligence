@@ -1,8 +1,8 @@
 """
-DeepSeek API client for fallback country and genre detection.
+AI client for fallback country and genre detection.
 
-Uses the OpenAI-compatible interface to query DeepSeek's chat model.
-Requires DEEPSEEK_API_KEY environment variable.
+Uses Meta's OpenAI-compatible API (Muse Spark) to query the chat model.
+Requires META_API_KEY environment variable.
 """
 
 import os
@@ -15,41 +15,46 @@ from openai import OpenAI
 from ..config import logger
 from ..utils.country_utils import validate_and_normalize_country
 
+# Meta API settings
+META_BASE_URL = "https://api.meta.ai/v1"
+META_MODEL = "muse-spark-1.3-contributor"
+META_REASONING_EFFORT = "high"  # high = fewer hallucinations. Not minimal/low/medium/max.
+
 # Global client and cache
-_DEEPSEEK_CLIENT = None
-_DEEPSEEK_CACHE = {}  # Cache: {artist: (country, genre, source)}
+_IA_CLIENT = None
+_IA_CACHE = {}  # Cache: {artist: (country, genre, source)}
 
 
-def _get_deepseek_client() -> Optional[OpenAI]:
+def _get_ia_client() -> Optional[OpenAI]:
     """
-    Lazy initialization of DeepSeek client.
+    Lazy initialization of the Meta AI client.
 
     Returns:
-        OpenAI client configured for DeepSeek, or None if API key missing.
+        OpenAI client configured for Meta API, or None if API key missing.
     """
-    global _DEEPSEEK_CLIENT
-    if _DEEPSEEK_CLIENT is None:
-        api_key = os.getenv("DEEPSEEK_API_KEY")
+    global _IA_CLIENT
+    if _IA_CLIENT is None:
+        api_key = os.getenv("META_API_KEY")
         if not api_key:
-            logger.debug("DeepSeek API key not set")
+            logger.debug("Meta API key not set")
             return None
         try:
-            _DEEPSEEK_CLIENT = OpenAI(
+            _IA_CLIENT = OpenAI(
                 api_key=api_key,
-                base_url="https://api.deepseek.com"
+                base_url=META_BASE_URL
             )
         except Exception as e:
-            logger.debug(f"Failed to initialize DeepSeek client: {e}")
+            logger.debug(f"Failed to initialize Meta AI client: {e}")
             return None
-    return _DEEPSEEK_CLIENT
+    return _IA_CLIENT
 
 
-def search_deepseek_fallback(
+def search_ia_fallback(
     artist: str,
     context_country: Optional[str] = None
 ) -> Tuple[Optional[str], Optional[str], str]:
     """
-    Use DeepSeek API as fallback to get country and/or genre.
+    Use Meta AI (Muse Spark) as fallback to get country and/or genre.
 
     Only called when other sources return nothing.
 
@@ -60,12 +65,12 @@ def search_deepseek_fallback(
     Returns:
         Tuple of (country, genre, source_info).
     """
-    if artist in _DEEPSEEK_CACHE:
-        return _DEEPSEEK_CACHE[artist]
+    if artist in _IA_CACHE:
+        return _IA_CACHE[artist]
 
-    client = _get_deepseek_client()
+    client = _get_ia_client()
     if not client:
-        return None, None, "DeepSeek not available"
+        return None, None, "Meta AI not available"
 
     # Rate limiting
     time.sleep(0.5)
@@ -100,12 +105,15 @@ Do not include any additional text outside the JSON object.
 
     try:
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model=META_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=200
+            # Was 200 with DeepSeek. With reasoning_effort="high" the model
+            # "thinks" first, so a low limit can cut the answer off.
+            max_tokens=2000,
+            reasoning_effort=META_REASONING_EFFORT,
         )
-        content = response.choices[0].message.content.strip()
+        content = (response.choices[0].message.content or "").strip()
 
         # Extract JSON from response
         json_match = re.search(r'\{[^{}]*\}', content)
@@ -125,15 +133,15 @@ Do not include any additional text outside the JSON object.
                 macro, _ = normalize_genre(genre_raw)
                 genre = macro if macro else genre_raw
 
-            result = (country, genre, "DeepSeek API")
-            _DEEPSEEK_CACHE[artist] = result
+            result = (country, genre, "Meta AI (Muse Spark)")
+            _IA_CACHE[artist] = result
             return result
 
     except json.JSONDecodeError as e:
-        logger.debug(f"DeepSeek JSON parse error for {artist}: {e}")
+        logger.debug(f"Meta AI JSON parse error for {artist}: {e}")
     except Exception as e:
-        logger.debug(f"DeepSeek API error for {artist}: {e}")
+        logger.debug(f"Meta AI API error for {artist}: {e}")
 
-    result = (None, None, "DeepSeek failed")
-    _DEEPSEEK_CACHE[artist] = result
+    result = (None, None, "Meta AI failed")
+    _IA_CACHE[artist] = result
     return result
