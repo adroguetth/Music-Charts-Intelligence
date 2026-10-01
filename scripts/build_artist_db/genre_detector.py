@@ -239,7 +239,7 @@ def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Opt
     1. MusicBrainz
     2. Wikidata
     3. Wikipedia (priority languages based on country and script)
-    4. DeepSeek API (fallback)
+    4. Meta AI / Muse Spark (fallback)
     5. Country priority fallback
 
     Args:
@@ -341,19 +341,19 @@ def search_artist_genre(artist: str, country: Optional[str] = None) -> Tuple[Opt
             if len(all_candidates) >= MIN_CANDIDATES:
                 break
 
-    # 4. DeepSeek fallback (local import to avoid circular dependency)
+    # 4. Meta AI fallback (local import to avoid circular dependency)
     if not all_candidates:
-        logger.debug(f"  🔍 Using DeepSeek fallback for genre: {artist} (country: {country})")
-        from .apis.deepseek import search_deepseek_fallback
-        _, deepseek_genre, _ = search_deepseek_fallback(artist, context_country=country)
-        if deepseek_genre:
-            macro, _ = normalize_genre(deepseek_genre)
+        logger.debug(f"  🔍 Using Meta AI fallback for genre: {artist} (country: {country})")
+        from .apis.ia_search_engine import search_ia_fallback
+        _, ia_genre, _ = search_ia_fallback(artist, context_country=country)
+        if ia_genre:
+            macro, _ = normalize_genre(ia_genre)
             if macro:
-                logger.info(f"  🤖 DeepSeek genre for {artist}: {macro} (from: {deepseek_genre})")
-                return macro, f"DeepSeek API (genre: {deepseek_genre})"
+                logger.info(f"  🤖 Meta AI genre for {artist}: {macro} (from: {ia_genre})")
+                return macro, f"Meta AI (genre: {ia_genre})"
             else:
-                logger.info(f"  🤖 DeepSeek raw genre for {artist}: {deepseek_genre}")
-                return deepseek_genre, f"DeepSeek API (raw: {deepseek_genre})"
+                logger.info(f"  🤖 Meta AI raw genre for {artist}: {ia_genre}")
+                return ia_genre, f"Meta AI (raw: {ia_genre})"
 
     # 5. Country fallback
     if not all_candidates and country:
