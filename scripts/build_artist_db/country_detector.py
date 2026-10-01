@@ -3,7 +3,7 @@ Country detection logic for artists.
 
 This module orchestrates multi-source lookup (MusicBrainz, Wikipedia, Wikidata)
 to determine an artist's country of origin. It includes name variation generation,
-text normalization, and fallback to DeepSeek API when other sources fail.
+text normalization, and fallback to Meta AI (Muse Spark) when other sources fail.
 """
 
 import re
@@ -22,7 +22,7 @@ from .apis.wikipedia import (
 )
 from .apis.wikidata import search_wikidata_country_cached
 from .apis.musicbrainz import search_musicbrainz_country_cached
-from .apis.deepseek import search_deepseek_fallback
+from .apis.ia_search_engine import search_ia_fallback
 
 
 def search_country(artist: str) -> Tuple[Optional[str], str]:
@@ -34,7 +34,7 @@ def search_country(artist: str) -> Tuple[Optional[str], str]:
     2. Wikipedia EN (summary, then infobox)
     3. Wikipedia in priority languages based on script detection
     4. Wikidata
-    5. DeepSeek API (fallback)
+    5. Meta AI / Muse Spark (fallback)
     
     Args:
         artist: Artist name to search for.
@@ -89,10 +89,10 @@ def search_country(artist: str) -> Tuple[Optional[str], str]:
             info = f" (var: {var})" if var != artist else ""
             return country, f"Wikidata{info}"
 
-    # 5. DeepSeek fallback
-    logger.debug(f"  🔍 Using DeepSeek fallback for country: {artist}")
-    deepseek_country, _, _ = search_deepseek_fallback(artist)
-    if deepseek_country:
-        return deepseek_country, "DeepSeek API"
+    # 5. Meta AI fallback
+    logger.debug(f"  🔍 Using Meta AI fallback for country: {artist}")
+    ia_country, _, _ = search_ia_fallback(artist)
+    if ia_country:
+        return ia_country, "Meta AI (Muse Spark)"
 
     return None, "Not found"
