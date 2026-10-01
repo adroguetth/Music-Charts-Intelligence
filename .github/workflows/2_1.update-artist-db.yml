@@ -57,7 +57,7 @@ jobs:
       env:
         GITHUB_ACTIONS: true
         META_API_KEY: ${{ secrets.META_API_KEY }}
-        META_REASONING_EFFORT: low
+        META_REASONING_EFFORT: medium
 
     - name: ✅ Verify database integrity
       run: |
@@ -124,7 +124,7 @@ jobs:
         echo "📅 Date: $(date)"
         echo "📌 Trigger: ${{ github.event_name }}"
         echo "🔗 Commit: ${{ github.sha }}"
-        echo "🧠 Reasoning effort: low"
+        echo "🧠 Reasoning effort: medium"
         echo ""
         
         DB_FILE="charts_archive/2_1.countries-genres-artist/artist_countries_genres.db"
