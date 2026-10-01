@@ -5,7 +5,7 @@ This package provides cached access to:
 - MusicBrainz (country and genre)
 - Wikidata (country and genre)
 - Wikipedia (country and genre via infobox and summary)
-- DeepSeek (fallback AI for country and genre)
+- Meta Muse Spark (fallback AI for country and genre)
 """
 
 from .musicbrainz import (
