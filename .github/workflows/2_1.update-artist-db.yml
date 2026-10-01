@@ -40,13 +40,24 @@ jobs:
         mkdir -p charts_archive/1_download-chart/databases
         mkdir -p charts_archive/2_1.countries-genres-artist
 
+    - name: 🔑 Check Meta API key
+      env:
+        META_API_KEY: ${{ secrets.META_API_KEY }}
+      run: |
+        if [ -z "$META_API_KEY" ]; then
+          echo "::warning::META_API_KEY is not set - AI fallback will be disabled"
+        else
+          echo "✅ META_API_KEY is set"
+        fi
+
     - name: 🚀 Build artist database (modular)
-      timeout-minutes: 55
+      timeout-minutes: 50
       run: |
         python scripts/2_1.build_artist_db.py
       env:
         GITHUB_ACTIONS: true
-        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        META_API_KEY: ${{ secrets.META_API_KEY }}
+        META_REASONING_EFFORT: low
 
     - name: ✅ Verify database integrity
       run: |
@@ -69,7 +80,10 @@ jobs:
           exit 1
         fi
 
+    # always(): if the build is cut by the timeout, the progress made so far
+    # is still committed and the next run continues from there.
     - name: 📤 Commit and push changes
+      if: always()
       run: |
         echo "📝 Preparing commit..."
         
@@ -110,6 +124,7 @@ jobs:
         echo "📅 Date: $(date)"
         echo "📌 Trigger: ${{ github.event_name }}"
         echo "🔗 Commit: ${{ github.sha }}"
+        echo "🧠 Reasoning effort: low"
         echo ""
         
         DB_FILE="charts_archive/2_1.countries-genres-artist/artist_countries_genres.db"
